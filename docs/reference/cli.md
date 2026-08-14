@@ -22,6 +22,7 @@ cutver hook install|uninstall
 | --- | --- |
 | `--dry-run` | Compute and report, write nothing. Runs nothing either — no `cargo update`, no file writes — and still reports every change the real run would make. |
 | `--alpha` `--beta` `--rc` | Cut a prerelease in that channel. Pick one; two is refused rather than resolved. |
+| `--prerelease` | An alias for `--rc`. The version it writes is the canonical `-rc.N`. |
 | `--adapter js\|cargo` | Force the manifest adapter. Only needed when a repository has both manifests. |
 | `--cwd <path>` | Repository root. Defaults to the working directory. |
 | `--branch <name>` | Branch name, for CI on a detached HEAD where git answers the literal string `HEAD`. |

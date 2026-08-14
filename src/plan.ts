@@ -95,8 +95,42 @@ export type Plan =
  * branch.
  */
 export function channelFromBranch(branch: string): Channel | null {
-  const name = branch.trim().replace(/^release\//, '')
+  const name = canonicalBranch(branch).replace(/^release\//, '')
   return CHANNELS.includes(name as Channel) ? (name as Channel) : null
+}
+
+/**
+ * Spellings people use for a channel that are not the channel's name.
+ *
+ * `prerelease` is the common one — it reads as a category rather than a
+ * channel, and plenty of projects name the branch that. It resolves to `rc`
+ * and **the version string is always the canonical `-rc.N`**, never
+ * `-prerelease.N`: the dist-tag is derived from the version, and a fourth
+ * spelling in there would be a channel npm has never heard of and that
+ * `publish.yml` refuses rather than guessing at.
+ */
+const ALIASES: Record<string, Channel> = { prerelease: 'rc' }
+
+/**
+ * Rewrite an aliased channel to its canonical name, as a whole trailing
+ * segment only.
+ *
+ * `prerelease` -> `rc`, `release/prerelease` -> `release/rc`,
+ * `1.3.0-prerelease` -> `1.3.0-rc`, so the alias works in both branch shapes
+ * without either lookup knowing about it.
+ *
+ * Anchored to the end and to a separator so it cannot eat a real branch:
+ * `prereleases` does not match at all, and `my-prerelease` becomes `my-rc`,
+ * which is not an exact channel name and not a version — so it stays an
+ * ordinary branch either way.
+ */
+export function canonicalBranch(branch: string): string {
+  const name = branch.trim()
+  for (const [alias, channel] of Object.entries(ALIASES)) {
+    const re = new RegExp(`(^|[/-])${alias}$`)
+    if (re.test(name)) return name.replace(re, (_, sep: string) => `${sep}${channel}`)
+  }
+  return name
 }
 
 /** The stable part of a version — `1.3.0-beta.2` -> `1.3.0`. */
@@ -215,7 +249,10 @@ export async function plan({
   // A branch named `1.2.0-beta` declares its own base and channel. Where that
   // happens the commits still get a vote — not on the number, but on whether
   // the number is *allowed*.
-  const declared = versionFromBranch(branch)
+  //
+  // Parsed from the canonical name so `1.2.0-prerelease` is understood, while
+  // every message below quotes the branch the user actually has.
+  const declared = versionFromBranch(canonicalBranch(branch))
   if (declared) {
     const implied = applyBump(from, bump)
 

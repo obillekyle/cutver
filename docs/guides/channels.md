@@ -74,6 +74,27 @@ channel word does not: `beta-two`, `my-beta`, `betas` and `feat/beta-ui` are
 ordinary branches, and a tool that guessed otherwise would start publishing
 prereleases off a feature branch.
 
+### `prerelease` means `rc`
+
+It reads as a category rather than a channel, and plenty of projects name the
+branch that. cutver accepts it — as a branch name, in either shape, and as
+`--prerelease` on the command line:
+
+| You write | You get |
+| --- | --- |
+| branch `prerelease` | `1.2.1-rc.0` |
+| branch `1.3.0-prerelease` | `1.3.0-rc.0` |
+| `cutver --prerelease` | `1.2.1-rc.0` |
+
+**The version string is always the canonical `-rc.N`**, never
+`-prerelease.N`. The dist-tag is derived from the version, and a fourth
+spelling in there would be a channel no registry has heard of — the publish
+workflow refuses an unrecognised prerelease rather than defaulting it to
+`latest`, so the alias has to resolve before the number is written, not after.
+
+The alias is anchored the same way the channel names are: `prereleases` and
+`prerelease/x` are ordinary branches.
+
 An explicit `--rc` still wins over the branch — the flag was typed just now,
 the branch was named months ago.
 

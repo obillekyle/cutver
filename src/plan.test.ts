@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { channelFromBranch, plan, PlanRefusal } from './plan'
+import { canonicalBranch, channelFromBranch, plan, PlanRefusal } from './plan'
 import { versionFromBranch } from './version-from-commits'
 import { run } from './run'
 
@@ -290,6 +290,40 @@ describe('a branch that names only a channel', () => {
         version: '1.3.0',
       })
     }
+  })
+
+  test('`prerelease` is the same channel as `rc`, spelled the way people write it', async () => {
+    // It reads as a category rather than a channel, and plenty of projects
+    // name the branch that. **The version string stays canonical** — `-rc.N`,
+    // never `-prerelease.N` — because the dist-tag is derived from the version
+    // and a fourth spelling in there is a channel no registry has heard of.
+    const root = await repo(['feat: one@v1.2.0', 'fix: two'])
+    expect(await at(root, '1.2.0', 'prerelease')).toMatchObject({ version: '1.2.1-rc.0' })
+    expect((await at(root, '1.2.0', 'release/prerelease')) as { version: string }).toMatchObject({
+      version: '1.2.1-rc.0',
+    })
+  })
+
+  test('and works in the versioned branch shape too', async () => {
+    const root = await repo(['feat: one@v1.2.0', 'fix: two'])
+    expect(await at(root, '1.2.0', '1.2.1-prerelease')).toMatchObject({
+      version: '1.2.1-rc.0',
+      // The message quotes the branch that actually exists, not the rewrite.
+      why: "declared by branch '1.2.1-prerelease'",
+    })
+  })
+
+  test('the alias cannot eat an ordinary branch', async () => {
+    const root = await repo(['feat: one@v1.2.0', 'feat: two'])
+    for (const name of ['prereleases', 'my-prerelease', 'prerelease/x']) {
+      expect((await at(root, '1.2.0', name)) as { version: string }, name).toMatchObject({
+        version: '1.3.0',
+      })
+    }
+    expect(canonicalBranch('prereleases')).toBe('prereleases')
+    expect(canonicalBranch('my-prerelease')).toBe('my-rc')
+    expect(canonicalBranch('prerelease')).toBe('rc')
+    expect(canonicalBranch('1.2.0-prerelease')).toBe('1.2.0-rc')
   })
 
   test('the ported versionFromBranch still declares nothing for it', () => {

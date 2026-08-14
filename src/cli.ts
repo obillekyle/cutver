@@ -65,7 +65,7 @@ const HELP = `cutver ${VERSION} — cut a version from your commit messages.
 
 Options
   --dry-run             compute and report, write nothing
-  --alpha|--beta|--rc   cut a prerelease in that channel
+  --alpha|--beta|--rc   cut a prerelease in that channel (--prerelease = --rc)
   --adapter js|cargo    force the manifest adapter (default: detected)
   --cwd <path>          repository root (default: the working directory)
   --branch <name>       branch name, for CI on a detached HEAD
@@ -186,7 +186,10 @@ function parse(argv: string[]): Options {
         break
       }
       default: {
-        const channel = CHANNELS.find(c => name === `--${c}`)
+        // `--prerelease` is the same spelling alias the branch names take, and
+        // resolves to the same canonical `rc`.
+        const channel =
+          name === '--prerelease' ? 'rc' : CHANNELS.find(c => name === `--${c}`)
         if (channel) {
           channels.push(channel)
           break
