@@ -6,10 +6,12 @@ downgrade from prose that explains itself.
 
 ## [Unreleased]
 
+## [0.1.0-beta.0] — 2026-08-14
+
 ### Added
 
 - The version arithmetic, extracted verbatim from
-  [bakery](https://github.com/obillekyle/bakery)'s `version-from-commits.ts`
+  the `bakery` monorepo's `version-from-commits.ts`
   along with its 27 tests. Conventional-commit classification, both breaking
   markers, `release:` as a major, prerelease channels with a counter that
   restarts when the base or the channel moves, and branch-declared versions.
