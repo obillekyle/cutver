@@ -59,6 +59,12 @@ version falls through to the ordinary computation — `main`, `master`,
 `feat/window-functions`, and deliberately also `1.2.0-fix`, which is a feature
 branch and not a channel.
 
+**A push with nothing new in it cuts nothing.** Whether to release is measured
+from the last release of *any* kind, so a docs or chore commit on top of
+`1.2.0-beta.3` reports "nothing to release" rather than spending `beta.4` on
+it. The base is still measured from the last stable tag — see
+[two ranges, two questions](versions.md#two-ranges-two-questions).
+
 **The name carries the channel, never the counter.** `1.2.0-beta.3` is not a
 valid branch declaration and is ignored: if the name carried the number, every
 cut from that branch would be `beta.0` forever. The counter comes from the

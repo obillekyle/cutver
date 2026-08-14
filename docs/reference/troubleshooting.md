@@ -19,6 +19,11 @@ Or check that your commits are conventional. `Feat: capitalised` and
 `feat:no-space` are both ignored, deliberately — guessing at unparseable
 subjects would turn a typo into a release.
 
+> **On a release branch, `since` names the last prerelease**, not the last
+> stable tag — `since v1.2.0-beta.3` rather than `since v1.1.0`. That is the
+> range that decides whether anything is new; the base still comes from the
+> stable tag. So a docs push on a beta branch correctly cuts nothing.
+
 ## `nothing to release — 1.1.0 is already the current version`
 
 The computed number is what the manifests already say, so there is nothing to

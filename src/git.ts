@@ -31,6 +31,31 @@ export async function lastStableTag(root: string): Promise<string | null> {
   return out.split('\n').find(t => /^v\d+\.\d+\.\d+$/.test(t.trim())) ?? null
 }
 
+/**
+ * The newest tag of **any** kind reachable from HEAD — prereleases included.
+ *
+ * The counterpart to `lastStableTag`, and the two answer different questions.
+ * This one answers "what was released last", which is what decides whether
+ * there is anything new to release at all. The stable one answers "what is the
+ * base", which must ignore prereleases or a break landing mid-beta ships as a
+ * minor.
+ *
+ * Sorted here rather than by `git tag --sort=-v:refname`. Git's version sort
+ * places a prerelease *after* its own release unless `versionsort.suffix` is
+ * configured — so `v1.0.0-beta.1` would read as newer than `v1.0.0`, and a
+ * release tool would be depending on a git config nobody set.
+ */
+export async function lastAnyTag(root: string): Promise<string | null> {
+  const { out } = await run(['git', 'tag', '--list', 'v*', '--merged', 'HEAD'], root)
+  const found = out
+    .split('\n')
+    .map(t => t.trim())
+    .filter(t => /^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(t))
+
+  if (!found.length) return null
+  return found.sort((a, b) => Bun.semver.order(b.slice(1), a.slice(1)))[0] ?? null
+}
+
 /** Commits in `range`, newest first. `range` is a git revision range or `HEAD`. */
 export async function commitsIn(range: string, root: string): Promise<Commit[]> {
   // \x1e between records, \x1f between fields: a commit body can contain

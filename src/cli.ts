@@ -413,6 +413,22 @@ async function main(): Promise<void> {
       for (const s of subjects.slice(0, 3)) console.log(`        ${s}`)
       if (subjects.length > 3) console.log(`        … and ${subjects.length - 3} more`)
     }
+
+    // The two ranges, when they differ. Without this line the output shows a
+    // single `fix:` and then announces a major, with nothing on screen saying
+    // where the major came from — and an unexplained number is the one thing
+    // showing the work is supposed to prevent.
+    if (survey.base) {
+      console.log(
+        `  base  ${survey.base.bump} across ${survey.base.total} commit(s) since ` +
+          // Only call it the last stable release when there is one. With no
+          // stable tag the base came from the manifest, and saying otherwise
+          // would name a release that has never happened.
+          (survey.base.since === 'the first commit'
+            ? 'the first commit'
+            : `${survey.base.since}, the last stable release`),
+      )
+    }
   }
 
   if (decision.kind === 'nothing') {

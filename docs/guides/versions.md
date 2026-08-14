@@ -44,6 +44,35 @@ cutver: nothing to release — no feat/fix/perf or breaking commit since v1.2.3.
 
 Exit 1, or exit 0 under `--if-needed`, which is what CI wants.
 
+## Two ranges, two questions
+
+**Is there anything to release?** Measured from the last release of any kind,
+prereleases included.
+
+**What is the base?** Measured from the last *stable* tag, always.
+
+They are different questions and merging them breaks something either way.
+
+Measure both from the stable tag and a long-lived `1.2.0-beta` branch cuts a
+new beta on every push forever: the range still holds every `feat:` the branch
+was opened for, so a docs-only commit looks exactly like new work and spends a
+beta number on nothing.
+
+Measure both from the last *tag* and you get the classic bug back — a `feat!`
+that lands during a beta is measured against `1.3.0-beta.2` and ships as
+`1.3.0`, a breaking change released as a minor.
+
+When the two ranges differ, cutver says so rather than leaving you to work out
+where a major came from when only a `fix:` is on screen:
+
+```
+cutver: 1 commit(s) since v2.0.0-beta.0
+  patch 1
+        fix: a small thing
+  base  major across 14 commit(s) since v1.0.0, the last stable release
+cutver: 2.0.0-beta.0 -> 2.0.0-beta.1 (declared by branch '2.0.0-beta')
+```
+
 ## The baseline is the last stable tag
 
 This is the rule that matters most, and it is wrong in both obvious directions.

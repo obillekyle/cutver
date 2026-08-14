@@ -87,7 +87,11 @@ describe('with a stable tag', () => {
     ])
     const p = await at(root, '1.1.0-beta.0')
     expect(p).toMatchObject({ kind: 'release', version: '2.0.0' })
-    expect(p.survey?.since).toBe('v1.0.0')
+    // `since` names the new-work range, which starts at the last release of
+    // any kind; the base is reported separately and is the stable one. The
+    // number is the guarantee — 2.0.0, not 1.1.0.
+    expect(p.survey?.since).toBe('v1.1.0-beta.0')
+    expect(p.survey?.base?.since).toBe('v1.0.0')
   })
 
   test('nothing to release when the range holds only housekeeping', async () => {
@@ -106,6 +110,74 @@ describe('with a stable tag', () => {
     expect(await at(root, '1.1.0')).toMatchObject({
       kind: 'nothing',
       why: '1.1.0 is already the current version',
+    })
+  })
+})
+
+describe('a prerelease already tagged', () => {
+  test('a docs-only push since the last prerelease releases nothing', async () => {
+    // **The waste this exists to stop.** The range since the last *stable* tag
+    // still holds every `feat:` the beta branch was opened for, so without a
+    // second range a docs commit looks exactly like new work — and a
+    // long-lived release branch spends a beta number on every push forever.
+    const root = await repo([
+      'feat: one@v1.0.0',
+      'feat: two',
+      'chore(release): v1.1.0-beta.0@v1.1.0-beta.0',
+      'docs: write it all down',
+    ])
+    expect(await at(root, '1.1.0-beta.0', '1.1.0-beta')).toMatchObject({
+      kind: 'nothing',
+      why: 'no feat/fix/perf or breaking commit since v1.1.0-beta.0',
+    })
+  })
+
+  test('a real commit since it does release, and the base still comes from stable', async () => {
+    // The half that must survive: the base is measured from v1.0.0, not from
+    // the beta tag, so the `feat!` buried in the beta still majors. Measuring
+    // both questions from the prerelease is exactly the bug where a breaking
+    // change ships as a minor.
+    const root = await repo([
+      'feat: one@v1.0.0',
+      'feat!: the world moved',
+      'chore(release): v2.0.0-beta.0@v2.0.0-beta.0',
+      'fix: a small thing',
+    ])
+    const p = await at(root, '2.0.0-beta.0', '2.0.0-beta')
+
+    expect(p).toMatchObject({ kind: 'release', version: '2.0.0-beta.1' })
+    // What is *new* is one patch; what set the base is a major, from earlier.
+    expect(p.survey?.since).toBe('v2.0.0-beta.0')
+    expect(p.survey?.tally).toEqual([{ level: 'patch', subjects: ['fix: a small thing'] }])
+    expect(p.survey?.base).toMatchObject({ since: 'v1.0.0', bump: 'major' })
+  })
+
+  test('graduating still measures the base from the last stable release', async () => {
+    const root = await repo([
+      'feat: one@v1.0.0',
+      'feat: two',
+      'chore(release): v1.1.0-beta.0@v1.1.0-beta.0',
+      'fix: last one',
+    ])
+    // No branch declaration, no channel: the beta graduates to the base it was
+    // for — 1.1.0 — rather than to 1.0.1 from the patch alone.
+    expect(await at(root, '1.1.0-beta.0')).toMatchObject({ version: '1.1.0' })
+  })
+
+  test('a prerelease tag does not read as newer than its own release', async () => {
+    // `git tag --sort=-v:refname` puts v1.1.0-beta.0 *after* v1.1.0 unless
+    // `versionsort.suffix` is set, which nobody sets. Picking the wrong "last
+    // release" here would measure the new-work range from before the stable
+    // tag and cut a release for commits already shipped in it.
+    const root = await repo([
+      'feat: one@v1.0.0',
+      'feat: two@v1.1.0-beta.0',
+      'chore(release): v1.1.0@v1.1.0',
+      'docs: nothing releasable',
+    ])
+    expect(await at(root, '1.1.0')).toMatchObject({
+      kind: 'nothing',
+      why: 'no feat/fix/perf or breaking commit since v1.1.0',
     })
   })
 })

@@ -7,7 +7,7 @@
  * without a process, which is the same reason the arithmetic was kept out of
  * the original release script.
  */
-import { lastStableTag, commitsIn } from './git'
+import { commitsIn, lastAnyTag, lastStableTag } from './git'
 import {
   applyBump,
   classify,
@@ -38,10 +38,17 @@ export interface Tally {
 }
 
 export interface Survey {
-  /** What the range was measured from — a tag, or `the first commit`. */
+  /** What the "is there anything new" range was measured from — a tag, or `the first commit`. */
   since: string
   total: number
   tally: Tally[]
+  /**
+   * Set only when the *base* came from an earlier range than the one above —
+   * that is, when the last release was a prerelease. Without it the output
+   * shows one patch commit and then announces a major, with nothing on screen
+   * explaining where the major came from.
+   */
+  base?: { since: string; bump: Exclude<Bump, null>; total: number }
 }
 
 export type Plan =
@@ -112,23 +119,52 @@ export async function plan({
   }
 
   const { from, since, tagged } = await baseline(root, current)
-  const tag = since === 'the first commit' ? null : since
-  const range = tag ? `${tag}..HEAD` : 'HEAD'
 
-  const commits = (await commitsIn(range, root)).map(c => ({ ...c, bump: classify(c) }))
-  const driving = commits.filter(c => c.bump)
-  const s = survey(commits, since)
+  // **Two ranges, because there are two questions and they have different
+  // right answers.**
+  //
+  // *Is there anything to release?* — measured from the last release of any
+  // kind, prereleases included. Without this, a repository on a long-lived
+  // `1.2.0-beta` branch cuts a new beta on every push forever: the range since
+  // the last *stable* tag still holds all the `feat:` commits the branch was
+  // opened for, so a docs-only push looks exactly like new work and spends a
+  // beta number on nothing.
+  //
+  // *What is the base?* — measured from the last **stable** tag, always. This
+  // is the half that must not be simplified away: a `feat!` landing mid-beta
+  // has to be measured against the last stable release or it ships as a minor.
+  // Narrowing this range to the last prerelease is precisely that bug.
+  const baseRange = tagged ? `${since}..HEAD` : 'HEAD'
+  const lastAny = await lastAnyTag(root)
+  const freshSince = lastAny ?? 'the first commit'
+  const freshRange = lastAny ? `${lastAny}..HEAD` : 'HEAD'
 
-  if (!driving.length) {
+  const fresh = (await commitsIn(freshRange, root)).map(c => ({ ...c, bump: classify(c) }))
+  const commits =
+    baseRange === freshRange
+      ? fresh
+      : (await commitsIn(baseRange, root)).map(c => ({ ...c, bump: classify(c) }))
+
+  const s = survey(fresh, freshSince)
+
+  if (!fresh.some(c => c.bump)) {
     return {
       kind: 'nothing',
-      why: `no feat/fix/perf or breaking commit since ${since}`,
+      why: `no feat/fix/perf or breaking commit since ${freshSince}`,
       survey: s,
     }
   }
 
-  const bump = highestBump(commits)
+  // `commits` is a superset of `fresh` under any sane tagging, so the fallback
+  // is unreachable — but a hand-made tag on an unrelated branch could make it
+  // otherwise, and guessing `patch` there would be worse than using what the
+  // new commits actually justify.
+  const bump = highestBump(commits) ?? highestBump(fresh)
   if (!bump) throw new Error('unreachable: driving commits but no bump')
+
+  if (baseRange !== freshRange) {
+    s.base = { since, bump, total: commits.length }
+  }
 
   // A branch named `1.2.0-beta` declares its own base and channel. Where that
   // happens the commits still get a vote — not on the number, but on whether

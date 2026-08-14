@@ -76,6 +76,18 @@ cutver: 56 commit(s) since v1.2.3
 The work, shown. A computed version nobody can check is worse than a typed one:
 the reason for a major has to be visible before it is tagged.
 
+The count is measured from the last release of **any** kind — that is what
+decides whether there is anything to release. When the base came from an
+earlier, stable tag, a second line says so:
+
+```
+  base  major across 14 commit(s) since v1.0.0, the last stable release
+```
+
+Without it the output would show one `fix:` and then announce a major, which is
+exactly the unexplained number showing the work is supposed to prevent. See
+[two ranges, two questions](../guides/versions.md#two-ranges-two-questions).
+
 ```
 files (dry run — nothing is written)
   ↑ packages/core/package.json  2.0.0-alpha.6 -> 2.0.0-alpha.7
