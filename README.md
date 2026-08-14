@@ -29,10 +29,14 @@ It does not publish. See [Why it stops](#why-it-stops-before-publishing).
 
 ## Install
 
+> **In beta.** There is no `latest` on npm yet, deliberately — a release tool
+> that has not cut many releases should not be what a bare `bunx cutver`
+> resolves to. Until `0.1.0` graduates, ask for the channel by name.
+
 Nothing to install for a repository that already has Bun:
 
 ```bash
-bunx cutver
+bunx cutver@beta
 ```
 
 For one that does not — a Rust workspace, a CI image without a package manager
@@ -223,7 +227,7 @@ bun run build
 ## Provenance
 
 `src/version-from-commits.ts` and its tests were extracted verbatim from the
-[bakery](https://github.com/obillekyle/bakery) monorepo, where the rules were
+`bakery` monorepo (the `@bakery-framework/*` packages), where the rules were
 worked out against a real release history — the comments cite that history, and
 they are kept because the evidence is what makes each rule worth trusting. The
 rest of this repository is the part that was coupled to npm, generalised behind
