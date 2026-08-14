@@ -29,9 +29,12 @@ It does not publish. See [Why it stops](#why-it-stops-before-publishing).
 
 ## Install
 
-> **In beta.** There is no `latest` on npm yet, deliberately — a release tool
-> that has not cut many releases should not be what a bare `bunx cutver`
-> resolves to. Until `0.1.0` graduates, ask for the channel by name.
+> **In beta.** `0.1.0-beta.0` was published with `--tag beta`, and npm still
+> pointed `latest` at it — **a package's first publish always sets `latest`,
+> whatever `--tag` says**, because npm requires every package to have one.
+> The flag is not useless (the `beta` tag exists and is what to depend on),
+> but it cannot do the one thing it is for until a second version exists.
+> Ask for the channel by name until `0.1.0` graduates.
 
 Nothing to install for a repository that already has Bun:
 
