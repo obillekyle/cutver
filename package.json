@@ -1,0 +1,37 @@
+{
+  "name": "cutver",
+  "version": "0.1.0",
+  "description": "Work out the next semver from conventional commits and write it into every manifest. Stops before publishing.",
+  "author": "obillekyle",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "cutver": "./src/cli.ts"
+  },
+  "files": [
+    "src",
+    "!src/**/*.test.ts",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "bun": ">=1.0.0"
+  },
+  "keywords": [
+    "release",
+    "semver",
+    "conventional-commits",
+    "version",
+    "monorepo",
+    "cargo",
+    "bun"
+  ],
+  "scripts": {
+    "test": "bun test ./src",
+    "typecheck": "bunx tsc --noEmit"
+  },
+  "devDependencies": {
+    "bun-types": "^1.3.14",
+    "typescript": "^5.9.2"
+  }
+}
