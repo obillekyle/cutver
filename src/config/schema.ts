@@ -36,19 +36,51 @@ export const RELEASE = 'release'
 export const KEY_ALIASES: Record<string, string> = { prerelease: 'rc' }
 
 /**
- * Channel names must be lowercase letters only, and that is not style.
+ * Channel names are kebab-case: lowercase words joined by single hyphens.
  *
- * The prerelease counter has exactly one reader — `PRERELEASE` in
- * `version-from-commits.ts` — and it parses the identifier as `[a-z]+`.
- * A channel called `rc2` or `v2-latest` never matches it, so the counter
- * restarts at `.0` on every run; the next version then equals the current one,
- * the idempotency guard fires, and the channel reports "nothing to release"
- * forever. Measured, not feared.
+ * A hyphen *inside* the identifier is safe, and that is worth stating because
+ * the neighbouring rule looks like it forbids one. Measured on Bun 1.3.14:
  *
- * Keys are lowercased before this is applied, so `Beta` and `myPrefix` are
- * fixed rather than refused. A digit or a hyphen cannot be fixed.
+ *     1.2.0-my-prefix.9  <  1.2.0-my-prefix.10     correct
+ *     1.2.0-rc-9         >  1.2.0-rc-10            INVERTED
+ *
+ * The difference is *where* the hyphen is. `my-prefix` is one alphanumeric
+ * identifier and the counter is still its own dot-separated numeric one, so
+ * precedence works. `rc-9` fuses the counter into the text, and then ten sorts
+ * below nine. So the constraint is not "no hyphens" — it is "the counter keeps
+ * its dot", which is a property of the format and not of the name.
+ *
+ * Digits are still out. They are legal semver, but they buy nothing here and
+ * an all-digit identifier has leading-zero rules that would need their own
+ * test; a name is not the place to spend that.
  */
-export const CHANNEL_NAME = /^[a-z]+$/
+export const CHANNEL_NAME = /^[a-z]+(?:-[a-z]+)*$/
+
+/**
+ * Normalise a channel key to kebab-case.
+ *
+ * `myPrefix`, `MyPrefix`, `my_prefix` and `my prefix` all name the same thing
+ * as far as anyone reading the config is concerned, so they resolve to the same
+ * channel rather than three of them being errors and one working. Normalising
+ * once here is what keeps the version string, the git tag, the dist-tag and the
+ * generated workflow arm from ever disagreeing about spelling.
+ *
+ * Two keys that normalise to the same channel are refused, not merged — see
+ * `load.ts`. Silently merging two rules is how a branch ends up in a channel
+ * nobody declared.
+ */
+export function toKebab(name: string): string {
+  return name
+    .trim()
+    // camelCase and PascalCase, including runs of capitals: `HTTPServer` has
+    // to break as `http-server`, not `h-t-t-p-server`.
+    .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1-$2')
+    .replace(/[_\s]+/g, '-')
+    .toLowerCase()
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+}
 
 export interface Config {
   /** Config schema version — not the project's. */

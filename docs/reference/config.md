@@ -63,13 +63,33 @@ dist-tag concept at all.
 `prerelease` is accepted as a spelling of `rc`. Declaring both is an error
 rather than a merge.
 
-> **Lowercase letters only, and this one has teeth.** Channel keys are
-> lowercased for you — `Beta` and `myPrefix` become `beta` and `myprefix` — but
-> a digit or a hyphen is refused outright. The prerelease counter reads the
-> identifier as `[a-z]+`, so `rc2` or `v2-latest` would restart at `.0` on every
-> run; the next version would then equal the current one, and the channel would
-> report "nothing to release" **forever**. Refusing at load beats a channel that
-> looks fine and never advances.
+Names are **kebab-case**, and you do not have to write them that way. `Beta`,
+`myPrefix`, `my_prefix` and `my prefix` are all normalised for you:
+
+| you write | the channel is |
+| --- | --- |
+| `Beta` | `beta` |
+| `myPrefix` | `my-prefix` |
+| `pre_release` | `pre-release` |
+| `HTTPServer` | `http-server` |
+
+Normalising happens once, at load, so the version string, the git tag, the
+dist-tag and the generated workflow arm cannot end up disagreeing about
+spelling. Two keys that normalise to the same channel are an error rather than
+a silent merge — merging two rules is how a branch ends up in a channel nobody
+declared.
+
+> **Digits are refused.** `rc2` and `v2-latest` are rejected at load. They are
+> legal semver, but an all-digit prerelease identifier carries leading-zero
+> rules of its own, and a channel name is not the place to spend that.
+
+> **A hyphen inside the name is safe; a hyphen before the counter is not.**
+> Worth stating because they look like the same thing. `1.2.0-my-prefix.9` sorts
+> correctly below `1.2.0-my-prefix.10`, because the counter is still its own
+> dot-separated numeric identifier. `1.2.0-rc-9` sorts *above* `1.2.0-rc-10`,
+> because there the counter is fused into the text. cutver always emits the
+> former shape, so this is a property of the format rather than something you
+> can get wrong in a name.
 
 ## Branch patterns
 

@@ -54,7 +54,8 @@ channels:
     - prerelease
     - "{version}-rc"
 
-  # Any other lowercase name is a channel too — add a key and it exists.
+  # Any other name is a channel too — add a key and it exists. Names are
+  # kebab-case, and camelCase or snake_case is converted for you.
   # Registries are fine with it: react publishes \`canary\`, typescript \`dev\`.
   #
   # canary:

@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
-import { CHANNELS, versionFromBranch, type Channel } from '../version-from-commits'
+import { withStage } from '../plan'
+import { CHANNELS, versionFromBranch, withChannel, type Channel } from '../version-from-commits'
 import { matchBranch } from './match'
 import { DEFAULT_CONFIG } from './schema'
 
@@ -143,5 +144,63 @@ describe('DEFAULT_CONFIG reproduces the hard-coded rules', () => {
     for (const name of ['main', 'develop', 'feat/x', 'beta-two']) {
       expect(matchBranch(name, DEFAULT_CONFIG).kind, name).toBe('release')
     }
+  })
+})
+
+/**
+ * The other half of the substitution: the counter.
+ *
+ * `plan.ts` needed a regex that can read a kebab-case identifier, which the
+ * ported `PRERELEASE` cannot. Rather than widening the ported file, the rule is
+ * restated in five lines and the original is kept as its oracle — so the copy
+ * has to agree with it everywhere the original applies, which is a stronger
+ * guarantee than a cast that silently would not.
+ */
+describe('withStage reproduces the ported counter', () => {
+  const BASES = ['0.1.0', '1.2.3', '1.3.0', '2.0.0']
+  const CURRENTS = [
+    '1.2.3',
+    '1.3.0-beta.0',
+    '1.3.0-beta.9',
+    '1.3.0-beta.10',
+    '1.3.0-alpha.4',
+    '2.0.0-rc.0',
+    '1.3.0-my-prefix.3',
+    'not-a-version',
+    '',
+  ]
+
+  test('byte-identical for every channel the ported regex can read', () => {
+    for (const base of BASES) {
+      for (const channel of CHANNELS) {
+        for (const current of CURRENTS) {
+          expect(
+            withStage(base, channel, current),
+            `${base} / ${channel} / ${current}`,
+          ).toBe(withChannel(base, channel, current))
+        }
+      }
+    }
+  })
+
+  test('and continues a kebab-case counter the ported one freezes', () => {
+    // The reason the copy exists. `PRERELEASE` reads `[a-z]+`, so it never
+    // matches `my-prefix` and restarts at .0 forever — which then equals the
+    // current version and reports "nothing to release" for good.
+    expect(withChannel('1.3.0', 'my-prefix' as never, '1.3.0-my-prefix.3')).toBe('1.3.0-my-prefix.0')
+    expect(withStage('1.3.0', 'my-prefix', '1.3.0-my-prefix.3')).toBe('1.3.0-my-prefix.4')
+  })
+
+  test('the counter keeps its own dot, so .9 sorts below .10', () => {
+    // The hazard is a hyphen *before* the counter, not inside the identifier.
+    const nine = withStage('1.3.0', 'my-prefix', '1.3.0-my-prefix.8')
+    const ten = withStage('1.3.0', 'my-prefix', nine)
+    expect([nine, ten]).toEqual(['1.3.0-my-prefix.9', '1.3.0-my-prefix.10'])
+    expect(Bun.semver.order(nine, ten)).toBe(-1)
+  })
+
+  test('a base or channel change restarts it, exactly as before', () => {
+    expect(withStage('2.0.0', 'my-prefix', '1.3.0-my-prefix.7')).toBe('2.0.0-my-prefix.0')
+    expect(withStage('1.3.0', 'other-name', '1.3.0-my-prefix.7')).toBe('1.3.0-other-name.0')
   })
 })

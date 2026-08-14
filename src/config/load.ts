@@ -17,6 +17,7 @@ import {
   ECOSYSTEMS,
   KEY_ALIASES,
   RELEASE,
+  toKebab,
   SCHEMA_VERSION,
   type Config,
   type Ecosystem,
@@ -132,11 +133,13 @@ function parseChannels(raw: unknown, where: string): Record<string, string[]> {
   const seen = new Map<string, string>()
 
   for (const [rawKey, value] of Object.entries(raw as Record<string, unknown>)) {
-    // **Lowercased, not refused.** `Beta` and `myPrefix` are ordinary mistakes
-    // with an obvious intent, and normalising once here is what keeps the
-    // version string, the git tag, the dist-tag and the generated workflow arm
-    // from ever disagreeing about case.
-    const key = KEY_ALIASES[rawKey.toLowerCase()] ?? rawKey.toLowerCase()
+    // **Normalised, not refused.** `Beta`, `myPrefix` and `my_prefix` all name
+    // the same thing to anyone reading the file, so they resolve to the same
+    // channel rather than two of the three being errors. Done once, here, so
+    // the version string, the git tag, the dist-tag and the generated workflow
+    // arm cannot disagree about spelling.
+    const kebab = toKebab(rawKey)
+    const key = KEY_ALIASES[kebab] ?? kebab
 
     const previous = seen.get(key)
     if (previous !== undefined) {
@@ -147,14 +150,15 @@ function parseChannels(raw: unknown, where: string): Record<string, string[]> {
     }
     seen.set(key, rawKey)
 
-    // A digit or a hyphen is the one thing lowercasing cannot rescue: the
-    // prerelease counter parses the identifier as `[a-z]+`, so `rc2` would
-    // restart at `.0` on every run and report "nothing to release" forever.
+    // Kebab-case is the whole alphabet here. A digit is what normalising
+    // cannot rescue, and it buys nothing: an all-digit prerelease identifier
+    // has leading-zero rules of its own, and a channel name is not the place
+    // to spend that.
     if (key !== RELEASE && !CHANNEL_NAME.test(key)) {
       throw new ConfigError(
-        `${where}: \`${rawKey}\` is not a usable channel name — lowercase letters only.\n` +
-          '        The prerelease counter reads the identifier as [a-z]+, so a name with a\n' +
-          '        digit or a hyphen restarts at .0 every run and never releases again.',
+        `${where}: \`${rawKey}\` is not a usable channel name.\n` +
+          `        Letters and single hyphens only — \`${kebab}\` is not.\n` +
+          '        camelCase and snake_case are converted for you; digits are not accepted.',
       )
     }
 

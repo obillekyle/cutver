@@ -97,17 +97,31 @@ describe('validation', () => {
     expect(() => at({ target: 'js' })).toThrow(/must be one of cargo, node, bun/)
   })
 
-  test('channel keys are lowercased rather than refused', () => {
-    // `Beta` and `myPrefix` are ordinary mistakes with an obvious intent.
-    const c = at({ channels: { Beta: ['x'], myPrefix: ['y'] } })
-    expect(c.channels.beta).toEqual(['x'])
-    expect(c.channels.myprefix).toEqual(['y'])
+  test('channel keys are normalised to kebab-case rather than refused', () => {
+    // camelCase, PascalCase and snake_case all name the same thing to anyone
+    // reading the file, so they resolve to the same channel instead of two of
+    // the three being errors.
+    const c = at({
+      channels: { Beta: ['w'], myPrefix: ['x'], my_snake: ['y'], 'pre release': ['z'] },
+    })
+    expect(c.channels.beta).toEqual(['w'])
+    expect(c.channels['my-prefix']).toEqual(['x'])
+    expect(c.channels['my-snake']).toEqual(['y'])
+    expect(c.channels['pre-release']).toEqual(['z'])
   })
 
-  test('two keys colliding after lowercasing is refused, naming both', () => {
-    expect(() => at({ channels: { Beta: ['x'], beta: ['y'] } })).toThrow(
-      /`Beta` and `beta` are the same channel/,
-    )
+  test('a run of capitals breaks where a reader would break it', () => {
+    // `HTTPServer` is `http-server`, not `h-t-t-p-server`.
+    expect(Object.keys(at({ channels: { HTTPServer: ['x'] } }).channels)).toContain('http-server')
+  })
+
+  test('two keys colliding after normalising is refused, naming both', () => {
+    for (const channels of [
+      { Beta: ['x'], beta: ['y'] },
+      { myPrefix: ['x'], my_prefix: ['y'] },
+    ]) {
+      expect(() => at({ channels })).toThrow(/are the same channel/)
+    }
   })
 
   test('`prerelease` is a spelling of `rc`, and declaring both is refused', () => {
@@ -117,12 +131,18 @@ describe('validation', () => {
     )
   })
 
-  test('a digit or a hyphen in a channel name is refused, with the reason', () => {
-    // The one thing lowercasing cannot rescue: the counter reads [a-z]+, so
-    // these would restart at .0 forever and report "nothing to release".
-    for (const name of ['rc2', 'v2-latest', 'pre_release']) {
-      expect(() => at({ channels: { [name]: ['x'] } }), name).toThrow(/lowercase letters only/)
-      expect(() => at({ channels: { [name]: ['x'] } }), name).toThrow(/never releases again/)
+  test('hyphens are fine — they are the point of kebab-case', () => {
+    // A hyphen *inside* the identifier is safe: the counter keeps its own dot,
+    // so `my-prefix.9` still sorts below `my-prefix.10`. Measured.
+    const c = at({ channels: { 'pre-release': ['x'], 'my-long-name': ['y'] } })
+    expect(c.channels['pre-release']).toEqual(['x'])
+    expect(c.channels['my-long-name']).toEqual(['y'])
+  })
+
+  test('a digit is still refused, and says so', () => {
+    for (const name of ['rc2', 'v2-latest']) {
+      expect(() => at({ channels: { [name]: ['x'] } }), name).toThrow(/not a usable channel name/)
+      expect(() => at({ channels: { [name]: ['x'] } }), name).toThrow(/digits are not accepted/)
     }
   })
 

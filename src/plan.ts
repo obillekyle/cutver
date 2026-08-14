@@ -10,31 +10,36 @@
 import { commitsIn, lastAnyTag, lastStableTag } from './git'
 import { matchBranch } from './config/match'
 import { DEFAULT_CONFIG, type Config } from './config/schema'
-import {
-  applyBump,
-  classify,
-  highestBump,
-  withChannel,
-  type Bump,
-  type Channel,
-} from './version-from-commits'
+import { applyBump, classify, highestBump, type Bump } from './version-from-commits'
 
 /**
- * The ported counter, reached with a widened channel type.
+ * The prerelease counter, for channel names the ported one cannot read.
  *
- * `withChannel` is typed `channel: Channel` — alpha, beta or rc — but it has
- * no *runtime* gate on that list: it interpolates the identifier and compares
- * it, nothing more. So a configured channel flows through it untouched, and the
- * cast is sound **because** `CHANNEL_NAME` refuses anything outside `[a-z]+`
- * at config load, which is exactly the set the counter's own regex can read
- * back. Widen the one without widening the other and the counter silently
- * freezes at `.0`.
+ * `withChannel` parses the current version with `PRERELEASE`, whose identifier
+ * is `[a-z]+`. A kebab-case channel like `my-prefix` never matches it, so the
+ * counter restarts at `.0` on every run — and since the next version then
+ * equals the current one, the idempotency guard fires and the channel reports
+ * "nothing to release" forever. Measured before this existed.
  *
- * This is why `version-from-commits.ts` stays byte-untouched and still does the
- * arithmetic, rather than being forked into a parallel implementation.
+ * So the regex is widened here and **the rule is not touched**: continue only
+ * when the base *and* the channel both match, restart at `.0` otherwise. The
+ * emitted shape is the same too — `base-channel.n`, the counter keeping its own
+ * dot, which is what makes `.9` sort below `.10`.
+ *
+ * `version-from-commits.ts` stays byte-untouched, and `withChannel` stays its
+ * oracle: `equivalence.test.ts` drives both over a grid of bases, channels and
+ * currents and requires identical output wherever the channel is one the
+ * ported regex can read. A copy that agrees with the original everywhere the
+ * original applies is a safer widening than a cast that silently does not.
  */
-function withStage(base: string, channel: string, current: string): string {
-  return withChannel(base, channel as Channel, current)
+const STAGE = /^(?<base>\d+\.\d+\.\d+)-(?<tag>[a-z]+(?:-[a-z]+)*)\.(?<n>\d+)$/
+
+export function withStage(base: string, channel: string, current: string): string {
+  const m = STAGE.exec(current)
+  const continuing = m?.groups?.base === base && m.groups.tag === channel
+  const n = continuing ? Number(m?.groups?.n) + 1 : 0
+
+  return `${base}-${channel}.${n}`
 }
 
 /**
