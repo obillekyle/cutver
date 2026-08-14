@@ -44,9 +44,47 @@ A base change restarts it too:
 Not `2.0.0-alpha.4`, which would imply three earlier `2.0.0` alphas that never
 existed.
 
-## Release branches
+## A branch named after the channel
 
-A branch named `1.2.0-beta` declares its own base and channel: *this branch is
+The simplest shape, and the one to reach for first:
+
+```
+beta
+```
+
+`alpha`, `beta` and `rc` — the bare name and nothing else. The branch declares
+the **channel**; the base is computed from the commits, every time.
+
+```
+cutver: 1.2.0 -> 1.3.0-beta.0 (minor, beta from branch 'beta')
+```
+
+Land a `feat!` on it later and the base moves on its own:
+
+```
+cutver: 1.3.0-beta.4 -> 2.0.0-beta.0 (major, beta from branch 'beta')
+```
+
+No rename, no refusal, and the counter restarts because the base changed. That
+is the difference from the versioned form below, which promises a specific
+number and has to be renamed the moment the commits outgrow it.
+
+`release/beta` works too, for symmetry. Anything that merely *contains* a
+channel word does not: `beta-two`, `my-beta`, `betas` and `feat/beta-ui` are
+ordinary branches, and a tool that guessed otherwise would start publishing
+prereleases off a feature branch.
+
+An explicit `--rc` still wins over the branch — the flag was typed just now,
+the branch was named months ago.
+
+> **`*-beta` does not match `beta`.** If you are writing the workflow triggers
+> by hand, the bare names need their own entries; the glob needs the hyphen.
+> Leave them out and the branch simply never releases anything, with no error
+> to notice. [`cutver init`](../getting-started/ci.md) writes both.
+
+## Release branches with a base
+
+A branch named `1.2.0-beta` declares its own base *and* channel: *this branch is
 building towards 1.2.0, publishing betas along the way.* cutver reads it, so
 you do not pass `--beta` on every cut.
 
@@ -91,6 +129,10 @@ cutver: branch '1.2.0-beta' declares 1.2.0, but the commits since v1.1.0
 Refused rather than warned, because publishing `1.2.0` there would ship a
 breaking change as a minor, and a warning scrolls past in a CI log while the
 wrong version goes out anyway.
+
+This is the cost of declaring a base, and the reason a branch named plainly
+`beta` exists: it promises no number, so there is nothing for the commits to
+contradict.
 
 > **This check needs a stable tag to mean anything, and only runs when there is
 > one.** With no tag the baseline is inferred from your manifest — and on a

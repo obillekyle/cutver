@@ -15,6 +15,7 @@ import {
   nextVersion,
   versionFromBranch,
   withChannel,
+  CHANNELS,
   type Bump,
   type Channel,
 } from './version-from-commits'
@@ -71,6 +72,32 @@ export interface Survey {
 export type Plan =
   | { kind: 'release'; version: string; from: string; why: string; survey: Survey | null }
   | { kind: 'nothing'; why: string; survey: Survey | null }
+
+/**
+ * A branch that names a channel and nothing else — `beta`, `alpha`, `rc`.
+ *
+ * The other half of `versionFromBranch`, and deliberately a separate function
+ * in this file rather than a widened return type in the ported one. That one
+ * answers "what version does this branch name declare", and for `beta` the
+ * honest answer is still *none* — there is a test in the ported suite pinning
+ * exactly that. This asks a different question: which channel does it name.
+ *
+ * **The base is then computed, every time, from the commits.** That is the
+ * whole point of the shape. A `1.3.0-beta` branch has to be renamed the moment
+ * a `feat!` lands on it, because its name promises a version the commits have
+ * outgrown — cutver refuses the push and tells you to rename. A branch called
+ * `beta` promises only a channel, so a break simply moves the base from 1.3.0
+ * to 2.0.0 and restarts the counter. Nothing to rename, and nothing to refuse.
+ *
+ * `release/beta` is accepted for symmetry with `release/1.3.0-beta`. Anything
+ * else is not: `beta-two`, `my-beta` and `betas` are ordinary branches, and a
+ * tool that guessed otherwise would start cutting prereleases off a feature
+ * branch.
+ */
+export function channelFromBranch(branch: string): Channel | null {
+  const name = branch.trim().replace(/^release\//, '')
+  return CHANNELS.includes(name as Channel) ? (name as Channel) : null
+}
 
 /** The stable part of a version — `1.3.0-beta.2` -> `1.3.0`. */
 function stableCore(version: string): string {
@@ -232,9 +259,16 @@ export async function plan({
     }
   }
 
+  // A branch named `beta` supplies the channel and nothing else, so the base
+  // is computed exactly as a stable release would be. An explicit `--beta` or
+  // `--rc` still wins: the flag was typed just now and the branch was named
+  // once, months ago.
+  const fromBranch = channelFromBranch(branch)
+  const effective = channel ?? fromBranch
+
   // The base is measured from the last stable release, not from `current` and
   // not from the last tag. `nextVersion` documents why both of those are wrong.
-  const version = nextVersion({ lastStable: from, bump, channel, current })
+  const version = nextVersion({ lastStable: from, bump, channel: effective, current })
 
   // A computed version equal to the current one means there is nothing to
   // release — that number is already spent, and npm will never accept it twice.
@@ -257,7 +291,12 @@ export async function plan({
     kind: 'release',
     version,
     from: current,
-    why: `${bump}${channel ? `, ${channel}` : ''}`,
+    why:
+      `${bump}${effective ? `, ${effective}` : ''}` +
+      // Say where the channel came from when it was not asked for on the
+      // command line. A `-beta.0` appearing because of a branch name is
+      // otherwise the sort of thing you notice after publishing it.
+      (!channel && fromBranch ? ` from branch '${branch}'` : ''),
     survey: s,
   }
 }

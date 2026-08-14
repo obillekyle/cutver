@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { plan } from './plan'
+import { channelFromBranch, plan, PlanRefusal } from './plan'
+import { versionFromBranch } from './version-from-commits'
 import { run } from './run'
 
 const made: string[] = []
@@ -225,6 +226,80 @@ describe('branch-declared versions', () => {
     // would scroll past in a CI log and the wrong version would go out anyway.
     const root = await repo(['feat: one@v1.0.0', 'feat!: the world moved'])
     expect(at(root, '1.1.0-beta.0', '1.1.0-beta')).rejects.toThrow(/declares 1\.1\.0.*2\.0\.0/s)
+  })
+})
+
+describe('a branch that names only a channel', () => {
+  test('`beta` cuts a beta with the base computed from the commits', async () => {
+    const root = await repo(['feat: one@v1.2.0', 'feat: two'])
+    expect(await at(root, '1.2.0', 'beta')).toMatchObject({
+      kind: 'release',
+      version: '1.3.0-beta.0',
+      why: "minor, beta from branch 'beta'",
+    })
+  })
+
+  test('alpha and rc too, and release/beta for symmetry', async () => {
+    const root = await repo(['feat: one@v1.2.0', 'fix: two'])
+    expect((await at(root, '1.2.0', 'alpha')) as { version: string }).toMatchObject({
+      version: '1.2.1-alpha.0',
+    })
+    expect((await at(root, '1.2.0', 'rc')) as { version: string }).toMatchObject({
+      version: '1.2.1-rc.0',
+    })
+    expect((await at(root, '1.2.0', 'release/beta')) as { version: string }).toMatchObject({
+      version: '1.2.1-beta.0',
+    })
+  })
+
+  test('the counter continues while the base holds', async () => {
+    const root = await repo(['feat: one@v1.2.0', 'feat: two@v1.3.0-beta.0', 'fix: three'])
+    expect(await at(root, '1.3.0-beta.0', 'beta')).toMatchObject({ version: '1.3.0-beta.1' })
+  })
+
+  test('a break re-bases and restarts the counter, with nothing to rename', async () => {
+    // **The reason this branch shape exists.** On `1.3.0-beta` this same
+    // history is refused outright — the name promises 1.3.0 and the commits
+    // have outgrown it — and the fix is to rename the branch mid-flight. A
+    // branch called `beta` promises only the channel, so the base moves on its
+    // own and the counter restarts because the base changed.
+    const root = await repo([
+      'feat: one@v1.2.0',
+      'feat: two@v1.3.0-beta.0',
+      'feat!: the world moved',
+    ])
+    expect(await at(root, '1.3.0-beta.0', 'beta')).toMatchObject({ version: '2.0.0-beta.0' })
+
+    // The versioned form, for contrast, refuses.
+    expect(at(root, '1.3.0-beta.0', '1.3.0-beta')).rejects.toBeInstanceOf(PlanRefusal)
+  })
+
+  test('a flag typed now beats a branch named months ago', async () => {
+    const root = await repo(['feat: one@v1.2.0', 'feat: two'])
+    expect(
+      await plan({ root, current: '1.2.0', branch: 'beta', channel: 'rc' }),
+    ).toMatchObject({ version: '1.3.0-rc.0', why: 'minor, rc' })
+  })
+
+  test('a branch that merely contains a channel word is an ordinary branch', async () => {
+    // `feat/beta-ui` is not a release channel, and a tool that guessed
+    // otherwise would start publishing prereleases off a feature branch.
+    const root = await repo(['feat: one@v1.2.0', 'feat: two'])
+    for (const name of ['beta-two', 'my-beta', 'betas', 'feat/beta-ui', 'alpha/x']) {
+      expect((await at(root, '1.2.0', name)) as { version: string }, name).toMatchObject({
+        version: '1.3.0',
+      })
+    }
+  })
+
+  test('the ported versionFromBranch still declares nothing for it', () => {
+    // The new rule lives in the policy layer on purpose. `versionFromBranch`
+    // answers "what version does this name declare", and for `beta` that is
+    // still none — a ported test pins it, and this asserts the two functions
+    // disagree deliberately rather than by accident.
+    expect(versionFromBranch('beta')).toBeNull()
+    expect(channelFromBranch('beta')).toBe('beta')
+    expect(channelFromBranch('1.3.0-beta')).toBeNull()
   })
 })
 

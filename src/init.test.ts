@@ -40,6 +40,11 @@ describe('the generated workflows', () => {
       // must not fire on a branch push. That is the entire safety model, and
       // it is one careless template edit away from being lost.
       expect(version.on.push.branches, eco).toContain('main')
+      // Both branch shapes, and the bare names are the ones easily lost:
+      // `*-beta` does not match `beta`, so omitting them leaves a release
+      // branch that silently never fires.
+      expect(version.on.push.branches, eco).toContain('*-beta')
+      expect(version.on.push.branches, eco).toContain('beta')
       expect(version.on.push.tags, eco).toBeUndefined()
       expect(publish.on.push.tags, eco).toEqual(['v*'])
       expect(publish.on.push.branches, eco).toBeUndefined()

@@ -129,6 +129,12 @@ on:
       - '*-alpha'
       - '*-beta'
       - '*-rc'
+      # And the bare channel names, which declare a channel and let the base be
+      # computed. \`*-beta\` does not match \`beta\` — the glob needs the hyphen —
+      # so leaving these out means the branch quietly never releases anything.
+      - alpha
+      - beta
+      - rc
 
 concurrency:
   # Never two releases at once on the same ref: both would compute the same
