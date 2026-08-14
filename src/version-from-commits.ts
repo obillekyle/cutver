@@ -1,6 +1,14 @@
 /**
  * Work out a semver bump from conventional-commit messages.
  *
+ * **Extracted from the bakery repository, unchanged.** Every number and claim
+ * in the comments below — "five commits mark a break with `!`", "this project
+ * is at 1.0.0", "the history is 100% conventional-commit formatted" — is
+ * measured against *that* history, and `release.ts`, `template.ts` and
+ * `prompt.ts` are files over there. They are kept verbatim because the
+ * evidence is what makes each rule worth trusting; read them as the case for
+ * the rule, not as a description of whichever repository cutver is pointed at.
+ *
  * Pure — no git, no filesystem, no process. Separated from `release.ts` for the
  * same reason `template.ts` is separated from `index.ts` and `prompt.ts`'s state
  * machine from its terminal: the interesting logic is a handful of rules, and
