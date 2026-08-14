@@ -1,0 +1,142 @@
+name: Version
+
+# cutver cutting cutver's version. The tool is run against its own repository
+# from source — if the arithmetic is wrong, this is the first place it shows.
+#
+# Computes the next version from the commit messages, commits the bump, and
+# pushes a tag. **It does not publish** — `publish.yml` does, and only when a
+# `v*` tag appears. That split is the whole safety model: npm never allows a
+# version number to be reused, so the irreversible step gets its own trigger
+# rather than happening because someone merged a PR.
+on:
+  push:
+    branches:
+      - main
+      # Branch-declared versions: a branch called `1.2.0-beta` publishes betas
+      # towards 1.2.0. `src/version-from-commits.ts` parses the name; these
+      # globs only decide which pushes are worth waking the workflow for.
+      - '*-alpha'
+      - '*-beta'
+      - '*-rc'
+
+concurrency:
+  # Never two releases at once on the same ref: both would compute the same
+  # number from the same commits and the second push would be rejected.
+  group: version-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  # To dispatch publish.yml. **A tag pushed with the default GITHUB_TOKEN
+  # cannot start a workflow** — GitHub blocks that to prevent recursion — so
+  # the tag alone is not enough and this has to ask explicitly.
+  actions: write
+
+jobs:
+  version:
+    name: compute + tag
+    runs-on: ubuntu-latest
+
+    # The bump commit is itself a push to this branch, which would re-trigger
+    # this workflow. cutver would then correctly report "nothing to release"
+    # and, without `--if-needed`, exit 1 — a red X on every release. Skipped by
+    # its own subject line as well, because a workflow that is usually red is a
+    # workflow nobody reads.
+    if: "!startsWith(github.event.head_commit.message, 'chore(release):')"
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history and every tag. cutver measures commits since the last
+          # *stable* tag; a shallow clone has neither the tags nor the range,
+          # and would silently fall back to measuring from the manifest.
+          fetch-depth: 0
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - run: bun install --frozen-lockfile
+
+      # The gates. cutver does not run them itself — it cannot know what a
+      # given repository's are — so they are named here, before anything is
+      # written, and a release cannot be cut from a tree that does not pass.
+      - run: bun run typecheck
+      - run: bun test ./src
+
+      - name: Note the version before
+        id: before
+        run: echo "value=$(bun -e 'console.log(require("./package.json").version)')" >> "$GITHUB_OUTPUT"
+
+      # `--branch` because CI checks out a detached HEAD, where
+      # `git rev-parse --abbrev-ref HEAD` answers the literal string 'HEAD' and
+      # the real branch exists only in the event payload.
+      - name: Compute the version and bump the manifest
+        run: bun run src/cli.ts --if-needed --branch '${{ github.ref_name }}'
+
+      # **Whether the version moved is the signal — not whether the tree is
+      # dirty.** `git status` is the obvious check and it is wrong twice over:
+      # it reports any unrelated change (a stray formatter edit, a file a test
+      # wrote) as "a release happened", and a run that reports that then tries
+      # to create a tag which already exists.
+      - name: Did the version move?
+        id: check
+        env:
+          BEFORE: ${{ steps.before.outputs.value }}
+        run: |
+          after=$(bun -e 'console.log(require("./package.json").version)')
+          if [ "$after" != "$BEFORE" ]; then
+            echo "released=true" >> "$GITHUB_OUTPUT"
+            echo "value=$after" >> "$GITHUB_OUTPUT"
+            echo "$BEFORE -> $after"
+          else
+            echo "released=false" >> "$GITHUB_OUTPUT"
+            echo "still $after — no release warranted by these commits"
+          fi
+
+      - name: Commit and tag
+        if: steps.check.outputs.released == 'true'
+        env:
+          VERSION: ${{ steps.check.outputs.value }}
+        run: |
+          git config user.name  'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m "chore(release): v$VERSION"
+          git tag -a "v$VERSION" -m "v$VERSION"
+          # Commit first, tag second. If the push of the commit is rejected
+          # (someone else landed one meanwhile) the tag never goes out, and
+          # publish.yml never fires for a version that is not on the branch.
+          git push origin HEAD
+          git push origin "v$VERSION"
+
+      # The tag is pushed above, but a tag pushed by GITHUB_TOKEN does not
+      # trigger `push: tags` anywhere. `workflow_dispatch` is one of the two
+      # documented exemptions, so publish.yml is asked directly.
+      #
+      # Deliberately after the push, not before: if the tag failed to land,
+      # this never runs and nothing tries to publish a version that is not
+      # tagged.
+      - name: Hand off to publish.yml
+        if: steps.check.outputs.released == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.check.outputs.value }}
+        run: gh workflow run publish.yml -f tag="v$VERSION"
+
+      - name: Summary
+        env:
+          RELEASED: ${{ steps.check.outputs.released }}
+          VERSION: ${{ steps.check.outputs.value }}
+        run: |
+          {
+            if [ "$RELEASED" = true ]; then
+              echo "### v$VERSION tagged"
+              echo
+              echo "\`publish.yml\` takes it from here."
+            else
+              echo "### No release"
+              echo
+              echo "No feat, fix, perf or breaking commit since the last tag."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

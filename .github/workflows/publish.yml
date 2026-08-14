@@ -1,0 +1,162 @@
+name: Publish
+
+# The only thing here that touches the registry, and the only one that cannot
+# be undone: npm never allows a version number to be reused, by anyone, ever.
+# So it fires on a tag rather than on a push — `version.yml` creates the tag,
+# and a human can also create one by hand.
+#
+# Authentication is **npm Trusted Publishing (OIDC)**: no long-lived token
+# exists anywhere, not in this repository's secrets and not on anyone's laptop.
+# npm mints a short-lived credential for this exact workflow in this exact
+# repository. Two consequences worth knowing before editing this file:
+#
+#   - Trusted publishing is configured **per package** on npmjs.com, and it
+#     names *this file*. Renaming publish.yml, or moving the job, breaks the
+#     trust relationship and every publish 403s until the config is updated.
+#   - **It cannot perform a package's first publish** — npm has nowhere to
+#     attach the trusted publisher until the package exists. cutver 0.1.0 goes
+#     out by hand with a local token; everything after comes through here.
+#     `cutver` itself refuses to cut a release for a package the registry has
+#     never heard of, so this is enforced rather than remembered.
+#
+# Two triggers, and the second is not a convenience.
+#
+# **A tag pushed by `version.yml` cannot start this workflow.** GitHub refuses
+# to create workflow runs from events made with the default `GITHUB_TOKEN`, to
+# prevent recursion — so the `push: tags` trigger only ever fires for a tag a
+# human pushes. `workflow_dispatch` is one of the two documented exemptions
+# (with `repository_dispatch`), so version.yml calls this explicitly instead.
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to publish, e.g. v1.2.3'
+        required: true
+        type: string
+
+concurrency:
+  # Two runs publishing the same tag would race. Never cancel one mid-publish.
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  # For the GitHub release the executables are attached to.
+  contents: write
+  # The whole point. Without it the runner cannot mint the OIDC token and npm
+  # falls back to looking for a credential that does not exist — failing with
+  # an error about credentials rather than about permissions, which sends you
+  # looking for the token trusted publishing exists to not need.
+  id-token: write
+
+jobs:
+  publish:
+    name: npm + executables
+    runs-on: ubuntu-latest
+
+    # One name for the tag whichever trigger fired. On a tag push `ref_name` is
+    # the tag; on a dispatch it is the branch, so the input has to win.
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          # Explicit, because a dispatched run would otherwise check out the
+          # branch and publish whatever is on it rather than what was tagged.
+          ref: ${{ inputs.tag || github.ref_name }}
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      # npm does the publishing, so it needs a Node it supports. The runner's
+      # bundled npm predates OIDC support often enough that pinning is cheaper
+      # than debugging a 401 that claims to be about permissions.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Use an npm that speaks OIDC
+        run: |
+          npm install -g npm@latest
+          npm --version
+
+      - run: bun install --frozen-lockfile
+
+      # A tag can be created by hand, and by hand it can be put on the wrong
+      # commit. Publishing then ships whatever the manifest happens to say
+      # under a tag claiming something else — and both are permanent.
+      - name: Refuse if the tag and the manifest disagree
+        run: |
+          manifest=$(bun -e 'console.log(require("./package.json").version)')
+          if [ "v$manifest" != "$TAG" ]; then
+            echo "tag $TAG does not match the manifest version $manifest" >&2
+            exit 1
+          fi
+          echo "tag and manifest agree on $manifest"
+
+      # Run again rather than trusted from the tagged commit's earlier run: a
+      # tag can be moved, a branch force-pushed. Last point anything stops.
+      - run: bun run typecheck
+      - run: bun test ./src
+
+      # The dist-tag is derived from the version, never passed in. **A
+      # prerelease published without one becomes `latest`**, and then every
+      # plain `bunx cutver` in the world resolves to a beta — silently, and
+      # only fixable by re-tagging after people have installed it. An
+      # unrecognised prerelease is refused rather than defaulted.
+      - name: Work out the dist-tag
+        id: disttag
+        run: |
+          version="${TAG#v}"
+          case "$version" in
+            *-alpha.*) tag=alpha ;;
+            *-beta.*)  tag=beta ;;
+            *-rc.*)    tag=rc ;;
+            *-*)       echo "unrecognised prerelease in $version" >&2; exit 1 ;;
+            *)         tag=latest ;;
+          esac
+          echo "value=$tag" >> "$GITHUB_OUTPUT"
+          echo "publishing $version under dist-tag $tag"
+
+      - name: Publish to npm
+        env:
+          DIST_TAG: ${{ steps.disttag.outputs.value }}
+        run: npm publish --tag "$DIST_TAG"
+
+      # The other half of shipping this: a repository that has no package
+      # manager — a Rust workspace, say — should not have to install one to cut
+      # a version. Five binaries, no runtime.
+      - name: Compile every target
+        run: bun run build --all
+
+      - name: Attach the executables to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$TAG" dist/cutver-* \
+            --title "$TAG" \
+            --generate-notes \
+            ${{ contains(steps.disttag.outputs.value, 'latest') && '' || '--prerelease' }}
+
+      - name: Summary
+        env:
+          DIST_TAG: ${{ steps.disttag.outputs.value }}
+        run: |
+          {
+            echo "### Published $TAG under \`$DIST_TAG\`"
+            echo
+            echo "Authenticated by OIDC — no token was used."
+            echo
+            echo '```'
+            if [ "$DIST_TAG" = latest ]; then
+              echo 'bunx cutver --dry-run'
+            else
+              echo "bunx cutver@$DIST_TAG --dry-run"
+            fi
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

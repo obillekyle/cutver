@@ -258,141 +258,159 @@ function preflight(found: Presence[], allowFirst: boolean, dryRun: boolean): voi
 
 // -------------------------------------------------------------------- main
 
-const opts = parse(process.argv.slice(2))
-const root = (opts.cwd ? Bun.pathToFileURL(opts.cwd).pathname : process.cwd())
-  .replace(/^\/([A-Za-z]:)/, '$1')
-  .replace(/\\/g, '/')
-  .replace(/\/+$/, '')
+/**
+ * A function rather than a top-level await, and it is not a style choice.
+ * `bun build --compile --bytecode` emits CommonJS — bytecode compilation
+ * requires it — and CommonJS has no top-level await, so a module-scoped
+ * `await` here fails the build with an error that points at the line rather
+ * than at the reason. The whole entry lives in `main()` so the compiled binary
+ * and `bun run src/cli.ts` are the same program.
+ */
+async function main(): Promise<void> {
+  const opts = parse(process.argv.slice(2))
+  const root = (opts.cwd ? Bun.pathToFileURL(opts.cwd).pathname : process.cwd())
+    .replace(/^\/([A-Za-z]:)/, '$1')
+    .replace(/\\/g, '/')
+    .replace(/\/+$/, '')
 
-if (!(await isGitRepo(root))) {
-  die(`${root} is not a git repository — the version is computed from its commits`)
-}
+  if (!(await isGitRepo(root))) {
+    die(`${root} is not a git repository — the version is computed from its commits`)
+  }
 
-// The adapter. Detected from which manifest exists; asked for when both do,
-// because a repository with a Cargo.toml *and* a package.json is common and
-// guessing would eventually bump the wrong one.
-const available = await applicableAdapters(root)
-if (!opts.adapter && available.length === 0) {
-  die(`no package.json or Cargo.toml in ${root}`)
-}
-if (!opts.adapter && available.length > 1) {
-  die(
-    `${root} has ${available.map(id => ADAPTERS[id].manifest).join(' and ')}.\n` +
-      `        Say which one this release is about: --adapter ${available.join('|')}`,
+  // The adapter. Detected from which manifest exists; asked for when both do,
+  // because a repository with a Cargo.toml *and* a package.json is common and
+  // guessing would eventually bump the wrong one.
+  const available = await applicableAdapters(root)
+  if (!opts.adapter && available.length === 0) {
+    die(`no package.json or Cargo.toml in ${root}`)
+  }
+  if (!opts.adapter && available.length > 1) {
+    die(
+      `${root} has ${available.map(id => ADAPTERS[id].manifest).join(' and ')}.\n` +
+        `        Say which one this release is about: --adapter ${available.join('|')}`,
+    )
+  }
+  const adapter = ADAPTERS[opts.adapter ?? (available[0] as AdapterId)]
+  if (opts.adapter && !available.includes(opts.adapter)) {
+    die(`--adapter ${opts.adapter} needs a ${adapter.manifest}, and ${root} has none`)
+  }
+
+  let current: string
+  try {
+    current = await adapter.readVersion(root)
+  } catch (e) {
+    die(e instanceof AdapterError ? e.message : String(e))
+  }
+
+  const branch = opts.branch ?? (await currentBranch(root))
+  console.log(`cutver: ${root} (${adapter.id}, at ${current}, on '${branch}')`)
+
+  const decision = await plan({
+    root,
+    current,
+    branch,
+    channel: opts.channel,
+    explicit: opts.explicit,
+  }).catch((e: Error) => die(e.message))
+
+  if (decision.survey) {
+    const { survey } = decision
+    console.log(`cutver: ${survey.total} commit(s) since ${survey.since}`)
+    for (const { level, subjects } of survey.tally) {
+      console.log(`  ${level.padEnd(5)} ${subjects.length}`)
+      // Show the work. A computed version nobody can check is worse than a typed
+      // one: the reason for a major has to be visible before it is tagged.
+      for (const s of subjects.slice(0, 3)) console.log(`        ${s}`)
+      if (subjects.length > 3) console.log(`        … and ${subjects.length - 3} more`)
+    }
+  }
+
+  if (decision.kind === 'nothing') {
+    const nothing = `nothing to release — ${decision.why}.`
+    // Most pushes to a default branch are docs or chores and warrant no release
+    // at all. Run from CI that is the *expected* outcome, not a failure —
+    // without this every ordinary merge would end in a red cross, and a workflow
+    // that is usually red is a workflow nobody reads.
+    if (opts.ifNeeded) {
+      console.log(`cutver: ${nothing}`)
+      console.log('cutver: --if-needed, so this is fine. Nothing written.')
+      process.exit(0)
+    }
+    die(`${nothing}\n        Pass a version explicitly to override.`)
+  }
+
+  const { version } = decision
+  console.log(`cutver: ${decision.from} -> ${version} (${decision.why})`)
+
+  // A release number is interpolated into every manifest and a git tag, so it is
+  // validated rather than trusted — including the computed one, which is cheap
+  // insurance against a bug in the arithmetic. Prerelease and build metadata are
+  // allowed; a leading `v` is not, because the tag adds it and `v1.1.0` is not a
+  // valid version string in any manifest.
+  if (!SEMVER.test(version)) {
+    die(`'${version}' is not a semver version (no leading 'v')`)
+  }
+
+  if (!opts.offline) {
+    preflight(
+      await checkRegistry(await adapter.publishTargets(root)),
+      opts.allowFirstPublish,
+      opts.dryRun,
+    )
+  } else {
+    console.log('\npreflight: skipped (--offline)')
+  }
+
+  // A dirty tree means the release would capture edits nobody reviewed.
+  const dirt = await status(root)
+  if (dirt && !opts.dryRun) die(`working tree is not clean:\n${dirt}`)
+
+  console.log(`\nfiles${opts.dryRun ? ' (dry run — nothing is written)' : ''}`)
+  const changes = await adapter
+    .setVersion({ root, version, dryRun: opts.dryRun })
+    .catch((e: Error) => die(e instanceof AdapterError ? e.message : String(e)))
+
+  const changelog = await rollChangelog({
+    root,
+    version,
+    dryRun: opts.dryRun,
+    // The caller's clock, formatted ISO-8601 like every other heading. Not
+    // `toLocaleDateString` — a release note that reads differently depending on
+    // who cut it is a small lie.
+    today: new Date().toISOString().slice(0, 10),
+  })
+
+  report(changelog ? [...changes, changelog] : changes)
+
+  const updated = [...changes, ...(changelog ? [changelog] : [])].filter(
+    c => c.state === 'updated',
+  ).length
+
+  // **A prerelease published without a dist-tag becomes `latest`.** That is npm's
+  // default, it is silent, and the consequence is that every plain install in the
+  // world starts resolving to an alpha. Undoing it means re-tagging by hand
+  // *after* users have already installed it, so the flag is printed here rather
+  // than left to be remembered at the point of running the publish.
+  const channel = opts.channel ?? /-([a-z]+)\./.exec(version)?.[1]
+
+  console.log(
+    opts.dryRun
+      ? `\ncutver: dry run — ${updated} file(s) would change, none did.`
+      : `\ncutver: ${updated} file(s) updated.\n` +
+          '  next: review the diff, commit, tag ' +
+          `v${version}, and publish from the tag.` +
+          (channel && adapter.id === 'js'
+            ? `\n\n  Publish this one with \`--tag ${channel}\`. Without it npm marks\n` +
+              `  ${version} as \`latest\` and every plain install resolves to a\n` +
+              `  prerelease. Consumers opt in with \`@${channel}\`.`
+            : ''),
   )
 }
-const adapter = ADAPTERS[opts.adapter ?? (available[0] as AdapterId)]
-if (opts.adapter && !available.includes(opts.adapter)) {
-  die(`--adapter ${opts.adapter} needs a ${adapter.manifest}, and ${root} has none`)
-}
 
-let current: string
-try {
-  current = await adapter.readVersion(root)
-} catch (e) {
-  die(e instanceof AdapterError ? e.message : String(e))
-}
-
-const branch = opts.branch ?? (await currentBranch(root))
-console.log(`cutver: ${root} (${adapter.id}, at ${current}, on '${branch}')`)
-
-const decision = await plan({
-  root,
-  current,
-  branch,
-  channel: opts.channel,
-  explicit: opts.explicit,
-}).catch((e: Error) => die(e.message))
-
-if (decision.survey) {
-  const { survey } = decision
-  console.log(`cutver: ${survey.total} commit(s) since ${survey.since}`)
-  for (const { level, subjects } of survey.tally) {
-    console.log(`  ${level.padEnd(5)} ${subjects.length}`)
-    // Show the work. A computed version nobody can check is worse than a typed
-    // one: the reason for a major has to be visible before it is tagged.
-    for (const s of subjects.slice(0, 3)) console.log(`        ${s}`)
-    if (subjects.length > 3) console.log(`        … and ${subjects.length - 3} more`)
-  }
-}
-
-if (decision.kind === 'nothing') {
-  const nothing = `nothing to release — ${decision.why}.`
-  // Most pushes to a default branch are docs or chores and warrant no release
-  // at all. Run from CI that is the *expected* outcome, not a failure —
-  // without this every ordinary merge would end in a red cross, and a workflow
-  // that is usually red is a workflow nobody reads.
-  if (opts.ifNeeded) {
-    console.log(`cutver: ${nothing}`)
-    console.log('cutver: --if-needed, so this is fine. Nothing written.')
-    process.exit(0)
-  }
-  die(`${nothing}\n        Pass a version explicitly to override.`)
-}
-
-const { version } = decision
-console.log(`cutver: ${decision.from} -> ${version} (${decision.why})`)
-
-// A release number is interpolated into every manifest and a git tag, so it is
-// validated rather than trusted — including the computed one, which is cheap
-// insurance against a bug in the arithmetic. Prerelease and build metadata are
-// allowed; a leading `v` is not, because the tag adds it and `v1.1.0` is not a
-// valid version string in any manifest.
-if (!SEMVER.test(version)) {
-  die(`'${version}' is not a semver version (no leading 'v')`)
-}
-
-if (!opts.offline) {
-  preflight(
-    await checkRegistry(await adapter.publishTargets(root)),
-    opts.allowFirstPublish,
-    opts.dryRun,
-  )
-} else {
-  console.log('\npreflight: skipped (--offline)')
-}
-
-// A dirty tree means the release would capture edits nobody reviewed.
-const dirt = await status(root)
-if (dirt && !opts.dryRun) die(`working tree is not clean:\n${dirt}`)
-
-console.log(`\nfiles${opts.dryRun ? ' (dry run — nothing is written)' : ''}`)
-const changes = await adapter
-  .setVersion({ root, version, dryRun: opts.dryRun })
-  .catch((e: Error) => die(e instanceof AdapterError ? e.message : String(e)))
-
-const changelog = await rollChangelog({
-  root,
-  version,
-  dryRun: opts.dryRun,
-  // The caller's clock, formatted ISO-8601 like every other heading. Not
-  // `toLocaleDateString` — a release note that reads differently depending on
-  // who cut it is a small lie.
-  today: new Date().toISOString().slice(0, 10),
+main().catch((e: unknown) => {
+  // Anything that got past a specific handler, printed with its stack: an
+  // unexpected failure in a release tool is a bug report, not a user error,
+  // and the one thing worse than the crash is a crash with no location.
+  console.error(e)
+  process.exit(1)
 })
-
-report(changelog ? [...changes, changelog] : changes)
-
-const updated = [...changes, ...(changelog ? [changelog] : [])].filter(
-  c => c.state === 'updated',
-).length
-
-// **A prerelease published without a dist-tag becomes `latest`.** That is npm's
-// default, it is silent, and the consequence is that every plain install in the
-// world starts resolving to an alpha. Undoing it means re-tagging by hand
-// *after* users have already installed it, so the flag is printed here rather
-// than left to be remembered at the point of running the publish.
-const channel = opts.channel ?? /-([a-z]+)\./.exec(version)?.[1]
-
-console.log(
-  opts.dryRun
-    ? `\ncutver: dry run — ${updated} file(s) would change, none did.`
-    : `\ncutver: ${updated} file(s) updated.\n` +
-        '  next: review the diff, commit, tag ' +
-        `v${version}, and publish from the tag.` +
-        (channel && adapter.id === 'js'
-          ? `\n\n  Publish this one with \`--tag ${channel}\`. Without it npm marks\n` +
-            `  ${version} as \`latest\` and every plain install resolves to a\n` +
-            `  prerelease. Consumers opt in with \`@${channel}\`.`
-          : ''),
-)
