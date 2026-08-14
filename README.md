@@ -27,6 +27,10 @@ files (dry run — nothing is written)
 
 It does not publish. See [Why it stops](#why-it-stops-before-publishing).
 
+**Documentation: [cutver.okyle.dev](https://cutver.okyle.dev)** — setup, the
+version rules, both adapters, and a troubleshooting page for every error it can
+print. Source in [docs/](docs/).
+
 ## Install
 
 > **In beta.** `0.1.0-beta.0` was published with `--tag beta`, and npm still
