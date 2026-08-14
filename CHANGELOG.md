@@ -6,6 +6,8 @@ downgrade from prose that explains itself.
 
 ## [Unreleased]
 
+## [0.1.0-beta.6] — 2026-08-14
+
 ## [0.1.0-beta.5] — 2026-08-14
 
 ### Fixed
