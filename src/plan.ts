@@ -8,17 +8,34 @@
  * the original release script.
  */
 import { commitsIn, lastAnyTag, lastStableTag } from './git'
+import { matchBranch } from './config/match'
+import { DEFAULT_CONFIG, type Config } from './config/schema'
 import {
   applyBump,
   classify,
   highestBump,
-  nextVersion,
-  versionFromBranch,
   withChannel,
-  CHANNELS,
   type Bump,
   type Channel,
 } from './version-from-commits'
+
+/**
+ * The ported counter, reached with a widened channel type.
+ *
+ * `withChannel` is typed `channel: Channel` — alpha, beta or rc — but it has
+ * no *runtime* gate on that list: it interpolates the identifier and compares
+ * it, nothing more. So a configured channel flows through it untouched, and the
+ * cast is sound **because** `CHANNEL_NAME` refuses anything outside `[a-z]+`
+ * at config load, which is exactly the set the counter's own regex can read
+ * back. Widen the one without widening the other and the counter silently
+ * freezes at `.0`.
+ *
+ * This is why `version-from-commits.ts` stays byte-untouched and still does the
+ * arithmetic, rather than being forked into a parallel implementation.
+ */
+function withStage(base: string, channel: string, current: string): string {
+  return withChannel(base, channel as Channel, current)
+}
 
 /**
  * The one refusal a caller may want to catch by type rather than by message.
@@ -39,7 +56,10 @@ export interface PlanInput {
   /** The version the manifests are at right now. */
   current: string
   branch: string
-  channel: Channel | null
+  /** A channel asked for on the command line. A config channel name, not just alpha/beta/rc. */
+  channel: string | null
+  /** The repository's rules. Defaults to today's hard-coded behaviour. */
+  config?: Config | undefined
   /** A version typed on the command line. Wins over everything computed. */
   explicit?: string | undefined
   /**
@@ -72,66 +92,17 @@ export interface Survey {
 export type Plan =
   | { kind: 'release'; version: string; from: string; why: string; survey: Survey | null }
   | { kind: 'nothing'; why: string; survey: Survey | null }
-
-/**
- * A branch that names a channel and nothing else — `beta`, `alpha`, `rc`.
- *
- * The other half of `versionFromBranch`, and deliberately a separate function
- * in this file rather than a widened return type in the ported one. That one
- * answers "what version does this branch name declare", and for `beta` the
- * honest answer is still *none* — there is a test in the ported suite pinning
- * exactly that. This asks a different question: which channel does it name.
- *
- * **The base is then computed, every time, from the commits.** That is the
- * whole point of the shape. A `1.3.0-beta` branch has to be renamed the moment
- * a `feat!` lands on it, because its name promises a version the commits have
- * outgrown — cutver refuses the push and tells you to rename. A branch called
- * `beta` promises only a channel, so a break simply moves the base from 1.3.0
- * to 2.0.0 and restarts the counter. Nothing to rename, and nothing to refuse.
- *
- * `release/beta` is accepted for symmetry with `release/1.3.0-beta`. Anything
- * else is not: `beta-two`, `my-beta` and `betas` are ordinary branches, and a
- * tool that guessed otherwise would start cutting prereleases off a feature
- * branch.
- */
-export function channelFromBranch(branch: string): Channel | null {
-  const name = canonicalBranch(branch).replace(/^release\//, '')
-  return CHANNELS.includes(name as Channel) ? (name as Channel) : null
-}
-
-/**
- * Spellings people use for a channel that are not the channel's name.
- *
- * `prerelease` is the common one — it reads as a category rather than a
- * channel, and plenty of projects name the branch that. It resolves to `rc`
- * and **the version string is always the canonical `-rc.N`**, never
- * `-prerelease.N`: the dist-tag is derived from the version, and a fourth
- * spelling in there would be a channel npm has never heard of and that
- * `publish.yml` refuses rather than guessing at.
- */
-const ALIASES: Record<string, Channel> = { prerelease: 'rc' }
-
-/**
- * Rewrite an aliased channel to its canonical name, as a whole trailing
- * segment only.
- *
- * `prerelease` -> `rc`, `release/prerelease` -> `release/rc`,
- * `1.3.0-prerelease` -> `1.3.0-rc`, so the alias works in both branch shapes
- * without either lookup knowing about it.
- *
- * Anchored to the end and to a separator so it cannot eat a real branch:
- * `prereleases` does not match at all, and `my-prerelease` becomes `my-rc`,
- * which is not an exact channel name and not a version — so it stays an
- * ordinary branch either way.
- */
-export function canonicalBranch(branch: string): string {
-  const name = branch.trim()
-  for (const [alias, channel] of Object.entries(ALIASES)) {
-    const re = new RegExp(`(^|[/-])${alias}$`)
-    if (re.test(name)) return name.replace(re, (_, sep: string) => `${sep}${channel}`)
-  }
-  return name
-}
+  /**
+   * The branch matches no rule in the config, so nothing here may release.
+   *
+   * **A `Plan` variant and never a `PlanRefusal`, and the distinction is
+   * load-bearing.** `cutver check` exits 1 on a refusal, and `check` is what
+   * the pre-push hook runs on every branch of every push — so as a refusal this
+   * would block every feature-branch push in the repository, forever. As a
+   * variant it lands correctly everywhere: a bare `cutver` dies, `--if-needed`
+   * exits 0, and the hook lets the push through.
+   */
+  | { kind: 'no-rule'; why: string; survey: null }
 
 /** The stable part of a version — `1.3.0-beta.2` -> `1.3.0`. */
 function stableCore(version: string): string {
@@ -190,12 +161,27 @@ export async function plan({
   channel,
   explicit,
   rev = 'HEAD',
+  config = DEFAULT_CONFIG,
 }: PlanInput): Promise<Plan> {
   if (explicit) {
     if (explicit === current) {
       return { kind: 'nothing', why: `${explicit} is already the current version`, survey: null }
     }
     return { kind: 'release', version: explicit, from: current, why: 'given explicitly', survey: null }
+  }
+
+  // Which rule claims this branch, before any git archaeology: a branch that
+  // may not release is not worth measuring commits for, and the message is
+  // more useful than "nothing to release" would be.
+  const match = matchBranch(branch, config)
+  if (match.kind === 'none') {
+    return {
+      kind: 'no-rule',
+      why:
+        `branch '${branch}' matches no channel and no release rule` +
+        (config.source ? ` in ${config.source}` : ''),
+      survey: null,
+    }
   }
 
   const { from, since, tagged } = await baseline(root, current, rev)
@@ -249,10 +235,10 @@ export async function plan({
   // A branch named `1.2.0-beta` declares its own base and channel. Where that
   // happens the commits still get a vote — not on the number, but on whether
   // the number is *allowed*.
-  //
-  // Parsed from the canonical name so `1.2.0-prerelease` is understood, while
-  // every message below quotes the branch the user actually has.
-  const declared = versionFromBranch(canonicalBranch(branch))
+  const declared =
+    match.kind === 'channel' && match.declared
+      ? { base: match.declared, channel: match.channel }
+      : null
   if (declared) {
     const implied = applyBump(from, bump)
 
@@ -283,7 +269,7 @@ export async function plan({
       )
     }
 
-    const declaredNext = withChannel(declared.base, declared.channel, current)
+    const declaredNext = withStage(declared.base, declared.channel, current)
     if (declaredNext === current) {
       return { kind: 'nothing', why: `${current} is already the current version`, survey: s }
     }
@@ -300,12 +286,15 @@ export async function plan({
   // is computed exactly as a stable release would be. An explicit `--beta` or
   // `--rc` still wins: the flag was typed just now and the branch was named
   // once, months ago.
-  const fromBranch = channelFromBranch(branch)
+  const fromBranch = match.kind === 'channel' ? match.channel : null
   const effective = channel ?? fromBranch
 
   // The base is measured from the last stable release, not from `current` and
-  // not from the last tag. `nextVersion` documents why both of those are wrong.
-  const version = nextVersion({ lastStable: from, bump, channel: effective, current })
+  // not from the last tag. `nextVersion`'s comment documents why both of those
+  // are wrong; its two lines are inlined here only so the channel can be a
+  // configured name rather than the ported `Channel` union.
+  const base = applyBump(from, bump)
+  const version = effective ? withStage(base, effective, current) : base
 
   // A computed version equal to the current one means there is nothing to
   // release — that number is already spent, and npm will never accept it twice.

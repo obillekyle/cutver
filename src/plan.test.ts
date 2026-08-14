@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { canonicalBranch, channelFromBranch, plan, PlanRefusal } from './plan'
+import { plan, PlanRefusal } from './plan'
+import { matchBranch } from './config/match'
+import { DEFAULT_CONFIG } from './config/schema'
 import { versionFromBranch } from './version-from-commits'
 import { run } from './run'
 
@@ -320,20 +322,27 @@ describe('a branch that names only a channel', () => {
         version: '1.3.0',
       })
     }
-    expect(canonicalBranch('prereleases')).toBe('prereleases')
-    expect(canonicalBranch('my-prerelease')).toBe('my-rc')
-    expect(canonicalBranch('prerelease')).toBe('rc')
-    expect(canonicalBranch('1.2.0-prerelease')).toBe('1.2.0-rc')
+    const channelOf = (b: string) => {
+      const m = matchBranch(b, DEFAULT_CONFIG)
+      return m.kind === 'channel' ? m.channel : null
+    }
+    expect(channelOf('prereleases')).toBeNull()
+    expect(channelOf('my-prerelease')).toBeNull()
+    expect(channelOf('prerelease')).toBe('rc')
+    expect(channelOf('1.2.0-prerelease')).toBe('rc')
   })
 
   test('the ported versionFromBranch still declares nothing for it', () => {
-    // The new rule lives in the policy layer on purpose. `versionFromBranch`
-    // answers "what version does this name declare", and for `beta` that is
-    // still none — a ported test pins it, and this asserts the two functions
-    // disagree deliberately rather than by accident.
+    // `versionFromBranch` answers "what version does this name declare", and
+    // for `beta` that is still none — a ported test pins it. The config answers
+    // a different question, so the two disagree deliberately.
     expect(versionFromBranch('beta')).toBeNull()
-    expect(channelFromBranch('beta')).toBe('beta')
-    expect(channelFromBranch('1.3.0-beta')).toBeNull()
+
+    const bare = matchBranch('beta', DEFAULT_CONFIG)
+    expect(bare).toMatchObject({ kind: 'channel', channel: 'beta', declared: null })
+
+    const versioned = matchBranch('1.3.0-beta', DEFAULT_CONFIG)
+    expect(versioned).toMatchObject({ channel: 'beta', declared: '1.3.0' })
   })
 })
 

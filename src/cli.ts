@@ -441,10 +441,14 @@ async function runCheck(argv: string[]): Promise<void> {
       rev,
     })
 
+    // **`no-rule` exits 0 here, and that is the whole reason it is a Plan
+    // variant rather than a PlanRefusal.** This runs from the pre-push hook on
+    // every branch of every push; refusing an unmatched branch would block
+    // every feature branch in the repository, forever.
     console.log(
-      decision.kind === 'nothing'
-        ? `cutver: check ok — nothing to release on '${branch}' (${decision.why})`
-        : `cutver: check ok — '${branch}' would release ${decision.version}`,
+      decision.kind === 'release'
+        ? `cutver: check ok — '${branch}' would release ${decision.version}`
+        : `cutver: check ok — '${branch}' releases nothing (${decision.why})`,
     )
   } catch (e) {
     if (e instanceof PlanRefusal) {
@@ -567,6 +571,20 @@ async function main(): Promise<void> {
             : `${survey.base.since}, the last stable release`),
       )
     }
+  }
+
+  if (decision.kind === 'no-rule') {
+    // Configured branch gating, doing its job: this branch may not release at
+    // all. Green under --if-needed so CI on a feature branch stays quiet.
+    if (opts.ifNeeded) {
+      console.log(`cutver: ${decision.why}. Nothing written.`)
+      process.exit(0)
+    }
+    die(
+      `${decision.why}.
+` +
+        '        Add it to a channel in your config, or pass a version explicitly.',
+    )
   }
 
   if (decision.kind === 'nothing') {

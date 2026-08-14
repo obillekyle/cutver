@@ -46,14 +46,42 @@ export async function lastStableTag(root: string, rev = 'HEAD'): Promise<string 
  * release tool would be depending on a git config nobody set.
  */
 export async function lastAnyTag(root: string, rev = 'HEAD'): Promise<string | null> {
-  const { out } = await run(['git', 'tag', '--list', 'v*', '--merged', rev], root)
+  // **Ordered by when the tag was made, with semver only as a tiebreak.**
+  //
+  // Sorting by semver precedence alone is correct only while the channels are
+  // alpha/beta/rc, because that order happens to be both chronological and
+  // alphabetical. A repository that configures `canary` breaks the coincidence:
+  // release `1.3.0-rc.0` and then `1.3.0-canary.6`, and precedence calls the
+  // *rc* the newest, widening the freshness range and re-cutting work that
+  // already shipped.
+  //
+  // `creatordate` has one-second granularity, so tags made in the same second
+  // tie — which is exactly when semver is the right answer, and why it stays as
+  // the secondary key rather than being replaced.
+  const { out } = await run(
+    [
+      'git',
+      'tag',
+      '--list',
+      'v*',
+      '--merged',
+      rev,
+      '--format=%(refname:strip=2) %(creatordate:unix)',
+    ],
+    root,
+  )
+
   const found = out
     .split('\n')
-    .map(t => t.trim())
-    .filter(t => /^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(t))
+    .map(line => {
+      const [name = '', when = '0'] = line.trim().split(' ')
+      return { name, when: Number(when) || 0 }
+    })
+    .filter(t => /^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(t.name))
 
   if (!found.length) return null
-  return found.sort((a, b) => Bun.semver.order(b.slice(1), a.slice(1)))[0] ?? null
+  found.sort((a, b) => b.when - a.when || Bun.semver.order(b.name.slice(1), a.name.slice(1)))
+  return found[0]?.name ?? null
 }
 
 /** Commits in `range`, newest first. `range` is a git revision range or `HEAD`. */
