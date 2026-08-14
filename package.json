@@ -4,6 +4,14 @@
   "description": "Work out the next semver from conventional commits and write it into every manifest. Stops before publishing.",
   "author": "obillekyle",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/obillekyle/cutver.git"
+  },
+  "homepage": "https://github.com/obillekyle/cutver#readme",
+  "bugs": {
+    "url": "https://github.com/obillekyle/cutver/issues"
+  },
   "type": "module",
   "bin": {
     "cutver": "./src/cli.ts"
