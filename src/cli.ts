@@ -33,6 +33,9 @@ import { ECOSYSTEMS, init, type Ecosystem } from './init'
 import { installHook, uninstallHook } from './hook'
 import { currentBranch, isGitRepo, remoteUrl, status } from './git'
 import { plan, PlanRefusal, SEMVER } from './plan'
+import { loadConfig } from './config/load'
+import { channelNames, ConfigError, DEFAULT_CONFIG, type Config } from './config/schema'
+import { explainReport } from './explain'
 import {
   checkRegistry,
   detectOidc,
@@ -57,15 +60,18 @@ const HELP = `cutver ${VERSION} — cut a version from your commit messages.
   cutver init <cargo|node|bun> [--force]
   cutver check [--branch <name>] [--rev <commit>]
   cutver hook install|uninstall
+  cutver explain [--branch <name>]
 
   version               an explicit semver, overriding the computation
   init                  write version.yml + publish.yml for that ecosystem
   check                 exit 1 only if this branch may not release what it implies
   hook                  install or remove the pre-push guard that runs check
+  explain               which rule claims this branch, and what else was tried
 
 Options
   --dry-run             compute and report, write nothing
   --alpha|--beta|--rc   cut a prerelease in that channel (--prerelease = --rc)
+  --<channel>           any other channel declared in cutver.json / cutver.yml
   --adapter js|cargo    force the manifest adapter (default: detected)
   --cwd <path>          repository root (default: the working directory)
   --branch <name>       branch name, for CI on a detached HEAD
@@ -76,6 +82,7 @@ Options
   --rev <commit>        (check) the commit to judge, default HEAD
   --runner <cmd>        (hook) how the hook should invoke cutver
   --no-hook             (init) do not install the pre-push guard
+  --config <path>       read this config instead of looking for one
   -h, --help            this
   -v, --version         print the version of cutver itself
 
@@ -101,10 +108,18 @@ interface Options {
   runner?: string
   cwd?: string
   branch?: string
-  channel: Channel | null
+  channel: string | null
+  config?: string
 }
 
-function parse(argv: string[]): Options {
+/**
+ * Which channels have a flag.
+ *
+ * Derived from the config, so `--canary` exists exactly when the repository
+ * declares a canary channel — and an unknown flag still dies with today's
+ * message rather than being silently accepted.
+ */
+function parse(argv: string[], known: readonly string[] = CHANNELS): Options {
   const opts: Options = {
     dryRun: false,
     ifNeeded: false,
@@ -114,7 +129,7 @@ function parse(argv: string[]): Options {
     noHook: false,
     channel: null,
   }
-  const channels: Channel[] = []
+  const picked: string[] = []
 
   // Both `--adapter js` and `--adapter=js`. Hand-rolled rather than positional
   // filtering, because `args.find(a => !a.startsWith('--'))` picks up the
@@ -185,13 +200,21 @@ function parse(argv: string[]): Options {
         opts.runner = value
         break
       }
+      case '--config': {
+        const value = next()
+        if (!value) die('--config takes a path')
+        opts.config = value
+        break
+      }
       default: {
         // `--prerelease` is the same spelling alias the branch names take, and
         // resolves to the same canonical `rc`.
         const channel =
-          name === '--prerelease' ? 'rc' : CHANNELS.find(c => name === `--${c}`)
+          name === '--prerelease' && known.includes('rc')
+            ? 'rc'
+            : known.find(c => name === `--${c}`)
         if (channel) {
-          channels.push(channel)
+          picked.push(channel)
           break
         }
         if (arg.startsWith('-')) die(`unknown option ${arg}\n\n${HELP}`)
@@ -201,10 +224,10 @@ function parse(argv: string[]): Options {
     }
   }
 
-  if (channels.length > 1) {
-    die(`pick one channel, not ${channels.map(c => `--${c}`).join(' and ')}`)
+  if (picked.length > 1) {
+    die(`pick one channel, not ${picked.map(c => `--${c}`).join(' and ')}`)
   }
-  opts.channel = channels[0] ?? null
+  opts.channel = picked[0] ?? null
   return opts
 }
 
@@ -342,6 +365,53 @@ function preflight(
  * than at the reason. The whole entry lives in `main()` so the compiled binary
  * and `bun run src/cli.ts` are the same program.
  */
+/**
+ * The two flags that must be read before the real parse can happen.
+ *
+ * Channel flags come from the config, and the config's location comes from
+ * `--cwd`/`--config` — so those two are extracted first, by a scan that knows
+ * nothing else. Ten lines to avoid a chicken-and-egg, and it deliberately does
+ * not validate: the real parse does that, once, with the full flag set.
+ */
+function preScan(argv: string[]): { cwd?: string; config?: string } {
+  const out: { cwd?: string; config?: string } = {}
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i] as string
+    for (const key of ['cwd', 'config'] as const) {
+      if (arg === `--${key}`) out[key] = argv[i + 1]
+      else if (arg.startsWith(`--${key}=`)) out[key] = arg.slice(key.length + 3)
+    }
+  }
+  return out
+}
+
+/**
+ * Which adapter to use, and where that decision came from.
+ *
+ * `--adapter` beats `target:` beats detection, and detection still refuses to
+ * guess when both manifests exist — a config that answered silently would
+ * remove a safety that is there for a reason.
+ */
+async function resolveAdapter(
+  root: string,
+  opts: { adapter?: AdapterId },
+  config: Config,
+): Promise<{ id: AdapterId; from: 'flag' | 'config' | 'detected' }> {
+  if (opts.adapter) return { id: opts.adapter, from: 'flag' }
+  if (config.target) return { id: config.target === 'cargo' ? 'cargo' : 'js', from: 'config' }
+
+  const available = await applicableAdapters(root)
+  if (!available.length) die(`no package.json or Cargo.toml in ${root}`)
+  if (available.length > 1) {
+    die(
+      `${root} has ${available.map(id => ADAPTERS[id].manifest).join(' and ')}.\n` +
+        `        Say which one this release is about: --adapter ${available.join('|')},\n` +
+        '        or set `target` in your config.',
+    )
+  }
+  return { id: available[0] as AdapterId, from: 'detected' }
+}
+
 /** An absolute root with forward slashes, drive letter intact on Windows. */
 function resolveRoot(cwd: string | undefined): string {
   return (cwd ? Bun.pathToFileURL(cwd).pathname : process.cwd())
@@ -359,7 +429,7 @@ function resolveRoot(cwd: string | undefined): string {
  * how the two gotchas in them get lost.
  */
 async function runInit(argv: string[]): Promise<void> {
-  const opts = parse(argv)
+  const opts = parse(argv, [])
   const eco = opts.explicit
 
   if (!eco || !(ECOSYSTEMS as readonly string[]).includes(eco)) {
@@ -367,11 +437,13 @@ async function runInit(argv: string[]): Promise<void> {
   }
 
   const root = resolveRoot(opts.cwd)
+  const { config } = await loadConfig(root, opts.config).catch((e: Error) => die(e.message))
   const results = await init(root, eco as Ecosystem, {
     force: opts.force,
     dryRun: opts.dryRun,
     hook: !opts.noHook,
     version: VERSION,
+    config,
   })
 
   console.log(`cutver: ${root} (${eco})${opts.dryRun ? ' — dry run, nothing written' : ''}`)
@@ -413,11 +485,17 @@ async function runInit(argv: string[]): Promise<void> {
  * push in the repository, and CI still catches the real thing.
  */
 async function runCheck(argv: string[]): Promise<void> {
-  const opts = parse(argv)
-  const root = resolveRoot(opts.cwd)
-  const rev = opts.rev ?? 'HEAD'
+  const pre = preScan(argv)
+  const root = resolveRoot(pre.cwd)
 
   try {
+    // The config is loaded inside the try on purpose: a repository with a
+    // broken or too-new config must not have every push blocked by it. A
+    // ConfigError is not a PlanRefusal, so the catch below lets the push
+    // through and says why.
+    const { config } = await loadConfig(root, pre.config)
+    const opts = parse(argv, channelNames(config))
+    const rev = opts.rev ?? 'HEAD'
     // Both of these are ordinary states rather than errors — a hook lives in
     // repositories cutver was never set up for — so they are named plainly
     // instead of arriving as a stack trace about `undefined`.
@@ -431,7 +509,7 @@ async function runCheck(argv: string[]): Promise<void> {
       return
     }
 
-    const adapter = ADAPTERS[opts.adapter ?? (ids[0] as AdapterId)]
+    const adapter = ADAPTERS[(await resolveAdapter(root, opts, config)).id]
     const branch = opts.branch ?? (await currentBranch(root))
     const decision = await plan({
       root,
@@ -439,6 +517,7 @@ async function runCheck(argv: string[]): Promise<void> {
       branch,
       channel: opts.channel,
       rev,
+      config,
     })
 
     // **`no-rule` exits 0 here, and that is the whole reason it is a Plan
@@ -496,14 +575,68 @@ async function runHook(argv: string[]): Promise<void> {
   }
 }
 
+/**
+ * `cutver explain` — read-only, offline, and always exit 0.
+ *
+ * Same posture as `check`, for the same reason: it is a diagnostic, and a
+ * diagnostic that can fail is one more thing to diagnose.
+ */
+async function runExplain(argv: string[]): Promise<void> {
+  const pre = preScan(argv)
+  const root = resolveRoot(pre.cwd)
+
+  try {
+    const { config } = await loadConfig(root, pre.config)
+    const opts = parse(argv, channelNames(config))
+    const adapter = await resolveAdapter(root, opts, config)
+    const branch = opts.branch ?? (await currentBranch(root))
+
+    let summary: string | null = null
+    try {
+      const decision = await plan({
+        root,
+        current: await ADAPTERS[adapter.id].readVersion(root),
+        branch,
+        channel: opts.channel,
+        config,
+      })
+      summary =
+        decision.kind === 'release'
+          ? `${decision.from} -> ${decision.version} (${decision.why})`
+          : decision.why
+    } catch (e) {
+      summary = `REFUSED — ${(e as Error).message.split('\n')[0]}`
+    }
+
+    for (const line of explainReport({
+      root,
+      branch,
+      config,
+      adapter: adapter.id,
+      adapterFrom: adapter.from,
+      plan: summary,
+    })) {
+      console.log(line)
+    }
+  } catch (e) {
+    console.error(`cutver: ${(e as Error).message}`)
+  }
+}
+
 async function main(): Promise<void> {
   const argv = process.argv.slice(2)
   if (argv[0] === 'init') return runInit(argv.slice(1))
   if (argv[0] === 'check') return runCheck(argv.slice(1))
   if (argv[0] === 'hook') return runHook(argv.slice(1))
+  if (argv[0] === 'explain') return runExplain(argv.slice(1))
 
-  const opts = parse(argv)
-  const root = resolveRoot(opts.cwd)
+  const pre = preScan(argv)
+  const root = resolveRoot(pre.cwd)
+
+  // Loaded before anything else reads a file: a config that is wrong should
+  // cost an error message, never a version number.
+  const { config } = await loadConfig(root, pre.config).catch((e: Error) => die(e.message))
+  const opts = parse(argv, channelNames(config))
 
   if (!(await isGitRepo(root))) {
     die(`${root} is not a git repository — the version is computed from its commits`)
@@ -512,20 +645,7 @@ async function main(): Promise<void> {
   // The adapter. Detected from which manifest exists; asked for when both do,
   // because a repository with a Cargo.toml *and* a package.json is common and
   // guessing would eventually bump the wrong one.
-  const available = await applicableAdapters(root)
-  if (!opts.adapter && available.length === 0) {
-    die(`no package.json or Cargo.toml in ${root}`)
-  }
-  if (!opts.adapter && available.length > 1) {
-    die(
-      `${root} has ${available.map(id => ADAPTERS[id].manifest).join(' and ')}.\n` +
-        `        Say which one this release is about: --adapter ${available.join('|')}`,
-    )
-  }
-  const adapter = ADAPTERS[opts.adapter ?? (available[0] as AdapterId)]
-  if (opts.adapter && !available.includes(opts.adapter)) {
-    die(`--adapter ${opts.adapter} needs a ${adapter.manifest}, and ${root} has none`)
-  }
+  const adapter = ADAPTERS[(await resolveAdapter(root, opts, config)).id]
 
   let current: string
   try {
@@ -543,6 +663,7 @@ async function main(): Promise<void> {
     branch,
     channel: opts.channel,
     explicit: opts.explicit,
+    config,
   }).catch((e: Error) => die(e.message))
 
   if (decision.survey) {

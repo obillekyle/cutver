@@ -24,7 +24,8 @@ describe('the generated workflows', () => {
     // for every ecosystem rather than eyeballed for one.
     for (const eco of ECOSYSTEMS) {
       for (const file of initFiles(eco)) {
-        if (!file.path.endsWith('.yml')) continue
+        // `cutver.yml` is a config file, not a workflow — match on the path.
+        if (!file.path.startsWith('.github/workflows/')) continue
         const doc = Bun.YAML.parse(file.contents) as Record<string, any>
         expect(doc.name, `${eco} ${file.path}`).toBeString()
         expect(Object.keys(doc.jobs).length, `${eco} ${file.path}`).toBe(1)
@@ -138,17 +139,28 @@ describe('init', () => {
     expect(await Bun.file(`${root}/.github/workflows/version.yml`).exists()).toBe(false)
   })
 
-  test('every ecosystem produces the same three files', async () => {
+  test('every ecosystem produces the same files', async () => {
     for (const eco of ECOSYSTEMS as readonly Ecosystem[]) {
       const root = await fixture()
       expect(
-        (await init(root, eco, { hook: false })).map(r => r.path).filter(p => !p.includes('.json')),
+        (await init(root, eco, { hook: false })).map(r => r.path).filter(p => p !== 'package.json'),
       ).toEqual([
         '.github/workflows/version.yml',
         '.github/workflows/publish.yml',
         'CHANGELOG.md',
+        'cutver.yml',
       ])
     }
+  })
+
+  test('the scaffolded config is never overwritten, even with --force', async () => {
+    // A config already in the tree is the repository's release policy.
+    // Replacing it would change version numbers with no commit to blame.
+    const root = await fixture({ 'cutver.yml': 'schema: 1\nchannels:\n  beta: [mine]\n' })
+    const results = await init(root, 'bun', { hook: false, force: true })
+
+    expect(results.find(r => r.path === 'cutver.yml')?.state).toBe('skipped')
+    expect(await Bun.file(`${root}/cutver.yml`).text()).toContain('mine')
   })
 })
 

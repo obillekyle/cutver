@@ -361,3 +361,66 @@ describe('an explicit version', () => {
     ).toMatchObject({ kind: 'nothing' })
   })
 })
+
+describe('a repository with a config', () => {
+  const withChannels = (channels: Record<string, string[]>) => ({
+    ...DEFAULT_CONFIG,
+    channels: { ...DEFAULT_CONFIG.channels, ...channels },
+    source: 'cutver.json',
+  })
+
+  test('an arbitrary branch cuts a prerelease — the whole point', async () => {
+    const root = await repo(['feat: one@v1.2.0', 'feat: two'])
+    const config = withChannels({ beta: ['develop'] })
+
+    expect(await plan({ root, current: '1.2.0', branch: 'develop', channel: null, config })).toMatchObject({
+      version: '1.3.0-beta.0',
+      why: "minor, beta from branch 'develop'",
+    })
+  })
+
+  test('a custom channel counts up, which the ported Channel type forbids', async () => {
+    // The frozen-counter trap: a channel outside [a-z]+ would compute `.0`
+    // forever and then report "nothing to release". `canary` is legal, so it
+    // must actually advance.
+    const root = await repo(['feat: one@v1.2.0', 'feat: two'])
+    const config = withChannels({ canary: ['canary', 'nightly/*'] })
+
+    expect(await plan({ root, current: '1.2.0', branch: 'canary', channel: null, config })).toMatchObject({
+      version: '1.3.0-canary.0',
+    })
+    expect(
+      await plan({ root, current: '1.3.0-canary.0', branch: 'nightly/x', channel: null, config }),
+    ).toMatchObject({ version: '1.3.0-canary.1' })
+  })
+
+  test('a branch matching nothing is `no-rule`, not a refusal', async () => {
+    // Load-bearing: a refusal here exits 1 from `cutver check`, which the
+    // pre-push hook runs on every branch of every push — it would block every
+    // feature branch in the repository.
+    const root = await repo(['feat: one@v1.2.0', 'feat: two'])
+    const config = withChannels({ release: ['main'], beta: ['develop'] })
+
+    const decision = await plan({ root, current: '1.2.0', branch: 'feat/login', channel: null, config })
+    expect(decision.kind).toBe('no-rule')
+    expect(decision.why).toContain('matches no channel and no release rule')
+  })
+
+  test('the declared-base refusal still fires under a config', async () => {
+    const root = await repo(['feat: one@v1.2.0', 'feat!: the world moved'])
+    const config = withChannels({ beta: ['{version}-beta'] })
+
+    expect(
+      plan({ root, current: '1.3.0-beta.0', branch: '1.3.0-beta', channel: null, config }),
+    ).rejects.toBeInstanceOf(PlanRefusal)
+  })
+
+  test('a flag still beats the branch', async () => {
+    const root = await repo(['feat: one@v1.2.0', 'feat: two'])
+    const config = withChannels({ beta: ['develop'], canary: ['canary'] })
+
+    expect(
+      await plan({ root, current: '1.2.0', branch: 'develop', channel: 'canary', config }),
+    ).toMatchObject({ version: '1.3.0-canary.0', why: 'minor, canary' })
+  })
+})

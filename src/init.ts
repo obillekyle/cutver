@@ -24,6 +24,9 @@
 
 import { addDevDependency } from './adapters/js'
 import { downloadBase, HOOK_NAME, installHook } from './hook'
+import { shapeOf } from './config/match'
+import { DEFAULT_CONFIG, RELEASE, type Config } from './config/schema'
+import { configTemplate } from './config/template'
 
 export const ECOSYSTEMS = ['cargo', 'node', 'bun'] as const
 export type Ecosystem = (typeof ECOSYSTEMS)[number]
@@ -44,6 +47,63 @@ export interface InitFile {
  * workspace should not need a package manager from another ecosystem to cut a
  * release.
  */
+/**
+ * The workflow's `on.push.branches` list, derived from the config.
+ *
+ * Nine hard-coded literals used to live here, which meant adding a channel took
+ * a code change *and* a workflow regeneration. Now the config is the one place.
+ *
+ * **cutver globs reach GitHub verbatim**, because the two agree: `*` does not
+ * cross a `/` in either, and `**` does in both. A translation layer here would
+ * be a second place to be wrong about the same thing.
+ *
+ * Two entries do not survive the trip. `**` and `*` in `channels.release` mean
+ * "no branch gating configured" — the default — and turning that into a trigger
+ * would wake CI on every branch in the repository. When the release list
+ * contributes nothing, `main` stands in, which is what the generated workflow
+ * has always said.
+ */
+export function branchTriggers(config: Config): string[] {
+  const globs = new Set<string>()
+  const literals = new Set<string>()
+  const stable: string[] = []
+
+  for (const [channel, entries] of Object.entries(config.channels)) {
+    for (const entry of entries) {
+      // A branch that declares its own version triggers on the shape, since
+      // the version part is different every time.
+      const value = shapeOf(entry) === 'declaring' ? entry.replace('{version}', '*') : entry
+      if (value === '**' || value === '*') continue
+
+      if (channel === RELEASE) stable.push(value)
+      else if (/[*?]/.test(value)) globs.add(value)
+      else literals.add(value)
+    }
+  }
+
+  const release = stable.length ? stable : ['main']
+  return [...release, ...[...globs].sort(), ...[...literals].sort()]
+}
+
+/** YAML needs a quote around anything starting with `*`, which is an alias there. */
+function yamlBranch(name: string): string {
+  return /^[*?]/.test(name) ? `'${name}'` : name
+}
+
+/**
+ * The publish workflow's dist-tag `case`, derived from the same config.
+ *
+ * Hard-coded arms are what make a configured channel fail *after* its tag and
+ * bump commit are already public — the run gets all the way to the last step
+ * and hits the catch-all. The catch-all itself stays: refusing an unrecognised
+ * prerelease is better than defaulting it to `latest`.
+ */
+export function distTagArms(config: Config): string[] {
+  return Object.keys(config.channels)
+    .filter(c => c !== RELEASE)
+    .map(c => `            *-${c}.*)${' '.repeat(Math.max(1, 10 - c.length))}tag=${c} ;;`)
+}
+
 function runners(version?: string): Record<Ecosystem, { setup: string; cutver: string }> {
   return {
     bun: {
@@ -110,7 +170,7 @@ const READ_VERSION: Record<Ecosystem, string> = {
   cargo: `sed -n 's/^version *= *"\\(.*\\)"/\\1/p' Cargo.toml | head -1`,
 }
 
-function versionWorkflow(eco: Ecosystem, version?: string): string {
+function versionWorkflow(eco: Ecosystem, config: Config, version?: string): string {
   const RUN = runners(version)
   return `name: Version
 
@@ -122,22 +182,12 @@ function versionWorkflow(eco: Ecosystem, version?: string): string {
 on:
   push:
     branches:
-      - main
-      # Branch-declared versions: a branch called \`1.2.0-beta\` publishes betas
-      # towards 1.2.0. These globs only decide which pushes are worth waking
-      # the workflow for.
-      - '*-alpha'
-      - '*-beta'
-      - '*-rc'
-      - '*-prerelease'
-      # And the bare channel names, which declare a channel and let the base be
-      # computed. \`*-beta\` does not match \`beta\` — the glob needs the hyphen —
-      # so leaving these out means the branch quietly never releases anything.
-      - alpha
-      - beta
-      - rc
-      # \`prerelease\` is an alias for \`rc\`; the version it cuts is \`-rc.N\`.
-      - prerelease
+      # Derived from cutver.json / cutver.yml — every branch any channel
+      # claims, plus the stable ones. Re-run \`cutver init --force\` after adding
+      # a channel, or the new branch quietly never triggers anything.
+${branchTriggers(config)
+  .map(b => `      - ${yamlBranch(b)}`)
+  .join('\n')}
 
 concurrency:
   # Never two releases at once on the same ref: both would compute the same
@@ -262,7 +312,7 @@ const PUBLISH_STEP: Record<Ecosystem, string> = {
         run: cargo publish --workspace`,
 }
 
-function publishWorkflow(eco: Ecosystem, version?: string): string {
+function publishWorkflow(eco: Ecosystem, config: Config, version?: string): string {
   const RUN = runners(version)
   const npm = eco !== 'cargo'
   return `name: Publish
@@ -370,9 +420,7 @@ ${
         run: |
           version="\${TAG#v}"
           case "$version" in
-            *-alpha.*) tag=alpha ;;
-            *-beta.*)  tag=beta ;;
-            *-rc.*)    tag=rc ;;
+${distTagArms(config).join('\n')}
             *-*)       echo "unrecognised prerelease in $version" >&2; exit 1 ;;
             *)         tag=latest ;;
           esac
@@ -390,13 +438,21 @@ const CHANGELOG = `# Changelog
 `
 
 /** Everything \`init\` would write, without touching the disk. */
-export function initFiles(eco: Ecosystem, version?: string): InitFile[] {
+export function initFiles(
+  eco: Ecosystem,
+  version?: string,
+  config: Config = DEFAULT_CONFIG,
+): InitFile[] {
   return [
-    { path: '.github/workflows/version.yml', contents: versionWorkflow(eco, version) },
-    { path: '.github/workflows/publish.yml', contents: publishWorkflow(eco, version) },
+    { path: '.github/workflows/version.yml', contents: versionWorkflow(eco, config, version) },
+    { path: '.github/workflows/publish.yml', contents: publishWorkflow(eco, config, version) },
     // Only if absent, and never with content: a changelog is prose someone
     // writes. cutver opens the heading and fills in nothing.
     { path: 'CHANGELOG.md', contents: CHANGELOG, onlyIfAbsent: true },
+    // Also only if absent. A config already in the tree is the repository's
+    // release policy; replacing it would change version numbers with no commit
+    // to blame, which is the one thing this whole tool is arranged against.
+    { path: 'cutver.yml', contents: configTemplate(eco), onlyIfAbsent: true },
   ]
 }
 
@@ -421,6 +477,11 @@ export function pinFor(version: string): string {
 export interface InitOptions {
   force?: boolean
   dryRun?: boolean
+  /**
+   * The repository's rules, so the generated triggers and dist-tag arms match
+   * the config that is actually there rather than the defaults.
+   */
+  config?: Config
   /** Install the pre-push guard too. On by default: it is part of "set this up". */
   hook?: boolean
   /**
@@ -434,11 +495,11 @@ export interface InitOptions {
 export async function init(
   root: string,
   eco: Ecosystem,
-  { force = false, dryRun = false, hook = true, version }: InitOptions = {},
+  { force = false, dryRun = false, hook = true, version, config = DEFAULT_CONFIG }: InitOptions = {},
 ): Promise<InitResult[]> {
   const out: InitResult[] = []
 
-  for (const file of initFiles(eco, version)) {
+  for (const file of initFiles(eco, version, config)) {
     const full = `${root}/${file.path}`
     const exists = await Bun.file(full).exists()
 
