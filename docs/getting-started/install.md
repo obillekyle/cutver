@@ -62,11 +62,22 @@ No runtime, no `node_modules`, no PATH surgery. The Bun runtime is compiled in.
 > not assumed. Name a tag until a stable release exists:
 > `.../releases/download/v0.1.0-beta.7/cutver-linux-x64`.
 
-> **Windows binaries before `v0.1.0-beta.7` crash on launch.** They were
-> cross-compiled on Linux with Bun's `--bytecode`, which produces a segfaulting
-> executable for the Windows target — isolated to a one-line program on Bun
-> 1.3.14. Later releases are built without it. Linux and macOS assets are
-> unaffected.
+> **Every release's binaries are sound, but the Windows ones were not always.**
+> `v0.1.0-beta.2` through `v0.1.0-beta.6` originally shipped a
+> `cutver-windows-x64.exe` that segfaulted on launch: CI cross-compiles every
+> target on Linux, and Bun's `--bytecode` produces a broken executable for the
+> Windows target — isolated to a one-line program on Bun 1.3.14, which prints
+> without the flag and crashes with it.
+>
+> Builds since then omit `--bytecode`, and the assets on those older releases
+> were **rebuilt from their own tags and replaced in place**, along with the
+> other three cross-compiled targets, which were built the same way and could
+> not be verified from here. `cutver-linux-x64` was never touched: the runner
+> is linux-x64, so that one was always a native build.
+
+> **Checksums are not published yet.** If you are scripting a download and want
+> to pin more than a URL, prefer the npm package, which npm integrity-checks
+> for you.
 
 ### Checking what you got
 
