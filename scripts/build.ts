@@ -43,14 +43,30 @@ const TARGETS = [
 ] as const
 
 async function compile(out: string, target?: string): Promise<void> {
+  // **No `--bytecode`, and that is measured rather than cautious.**
+  //
+  // Bytecode moves parsing to build time and roughly halves startup. It also
+  // produces a binary that segfaults when the build is cross-compiled to
+  // Windows — which is every release, because CI builds all five targets on
+  // Linux. Every `cutver-windows-x64.exe` published before this was built that
+  // way and crashed on launch with `panic: Segmentation fault`, including when
+  // the pre-push hook downloaded one.
+  //
+  // Isolated to a one-line program rather than blamed on cutver: built on
+  // Linux for `bun-windows-x64`, `console.log("hello")` segfaults with
+  // `--bytecode` and prints with it removed, on Bun 1.3.14. Cross-compiling
+  // the other way (Windows host, `bun-linux-x64` target) is fine with it, so
+  // it is the Windows target specifically — but it is dropped for every target
+  // regardless, because a released artefact that differs from the one built
+  // locally is a thing nobody tests.
+  //
+  // The trade is trivial in context: this runs once per release, and a few
+  // milliseconds of startup is worth nothing against shipping a binary that
+  // does not start.
   const flags = [
     '--compile',
     '--minify',
     '--sourcemap',
-    // Bytecode moves parsing to build time — roughly twice as fast to start.
-    // It matters more here than the size does: this runs once per release and
-    // is judged on how long it takes to say "nothing to release".
-    '--bytecode',
     ...(target ? [`--target=${target}`] : []),
     `--define`,
     `CUTVER_VERSION="${version}"`,

@@ -27,30 +27,104 @@ export const HOOK_NAME = 'pre-push'
 /** Marks the file as ours, so `install` can tell its own hook from someone else's. */
 export const MARKER = '# installed by `cutver hook install`'
 
+/** GitHub release assets, by what `uname` says. Matches `scripts/build.ts`. */
+const PLATFORM_CASE = `  case "$(uname -s)" in
+    Linux)  os=linux ;;
+    Darwin) os=darwin ;;
+    MINGW*|MSYS*|CYGWIN*|Windows_NT) echo "cutver-windows-x64.exe"; return 0 ;;
+    *) return 1 ;;
+  esac
+  case "$(uname -m)" in
+    x86_64|amd64)  arch=x64 ;;
+    arm64|aarch64) arch=arm64 ;;
+    *) return 1 ;;
+  esac
+  echo "cutver-$os-$arch"`
+
 /**
  * How the hook finds cutver.
  *
- * Tried in order, and *not* pinned to one at install time: a repository that
- * adds cutver as a devDependency next month should get the local copy without
- * reinstalling the hook. `bunx`/`npx` prefer a local `node_modules/.bin` over
- * the registry, so the local copy wins by itself.
+ * Tried in order, and the order is the point.
+ *
+ * `cutver` on PATH, then `bunx`, then `npx` — *not* pinned at install time, so
+ * a repository that adds cutver as a devDependency next month gets the local
+ * copy without reinstalling the hook. Both `bunx` and `npx` prefer
+ * `node_modules/.bin` over the registry, so the local copy wins by itself.
+ *
+ * **Then the release binary**, which is what makes this work at all in a
+ * repository with no JavaScript runtime — a Rust workspace, a Go module, a
+ * bare deployment checkout. Every release attaches an executable per platform,
+ * so there is something to fetch; it lands in `.git/cutver`, which is never
+ * committed and never needs a gitignore entry, and it is fetched once rather
+ * than per push.
+ *
+ * Only then does it give up, and giving up lets the push through.
  */
-function runner(explicit?: string): string {
+function runner(explicit: string | undefined, base: string): string {
   if (explicit) return `RUN="${explicit}"`
 
-  return `if command -v cutver >/dev/null 2>&1; then
+  return `cutver_asset() {
+${PLATFORM_CASE}
+}
+
+# Downloaded once into .git/, which is never committed and needs no gitignore
+# entry. Keyed by URL so a re-pinned hook fetches its own version rather than
+# reusing whatever happened to be cached.
+cutver_download() {
+  asset=$(cutver_asset) || return 1
+  dir="$(git rev-parse --git-dir)/cutver"
+  bin="$dir/$asset"
+
+  [ -x "$bin" ] && { echo "$bin"; return 0; }
+  mkdir -p "$dir" || return 1
+
+  echo "cutver: fetching the release binary once into .git/cutver (~95 MB)" >&2
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsSL -o "$bin" "${base}/$asset" || { rm -f "$bin"; return 1; }
+  elif command -v wget >/dev/null 2>&1; then
+    wget -qO "$bin" "${base}/$asset" || { rm -f "$bin"; return 1; }
+  else
+    return 1
+  fi
+
+  chmod +x "$bin" || return 1
+  echo "$bin"
+}
+
+if command -v cutver >/dev/null 2>&1; then
   RUN="cutver"
 elif command -v bunx >/dev/null 2>&1; then
   RUN="bunx cutver"
 elif command -v npx >/dev/null 2>&1; then
   RUN="npx --yes cutver"
+elif RUN=$(cutver_download); then
+  : # the portable executable, no runtime required
 else
-  echo "cutver: not available, skipping the pre-push check" >&2
+  echo "cutver: not available and could not be fetched, skipping the check" >&2
   exit 0
 fi`
 }
 
-export function hookScript(explicit?: string): string {
+export interface ScriptOptions {
+  /** Pin the command instead of detecting one. */
+  runner?: string | undefined
+  /**
+   * Which release to download from, when nothing else is available. A known
+   * version pins the tag; without one it falls back to GitHub's `latest`,
+   * which **skips prereleases** — so a project still in beta must pin.
+   */
+  version?: string | undefined
+}
+
+const RELEASES = 'https://github.com/obillekyle/cutver/releases'
+
+export function downloadBase(version?: string): string {
+  return version && version !== 'dev'
+    ? `${RELEASES}/download/v${version}`
+    : `${RELEASES}/latest/download`
+}
+
+export function hookScript({ runner: explicit, version }: ScriptOptions = {}): string {
   return `#!/bin/sh
 ${MARKER}
 #
@@ -65,7 +139,7 @@ ${MARKER}
 
 set -u
 
-${runner(explicit)}
+${runner(explicit, downloadBase(version))}
 
 # stdin is one line per ref: <local ref> <local sha> <remote ref> <remote sha>
 ZERO=0000000000000000000000000000000000000000
@@ -94,9 +168,14 @@ export interface HookResult {
   detail: string
 }
 
+export interface InstallOptions extends ScriptOptions {
+  force?: boolean
+  dryRun?: boolean
+}
+
 export async function installHook(
   root: string,
-  { force = false, dryRun = false, runner: explicit = undefined as string | undefined } = {},
+  { force = false, dryRun = false, runner: explicit, version }: InstallOptions = {},
 ): Promise<HookResult> {
   const dir = await hooksDir(root)
   if (!dir) throw new Error('could not find this repository\'s hooks directory')
@@ -121,7 +200,7 @@ export async function installHook(
   }
 
   if (!dryRun) {
-    await Bun.write(path, hookScript(explicit))
+    await Bun.write(path, hookScript({ runner: explicit, version }))
     // Bun.write does not set a mode, and git skips a hook it cannot execute —
     // silently, which would make this look installed and do nothing. Windows
     // has no execute bit and git for Windows does not check for one.

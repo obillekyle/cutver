@@ -47,6 +47,46 @@ async function writeManifest(path: string, json: Manifest, original: string): Pr
   await Bun.write(path, withEol(body + trailing, detectEol(original)))
 }
 
+/**
+ * Add a devDependency, if the manifest does not already mention it.
+ *
+ * Used by `cutver init` to pin cutver itself. **Never overwrites an existing
+ * declaration**, in either dependency block: a range already in there is a
+ * decision somebody made, and a setup command silently changing which version
+ * of the release tool runs is the exact class of surprise this whole project
+ * is written against.
+ *
+ * Returns what happened, so the caller can say `bun install` out loud —
+ * without it the manifest and the lockfile disagree, and the next CI run dies
+ * on `--frozen-lockfile`.
+ */
+export async function addDevDependency(
+  root: string,
+  name: string,
+  range: string,
+  dryRun = false,
+): Promise<'added' | 'present'> {
+  const path = `${root}/package.json`
+  const { json, text } = await readManifest(path)
+  const manifest = json as Manifest & Record<string, unknown>
+
+  for (const block of ['dependencies', 'devDependencies', 'peerDependencies'] as const) {
+    const deps = manifest[block] as Record<string, string> | undefined
+    if (deps && name in deps) return 'present'
+  }
+
+  const devDependencies = { ...((manifest.devDependencies as Record<string, string>) ?? {}) }
+  devDependencies[name] = range
+  // Sorted, because that is what every package manager rewrites it to anyway,
+  // and an unsorted insert shows up as a spurious diff on the next install.
+  manifest.devDependencies = Object.fromEntries(
+    Object.entries(devDependencies).sort(([a], [b]) => a.localeCompare(b)),
+  )
+
+  if (!dryRun) await writeManifest(path, manifest, text)
+  return 'added'
+}
+
 function patterns(root: Manifest): string[] {
   const ws = root.workspaces
   if (Array.isArray(ws)) return ws

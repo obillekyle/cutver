@@ -22,6 +22,9 @@
  * workflow someone has been editing for a year is not a helper.
  */
 
+import { addDevDependency } from './adapters/js'
+import { downloadBase, HOOK_NAME, installHook } from './hook'
+
 export const ECOSYSTEMS = ['cargo', 'node', 'bun'] as const
 export type Ecosystem = (typeof ECOSYSTEMS)[number]
 
@@ -41,37 +44,40 @@ export interface InitFile {
  * workspace should not need a package manager from another ecosystem to cut a
  * release.
  */
-const RUNNER: Record<Ecosystem, { setup: string; cutver: string; install: string }> = {
-  bun: {
-    setup: `      - uses: oven-sh/setup-bun@v2
+function runners(version?: string): Record<Ecosystem, { setup: string; cutver: string }> {
+  return {
+    bun: {
+      setup: `      - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
 
       - run: bun install --frozen-lockfile`,
-    cutver: 'bunx cutver',
-    install: 'bun install --frozen-lockfile',
-  },
-  node: {
-    setup: `      - uses: actions/setup-node@v4
+      cutver: 'bunx cutver',
+    },
+    node: {
+      setup: `      - uses: actions/setup-node@v4
         with:
           node-version: '22'
 
       - run: npm ci`,
-    cutver: 'npx --yes cutver',
-    install: 'npm ci',
-  },
-  cargo: {
-    setup: `      # The executable, not a JavaScript runtime. A Rust workspace should not
-      # need another ecosystem's package manager to cut a version.
-      - name: Fetch cutver
+      cutver: 'npx --yes cutver',
+    },
+    cargo: {
+      // The executable, not a JavaScript runtime. A Rust workspace should not
+      // need another ecosystem's package manager to cut a version.
+      //
+      // **Pinned to a tag when the version is known.** `releases/latest/download`
+      // follows GitHub's idea of latest, which skips prereleases — so against a
+      // project that has only ever shipped betas, that URL is a 404.
+      setup: `      - name: Fetch cutver
         run: |
           curl -fsSL -o /usr/local/bin/cutver \\
-            https://github.com/obillekyle/cutver/releases/latest/download/cutver-linux-x64
+            ${downloadBase(version)}/cutver-linux-x64
           chmod +x /usr/local/bin/cutver
           cutver --version`,
-    cutver: 'cutver',
-    install: '',
-  },
+      cutver: 'cutver',
+    },
+  }
 }
 
 /** The gates each ecosystem runs before a version is written. Edit to taste — that is the point of them. */
@@ -104,7 +110,8 @@ const READ_VERSION: Record<Ecosystem, string> = {
   cargo: `sed -n 's/^version *= *"\\(.*\\)"/\\1/p' Cargo.toml | head -1`,
 }
 
-function versionWorkflow(eco: Ecosystem): string {
+function versionWorkflow(eco: Ecosystem, version?: string): string {
+  const RUN = runners(version)
   return `name: Version
 
 # Computes the next version from the commit messages, commits the bump, and
@@ -152,7 +159,7 @@ jobs:
           # *stable* tag; a shallow clone has neither.
           fetch-depth: 0
 
-${RUNNER[eco].setup}
+${RUN[eco].setup}
 
 ${GATES[eco]}
 
@@ -167,7 +174,7 @@ ${GATES[eco]}
       # \`--branch\` because CI checks out a detached HEAD, where git answers
       # the literal string 'HEAD' and the real branch is only in the payload.
       - name: Compute the version and bump ${MANIFEST[eco]}
-        run: ${RUNNER[eco].cutver} --if-needed --branch '\${{ github.ref_name }}'
+        run: ${RUN[eco].cutver} --if-needed --branch '\${{ github.ref_name }}'
 
       # **Whether the version moved is the signal — not whether the tree is
       # dirty.** \`git status\` reports an unrelated formatter edit as "a
@@ -246,7 +253,8 @@ const PUBLISH_STEP: Record<Ecosystem, string> = {
         run: cargo publish --workspace`,
 }
 
-function publishWorkflow(eco: Ecosystem): string {
+function publishWorkflow(eco: Ecosystem, version?: string): string {
+  const RUN = runners(version)
   const npm = eco !== 'cargo'
   return `name: Publish
 
@@ -315,7 +323,7 @@ jobs:
           # branch and publish whatever is on it rather than what was tagged.
           ref: \${{ inputs.tag || github.ref_name }}
 
-${RUNNER[eco].setup}
+${RUN[eco].setup}
 ${
   npm
     ? `
@@ -373,10 +381,10 @@ const CHANGELOG = `# Changelog
 `
 
 /** Everything \`init\` would write, without touching the disk. */
-export function initFiles(eco: Ecosystem): InitFile[] {
+export function initFiles(eco: Ecosystem, version?: string): InitFile[] {
   return [
-    { path: '.github/workflows/version.yml', contents: versionWorkflow(eco) },
-    { path: '.github/workflows/publish.yml', contents: publishWorkflow(eco) },
+    { path: '.github/workflows/version.yml', contents: versionWorkflow(eco, version) },
+    { path: '.github/workflows/publish.yml', contents: publishWorkflow(eco, version) },
     // Only if absent, and never with content: a changelog is prose someone
     // writes. cutver opens the heading and fills in nothing.
     { path: 'CHANGELOG.md', contents: CHANGELOG, onlyIfAbsent: true },
@@ -389,14 +397,39 @@ export interface InitResult {
   detail: string
 }
 
+/**
+ * The range to pin cutver at.
+ *
+ * Exact for a prerelease, caret for a stable release. `^0.1.0-beta.6` is not
+ * the range anyone means — a caret on a 0.x prerelease matches only later
+ * prereleases of that same 0.1.0, which reads as a range and behaves as a pin.
+ * Being explicit about it beats being subtly narrow.
+ */
+export function pinFor(version: string): string {
+  return version.includes('-') ? version : `^${version}`
+}
+
+export interface InitOptions {
+  force?: boolean
+  dryRun?: boolean
+  /** Install the pre-push guard too. On by default: it is part of "set this up". */
+  hook?: boolean
+  /**
+   * The running cutver's version, pinned into the manifest so the tool that
+   * computes your version numbers does not float. `dev` (running from source)
+   * pins nothing — there is no published version to name.
+   */
+  version?: string
+}
+
 export async function init(
   root: string,
   eco: Ecosystem,
-  { force = false, dryRun = false } = {},
+  { force = false, dryRun = false, hook = true, version }: InitOptions = {},
 ): Promise<InitResult[]> {
   const out: InitResult[] = []
 
-  for (const file of initFiles(eco)) {
+  for (const file of initFiles(eco, version)) {
     const full = `${root}/${file.path}`
     const exists = await Bun.file(full).exists()
 
@@ -414,6 +447,54 @@ export async function init(
       path: file.path,
       state: 'written',
       detail: exists ? 'replaced' : 'created',
+    })
+  }
+
+  // **The workflows and the hook both need a cutver to run, so pin one.**
+  // Without this both reach for `bunx cutver`, which resolves `latest` from
+  // the registry on every run — so the tool that decides your version numbers
+  // floats, and a cutver release could change them without a commit in your
+  // repository. A devDependency also makes `bunx`/`npx` prefer the local copy,
+  // so nothing has to be re-fetched per run.
+  //
+  // Cargo repositories get no say here: there is no JavaScript manifest to pin
+  // into, which is why the executable exists and why `init cargo` downloads it.
+  if (eco !== 'cargo') {
+    if (!version || version === 'dev') {
+      out.push({
+        path: 'package.json',
+        state: 'skipped',
+        detail: 'cutver is running from source — nothing to pin',
+      })
+    } else {
+      const range = pinFor(version)
+      const result = await addDevDependency(root, 'cutver', range, dryRun)
+      out.push({
+        path: 'package.json',
+        state: result === 'added' ? 'written' : 'skipped',
+        detail:
+          result === 'added'
+            ? `devDependency cutver@${range}`
+            : 'already declares cutver — left alone',
+      })
+    }
+  }
+
+  if (hook) {
+    // `init` deliberately works in a tree that is not a repository yet —
+    // scaffolding before `git init` is a reasonable order to do things in —
+    // so a missing hooks directory is reported rather than thrown. The
+    // workflows are the valuable half and they have already been written by
+    // this point; failing here would abort a command that mostly succeeded.
+    const installed = await installHook(root, { force, dryRun, version }).catch((e: Error) => ({
+      state: 'skipped' as const,
+      detail: `not installed — ${e.message}`,
+    }))
+
+    out.push({
+      path: `${HOOK_NAME} (git hook)`,
+      state: installed.state,
+      detail: installed.detail,
     })
   }
 

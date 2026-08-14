@@ -124,21 +124,43 @@ Removes it — and only if it is ours.
 
 ### How the hook finds cutver
 
-At run time, not at install time:
+At run time, not at install time, and in this order:
 
-```sh
-if command -v cutver >/dev/null 2>&1; then RUN="cutver"
-elif command -v bunx >/dev/null 2>&1; then RUN="bunx cutver"
-elif command -v npx >/dev/null 2>&1; then RUN="npx --yes cutver"
-else exit 0
-fi
+| | |
+| --- | --- |
+| 1 | `cutver` on `PATH` |
+| 2 | `bunx cutver` |
+| 3 | `npx --yes cutver` |
+| 4 | **the release executable, downloaded** |
+| 5 | give up, and let the push through |
+
+Steps 1–3 are deliberately not pinned at install time, so a repository that
+adds cutver as a devDependency next month gets the local copy without
+reinstalling anything — `bunx` and `npx` both prefer `node_modules/.bin` over
+the registry.
+
+**Step 4 is what makes this work in a repository with no JavaScript runtime at
+all** — a Rust workspace, a Go module, a bare deployment checkout. Every
+release attaches an executable per platform, so there is something to fetch.
+It needs only `curl` or `wget`, plus `uname` to pick the right asset.
+
+The binary lands in **`.git/cutver/`**: never committed, never needs a
+gitignore entry, and fetched once rather than per push. It is around 95 MB, so
+the first push that needs it says so:
+
+```
+cutver: fetching the release binary once into .git/cutver (~95 MB)
 ```
 
-So a repository that adds cutver as a devDependency next month gets the local
-copy without reinstalling anything — `bunx` and `npx` both prefer
-`node_modules/.bin` over the registry.
+`hook install` pins the tag it downloads from — the version of cutver that ran
+the install. That matters more than it sounds: the unpinned form,
+`releases/latest/download/…`, follows **GitHub's** idea of latest, which skips
+prereleases. Against a project that has only ever shipped betas it is a plain
+404. Installing the hook with a released cutver pins a real tag and the
+fallback works; installing it from a source checkout cannot know a version and
+falls back to the `latest` URL.
 
-Pin it if you would rather:
+Pin the command instead if you would rather:
 
 ```bash
 cutver hook install --runner "bunx cutver@beta"

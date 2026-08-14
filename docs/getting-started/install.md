@@ -58,8 +58,15 @@ No runtime, no `node_modules`, no PATH surgery. The Bun runtime is compiled in.
 
 > **`releases/latest` follows GitHub's idea of latest, not npm's.** Prereleases
 > are marked as such and are skipped by that URL, so while cutver is in beta
-> the `latest` download does not exist yet. Grab a specific tag until then:
-> `.../releases/download/v0.1.0-beta.3/cutver-linux-x64`.
+> `releases/latest/download/cutver-linux-x64` is a plain **404** — measured,
+> not assumed. Name a tag until a stable release exists:
+> `.../releases/download/v0.1.0-beta.7/cutver-linux-x64`.
+
+> **Windows binaries before `v0.1.0-beta.7` crash on launch.** They were
+> cross-compiled on Linux with Bun's `--bytecode`, which produces a segfaulting
+> executable for the Windows target — isolated to a one-line program on Bun
+> 1.3.14. Later releases are built without it. Linux and macOS assets are
+> unaffected.
 
 ### Checking what you got
 

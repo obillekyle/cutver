@@ -75,6 +75,7 @@ Options
   --force               (init, hook) replace files that are already there
   --rev <commit>        (check) the commit to judge, default HEAD
   --runner <cmd>        (hook) how the hook should invoke cutver
+  --no-hook             (init) do not install the pre-push guard
   -h, --help            this
   -v, --version         print the version of cutver itself
 
@@ -94,6 +95,7 @@ interface Options {
   offline: boolean
   allowFirstPublish: boolean
   force: boolean
+  noHook: boolean
   adapter?: AdapterId
   rev?: string
   runner?: string
@@ -109,6 +111,7 @@ function parse(argv: string[]): Options {
     offline: false,
     allowFirstPublish: false,
     force: false,
+    noHook: false,
     channel: null,
   }
   const channels: Channel[] = []
@@ -146,6 +149,9 @@ function parse(argv: string[]): Options {
         break
       case '--force':
         opts.force = true
+        break
+      case '--no-hook':
+        opts.noHook = true
         break
       case '--adapter': {
         const value = next()
@@ -361,6 +367,8 @@ async function runInit(argv: string[]): Promise<void> {
   const results = await init(root, eco as Ecosystem, {
     force: opts.force,
     dryRun: opts.dryRun,
+    hook: !opts.noHook,
+    version: VERSION,
   })
 
   console.log(`cutver: ${root} (${eco})${opts.dryRun ? ' — dry run, nothing written' : ''}`)
@@ -369,11 +377,24 @@ async function runInit(argv: string[]): Promise<void> {
     console.log(`  ${r.state === 'written' ? '↑' : '='} ${r.path.padEnd(width)}  ${r.detail}`)
   }
 
+  // A new devDependency and an unchanged lockfile disagree, and the generated
+  // workflow installs with `--frozen-lockfile` — so the very first CI run
+  // would fail on the dependency this command just added. Say it first,
+  // because it is the only step that breaks something if skipped.
+  const pinned = results.find(r => r.path === 'package.json' && r.state === 'written')
+  if (pinned) {
+    console.log(
+      `\n  first: run your package manager's install. ${pinned.detail} is in\n` +
+        '         package.json and not yet in the lockfile, and the generated\n' +
+        '         workflow installs with --frozen-lockfile.',
+    )
+  }
+
   console.log(
-    '\n  next: read both files — the comments in them are the reasons, not decoration.\n' +
-      '        Set your gates in version.yml; cutver cannot know what they are.\n' +
-      '        Release one is published by hand: a trusted publisher cannot\n' +
-      '        create a package that does not exist yet.',
+    '\n  next:  read both workflows — the comments in them are the reasons, not\n' +
+      '         decoration. Set your gates in version.yml; cutver cannot know\n' +
+      '         what they are. Release one is published by hand: a trusted\n' +
+      '         publisher cannot create a package that does not exist yet.',
   )
 }
 
@@ -446,7 +467,12 @@ async function runHook(argv: string[]): Promise<void> {
 
   const result =
     action === 'install'
-      ? await installHook(root, { force: opts.force, dryRun: opts.dryRun, runner: opts.runner })
+      ? await installHook(root, {
+          force: opts.force,
+          dryRun: opts.dryRun,
+          runner: opts.runner,
+          version: VERSION,
+        })
       : await uninstallHook(root, { dryRun: opts.dryRun })
 
   console.log(

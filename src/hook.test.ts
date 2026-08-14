@@ -1,7 +1,14 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { HOOK_NAME, hookScript, installHook, MARKER, uninstallHook } from './hook'
+import {
+  downloadBase,
+  HOOK_NAME,
+  hookScript,
+  installHook,
+  MARKER,
+  uninstallHook,
+} from './hook'
 import { plan, PlanRefusal } from './plan'
 import { run } from './run'
 
@@ -132,7 +139,7 @@ describe('the generated script', () => {
   })
 
   test('--runner pins it when you want it pinned', () => {
-    expect(hookScript('bunx cutver@beta')).toContain('RUN="bunx cutver@beta"')
+    expect(hookScript({ runner: 'bunx cutver@beta' })).toContain('RUN="bunx cutver@beta"')
   })
 })
 
@@ -202,5 +209,62 @@ describe('uninstallHook', () => {
       state: 'skipped',
       detail: 'not ours — left alone',
     })
+  })
+})
+
+describe('the download fallback', () => {
+  test('pins a tag when the version is known, and only then', () => {
+    // `releases/latest/download` follows GitHub's idea of latest, which skips
+    // prereleases — measured as a 404 against this project's own releases. A
+    // known version has to pin the tag or the fallback cannot work at all.
+    expect(downloadBase('1.2.3')).toBe(
+      'https://github.com/obillekyle/cutver/releases/download/v1.2.3',
+    )
+    expect(downloadBase('0.1.0-beta.7')).toContain('/download/v0.1.0-beta.7')
+    expect(downloadBase()).toBe('https://github.com/obillekyle/cutver/releases/latest/download')
+    expect(downloadBase('dev')).toBe('https://github.com/obillekyle/cutver/releases/latest/download')
+  })
+
+  test('maps every platform the release actually ships', () => {
+    // The asset names have to match `scripts/build.ts` exactly; a typo here
+    // turns into a 404 on a machine nobody testing this owns.
+    const s = hookScript()
+    for (const asset of ['cutver-$os-$arch', 'cutver-windows-x64.exe']) {
+      expect(s).toContain(asset)
+    }
+    for (const uname of ['Linux', 'Darwin', 'MINGW*', 'x86_64', 'aarch64']) {
+      expect(s).toContain(uname)
+    }
+  })
+
+  test('caches inside .git, which is never committed', () => {
+    const s = hookScript()
+    expect(s).toContain('$(git rev-parse --git-dir)/cutver')
+    // And says so once, because 95 MB arriving silently during a push is rude.
+    expect(s).toContain('~95 MB')
+  })
+
+  test('works with either curl or wget, and gives up quietly with neither', () => {
+    const s = hookScript()
+    expect(s).toContain('command -v curl')
+    expect(s).toContain('command -v wget')
+    expect(s).toContain('could not be fetched, skipping')
+  })
+
+  test('a failed download leaves no half-file behind', () => {
+    // A truncated binary that is still executable would fail every push after
+    // it, and the cache check is `-x` rather than a checksum.
+    const s = hookScript()
+    expect(s.match(/rm -f "\$bin"/g)?.length).toBe(2)
+  })
+
+  test('the download path is still valid shell', async () => {
+    const dir = (await mkdtemp(`${tmpdir()}/cutver-sh2-`)).replaceAll('\\', '/')
+    made.push(dir)
+    await Bun.write(`${dir}/pre-push`, hookScript({ version: '1.2.3' }))
+
+    const { ok, err } = await run(['sh', '-n', `${dir}/pre-push`], dir)
+    expect(err).toBe('')
+    expect(ok).toBe(true)
   })
 })

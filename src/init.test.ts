@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { ECOSYSTEMS, init, initFiles, type Ecosystem } from './init'
+import { ECOSYSTEMS, init, initFiles, pinFor, type Ecosystem } from './init'
+import { run } from './run'
 
 const made: string[] = []
 
@@ -87,17 +88,19 @@ describe('the generated workflows', () => {
 describe('init', () => {
   test('writes both workflows and a changelog into an empty tree', async () => {
     const root = await fixture()
-    const results = await init(root, 'bun')
+    const results = await init(root, 'bun', { hook: false })
 
-    expect(results.every(r => r.state === 'written')).toBe(true)
     expect(await Bun.file(`${root}/.github/workflows/version.yml`).exists()).toBe(true)
     expect(await Bun.file(`${root}/.github/workflows/publish.yml`).exists()).toBe(true)
     expect(await Bun.file(`${root}/CHANGELOG.md`).text()).toContain('## [Unreleased]')
+    expect(results.filter(r => r.path.endsWith('.yml')).every(r => r.state === 'written')).toBe(
+      true,
+    )
   })
 
   test('refuses to clobber a workflow someone has been editing', async () => {
     const root = await fixture({ '.github/workflows/version.yml': 'name: mine\n' })
-    const results = await init(root, 'node')
+    const results = await init(root, 'node', { hook: false })
 
     expect(results.find(r => r.path.endsWith('version.yml'))?.state).toBe('skipped')
     expect(await Bun.file(`${root}/.github/workflows/version.yml`).text()).toBe('name: mine\n')
@@ -112,7 +115,7 @@ describe('init', () => {
       '.github/workflows/version.yml': 'name: mine\n',
       'CHANGELOG.md': '# mine\n\n## [Unreleased]\n\n- real notes\n',
     })
-    const results = await init(root, 'cargo', { force: true })
+    const results = await init(root, 'cargo', { force: true, hook: false })
 
     expect(results.find(r => r.path.endsWith('version.yml'))?.state).toBe('written')
     expect(await Bun.file(`${root}/.github/workflows/version.yml`).text()).toContain('cargo test')
@@ -122,20 +125,87 @@ describe('init', () => {
 
   test('a dry run reports the same thing and writes none of it', async () => {
     const root = await fixture()
-    const results = await init(root, 'bun', { dryRun: true })
+    const results = await init(root, 'bun', { dryRun: true, hook: false })
 
-    expect(results.every(r => r.state === 'written')).toBe(true)
+    expect(results.filter(r => r.path.endsWith('.yml')).every(r => r.state === 'written')).toBe(
+      true,
+    )
     expect(await Bun.file(`${root}/.github/workflows/version.yml`).exists()).toBe(false)
   })
 
   test('every ecosystem produces the same three files', async () => {
     for (const eco of ECOSYSTEMS as readonly Ecosystem[]) {
       const root = await fixture()
-      expect((await init(root, eco)).map(r => r.path)).toEqual([
+      expect(
+        (await init(root, eco, { hook: false })).map(r => r.path).filter(p => !p.includes('.json')),
+      ).toEqual([
         '.github/workflows/version.yml',
         '.github/workflows/publish.yml',
         'CHANGELOG.md',
       ])
     }
+  })
+})
+
+describe('what init sets up beyond the files', () => {
+  const manifest = (o: unknown) => ({ 'package.json': `${JSON.stringify(o, null, 2)}\n` })
+
+  test('pins cutver, so the tool that picks your versions does not float', async () => {
+    // Without a pin both the workflow and the hook reach for `bunx cutver`,
+    // which resolves `latest` on every run — so a cutver release could change
+    // this repository's version numbers with no commit in it.
+    const root = await fixture(manifest({ name: 'demo', version: '1.0.0' }))
+    const results = await init(root, 'bun', { hook: false, version: '1.4.2' })
+
+    expect(results.find(r => r.path === 'package.json')).toMatchObject({ state: 'written' })
+    const json = JSON.parse(await Bun.file(`${root}/package.json`).text())
+    expect(json.devDependencies).toEqual({ cutver: '^1.4.2' })
+  })
+
+  test('a prerelease pins exactly rather than with a caret', async () => {
+    // `^0.1.0-beta.6` reads as a range and behaves as a pin — it matches only
+    // later prereleases of that same 0.1.0. Being explicit beats being subtly
+    // narrow.
+    expect(pinFor('0.1.0-beta.6')).toBe('0.1.0-beta.6')
+    expect(pinFor('1.4.2')).toBe('^1.4.2')
+  })
+
+  test('never overwrites a range someone already chose', async () => {
+    const root = await fixture(
+      manifest({ name: 'demo', version: '1.0.0', devDependencies: { cutver: '0.9.0' } }),
+    )
+    await init(root, 'bun', { hook: false, version: '1.4.2' })
+
+    const json = JSON.parse(await Bun.file(`${root}/package.json`).text())
+    expect(json.devDependencies.cutver).toBe('0.9.0')
+  })
+
+  test('running from source pins nothing, and says so', async () => {
+    const root = await fixture(manifest({ name: 'demo', version: '1.0.0' }))
+    const results = await init(root, 'bun', { hook: false, version: 'dev' })
+
+    expect(results.find(r => r.path === 'package.json')).toMatchObject({ state: 'skipped' })
+    expect(JSON.parse(await Bun.file(`${root}/package.json`).text()).devDependencies).toBeUndefined()
+  })
+
+  test('cargo gets no devDependency — there is no manifest to put one in', async () => {
+    const root = await fixture()
+    const results = await init(root, 'cargo', { hook: false, version: '1.4.2' })
+    expect(results.find(r => r.path === 'package.json')).toBeUndefined()
+  })
+
+  test('installs the pre-push guard by default, and skips it on request', async () => {
+    const root = await fixture()
+    await run(['git', 'init', '-q', '-b', 'main'], root)
+
+    expect((await init(root, 'cargo')).find(r => r.path.includes('pre-push'))).toMatchObject({
+      state: 'written',
+    })
+    expect(await Bun.file(`${root}/.git/hooks/pre-push`).exists()).toBe(true)
+
+    const other = await fixture()
+    await run(['git', 'init', '-q', '-b', 'main'], other)
+    await init(other, 'cargo', { hook: false })
+    expect(await Bun.file(`${other}/.git/hooks/pre-push`).exists()).toBe(false)
   })
 })

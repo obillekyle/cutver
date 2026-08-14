@@ -31,6 +31,7 @@ cutver hook install|uninstall
 | `--force` | (`init`, `hook`) Replace files that are already there. Never replaces `CHANGELOG.md`, and never a `pre-push` hook cutver did not write. |
 | `--rev <commit>` | (`check`) The commit to judge, default `HEAD`. The hook passes the sha of the ref being pushed, which is not always the one checked out. |
 | `--runner <cmd>` | (`hook`) Pin how the hook invokes cutver, instead of detecting it at run time. |
+| `--no-hook` | (`init`) Do not install the pre-push guard. Everything else is written as usual. |
 | `-h`, `--help` | Usage. |
 | `-v`, `--version` | The version of cutver itself. |
 
