@@ -73,12 +73,19 @@ function stableCore(version: string): string {
  * reads as "1.3.0 is out", and a minor then computes 1.4.0 — skipping the
  * 1.3.0 the betas were for. Pass the version explicitly in that one case. It
  * cannot recur after the first tag exists.
+ *
+ * `tagged` is that caveat made available to callers rather than left in a
+ * comment: a baseline with no tag behind it is an inference, and the one place
+ * that difference decides an outcome refuses a release. See `plan`.
  */
-async function baseline(root: string, current: string): Promise<{ from: string; since: string }> {
+async function baseline(
+  root: string,
+  current: string,
+): Promise<{ from: string; since: string; tagged: boolean }> {
   const tag = await lastStableTag(root)
   return tag
-    ? { from: tag.slice(1), since: tag }
-    : { from: stableCore(current), since: 'the first commit' }
+    ? { from: tag.slice(1), since: tag, tagged: true }
+    : { from: stableCore(current), since: 'the first commit', tagged: false }
 }
 
 function survey(commits: { subject: string; bump: Bump }[], since: string): Survey {
@@ -104,7 +111,7 @@ export async function plan({
     return { kind: 'release', version: explicit, from: current, why: 'given explicitly', survey: null }
   }
 
-  const { from, since } = await baseline(root, current)
+  const { from, since, tagged } = await baseline(root, current)
   const tag = since === 'the first commit' ? null : since
   const range = tag ? `${tag}..HEAD` : 'HEAD'
 
@@ -134,7 +141,21 @@ export async function plan({
     // branch declares — a `release:` landed on a `1.2.0-beta` branch — then
     // publishing 1.2.0 would ship a breaking change as a minor. A warning here
     // would scroll past in a CI log and the wrong version would go out anyway.
-    if (Bun.semver.order(implied, declared.base) > 0) {
+    //
+    // **Only when a stable tag exists**, and this cost a red CI run to learn.
+    // With no tag the baseline is inferred from the manifest, and on a release
+    // branch the manifest is a *prerelease of the base the branch declares* —
+    // so `0.1.0-beta.0` yields a baseline of `0.1.0`, and the very commits
+    // that justify 0.1.0 get counted again on top of it. cutver refused its
+    // own first branch build that way: "declares 0.1.0, commits imply 0.2.0",
+    // with a suggestion to rename the branch to `0.2.0-beta` — advice that
+    // would have skipped 0.1.0 entirely.
+    //
+    // The guard exists to protect people who have already installed a stable
+    // release. Where none has ever been published there is nobody to protect,
+    // the comparison is against a number nothing ever shipped, and the branch
+    // name is the only real evidence in the room.
+    if (tagged && Bun.semver.order(implied, declared.base) > 0) {
       throw new Error(
         `branch '${branch}' declares ${declared.base}, but the commits since ` +
           `${since} imply ${implied} (${bump}).\n` +

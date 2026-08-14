@@ -126,6 +126,28 @@ describe('branch-declared versions', () => {
     })
   })
 
+  test('does not refuse when nothing stable has ever been tagged', async () => {
+    // The regression that cost a red CI run on cutver's own first branch
+    // build. With no tag the baseline comes from the manifest, and on a
+    // release branch the manifest is a prerelease *of the base the branch
+    // declares* — so 0.1.0-beta.0 infers a baseline of 0.1.0, and the commits
+    // that justify 0.1.0 are counted again on top of it. The refusal then
+    // fires against a number nothing ever published, and its advice ("rename
+    // to 0.2.0-beta") would skip 0.1.0 altogether.
+    const root = await repo(['feat: one', 'feat: two'])
+    expect(await at(root, '0.1.0-beta.0', '0.1.0-beta')).toMatchObject({
+      kind: 'release',
+      version: '0.1.0-beta.1',
+    })
+  })
+
+  test('opens the channel at .0 from a stable manifest with no tags', async () => {
+    const root = await repo(['feat: one', 'feat: two'])
+    expect(await at(root, '0.0.0', '0.1.0-beta')).toMatchObject({
+      version: '0.1.0-beta.0',
+    })
+  })
+
   test('refuses when the commits imply a higher base than the branch declares', async () => {
     // Publishing 1.1.0 here would ship a breaking change as a minor. A warning
     // would scroll past in a CI log and the wrong version would go out anyway.
