@@ -119,5 +119,7 @@ rather than guessed at.
   workflows are doing.
 - [How the number is chosen](guides/versions.md) — the rules, and the four that
   are easy to get backwards.
+- [The pre-push guard](guides/hooks.md) — stop a `feat!` reaching a branch
+  whose name promises less than it needs.
 - [Troubleshooting](reference/troubleshooting.md) — every error cutver prints,
   and what it actually means.

@@ -23,9 +23,9 @@ export async function isGitRepo(root: string): Promise<boolean> {
  * `v1.3.0-beta.2`, and measuring commits from there is how a breaking change
  * that lands mid-beta gets released as a minor. See `nextVersion`.
  */
-export async function lastStableTag(root: string): Promise<string | null> {
+export async function lastStableTag(root: string, rev = 'HEAD'): Promise<string | null> {
   const { out } = await run(
-    ['git', 'tag', '--list', 'v*', '--merged', 'HEAD', '--sort=-v:refname'],
+    ['git', 'tag', '--list', 'v*', '--merged', rev, '--sort=-v:refname'],
     root,
   )
   return out.split('\n').find(t => /^v\d+\.\d+\.\d+$/.test(t.trim())) ?? null
@@ -45,8 +45,8 @@ export async function lastStableTag(root: string): Promise<string | null> {
  * configured — so `v1.0.0-beta.1` would read as newer than `v1.0.0`, and a
  * release tool would be depending on a git config nobody set.
  */
-export async function lastAnyTag(root: string): Promise<string | null> {
-  const { out } = await run(['git', 'tag', '--list', 'v*', '--merged', 'HEAD'], root)
+export async function lastAnyTag(root: string, rev = 'HEAD'): Promise<string | null> {
+  const { out } = await run(['git', 'tag', '--list', 'v*', '--merged', rev], root)
   const found = out
     .split('\n')
     .map(t => t.trim())
@@ -83,6 +83,25 @@ export async function commitsIn(range: string, root: string): Promise<Commit[]> 
 export async function currentBranch(root: string): Promise<string> {
   const { out } = await run(['git', 'rev-parse', '--abbrev-ref', 'HEAD'], root)
   return out
+}
+
+/**
+ * Where this repository keeps its hooks.
+ *
+ * `core.hooksPath` first, because a repository that sets it has moved its hooks
+ * somewhere tracked on purpose and writing into `.git/hooks` would install a
+ * hook git never runs — the worst possible outcome for a guard.
+ *
+ * Otherwise `git rev-parse --git-path hooks`, not a hand-built `.git/hooks`:
+ * in a worktree `.git` is a *file* pointing elsewhere, and the literal path
+ * does not exist.
+ */
+export async function hooksDir(root: string): Promise<string | null> {
+  const configured = await run(['git', 'config', '--get', 'core.hooksPath'], root)
+  if (configured.ok && configured.out) return configured.out.replaceAll('\\', '/')
+
+  const { ok, out } = await run(['git', 'rev-parse', '--git-path', 'hooks'], root)
+  return ok && out ? out.replaceAll('\\', '/') : null
 }
 
 /** Porcelain status — empty means clean. */

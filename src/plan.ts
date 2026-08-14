@@ -19,6 +19,17 @@ import {
   type Channel,
 } from './version-from-commits'
 
+/**
+ * The one refusal a caller may want to catch by type rather than by message.
+ *
+ * `plan` throws this when a release branch declares a lower base than its
+ * commits imply. Everything else that goes wrong here is a bug or a broken
+ * checkout — and the difference matters to `cutver check`, which blocks a push
+ * on this and deliberately lets one through on anything else. A guard that
+ * fails closed on its own crash is worse than no guard.
+ */
+export class PlanRefusal extends Error {}
+
 /** A release number is interpolated into manifests and a git tag, so it is validated. */
 export const SEMVER = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/
 
@@ -30,6 +41,12 @@ export interface PlanInput {
   channel: Channel | null
   /** A version typed on the command line. Wins over everything computed. */
   explicit?: string | undefined
+  /**
+   * The commit to reason about. Defaults to HEAD, and is a real option only
+   * for the pre-push hook, which must judge the ref being pushed rather than
+   * whatever happens to be checked out.
+   */
+  rev?: string | undefined
 }
 
 export interface Tally {
@@ -88,8 +105,9 @@ function stableCore(version: string): string {
 async function baseline(
   root: string,
   current: string,
+  rev: string,
 ): Promise<{ from: string; since: string; tagged: boolean }> {
-  const tag = await lastStableTag(root)
+  const tag = await lastStableTag(root, rev)
   return tag
     ? { from: tag.slice(1), since: tag, tagged: true }
     : { from: stableCore(current), since: 'the first commit', tagged: false }
@@ -110,6 +128,7 @@ export async function plan({
   branch,
   channel,
   explicit,
+  rev = 'HEAD',
 }: PlanInput): Promise<Plan> {
   if (explicit) {
     if (explicit === current) {
@@ -118,7 +137,7 @@ export async function plan({
     return { kind: 'release', version: explicit, from: current, why: 'given explicitly', survey: null }
   }
 
-  const { from, since, tagged } = await baseline(root, current)
+  const { from, since, tagged } = await baseline(root, current, rev)
 
   // **Two ranges, because there are two questions and they have different
   // right answers.**
@@ -134,10 +153,10 @@ export async function plan({
   // is the half that must not be simplified away: a `feat!` landing mid-beta
   // has to be measured against the last stable release or it ships as a minor.
   // Narrowing this range to the last prerelease is precisely that bug.
-  const baseRange = tagged ? `${since}..HEAD` : 'HEAD'
-  const lastAny = await lastAnyTag(root)
+  const baseRange = tagged ? `${since}..${rev}` : rev
+  const lastAny = await lastAnyTag(root, rev)
   const freshSince = lastAny ?? 'the first commit'
-  const freshRange = lastAny ? `${lastAny}..HEAD` : 'HEAD'
+  const freshRange = lastAny ? `${lastAny}..${rev}` : rev
 
   const fresh = (await commitsIn(freshRange, root)).map(c => ({ ...c, bump: classify(c) }))
   const commits =
@@ -192,7 +211,7 @@ export async function plan({
     // the comparison is against a number nothing ever shipped, and the branch
     // name is the only real evidence in the room.
     if (tagged && Bun.semver.order(implied, declared.base) > 0) {
-      throw new Error(
+      throw new PlanRefusal(
         `branch '${branch}' declares ${declared.base}, but the commits since ` +
           `${since} imply ${implied} (${bump}).\n` +
           `        Rename the branch to ${implied}-${declared.channel}, or pass ` +

@@ -3,6 +3,8 @@
 ```
 cutver [version] [options]
 cutver init <cargo|node|bun> [--force]
+cutver check [--branch <name>] [--rev <commit>]
+cutver hook install|uninstall
 ```
 
 ## Arguments
@@ -11,6 +13,8 @@ cutver init <cargo|node|bun> [--force]
 | --- | --- |
 | `version` | An explicit semver, overriding the computation. No leading `v` — the tag adds that, and `v1.1.0` is not a valid version string in any manifest. Prerelease and build metadata are allowed. |
 | `init` | Write `version.yml`, `publish.yml` and a `CHANGELOG.md` stub for that ecosystem. See [Set up CI](../getting-started/ci.md). |
+| `check` | Exit 1 only if this branch may not release what its commits imply. Read-only and offline. See [the pre-push guard](../guides/hooks.md). |
+| `hook` | Install or remove a `pre-push` hook that runs `check`. |
 
 ## Options
 
@@ -24,7 +28,9 @@ cutver init <cargo|node|bun> [--force]
 | `--if-needed` | Exit 0 rather than 1 when no release is warranted. What CI wants. |
 | `--offline` | Skip the registry preflight entirely. |
 | `--allow-first-publish` | Proceed even though a package is not on the registry yet. |
-| `--force` | (`init`) Replace workflows that are already there. Never replaces `CHANGELOG.md`. |
+| `--force` | (`init`, `hook`) Replace files that are already there. Never replaces `CHANGELOG.md`, and never a `pre-push` hook cutver did not write. |
+| `--rev <commit>` | (`check`) The commit to judge, default `HEAD`. The hook passes the sha of the ref being pushed, which is not always the one checked out. |
+| `--runner <cmd>` | (`hook`) Pin how the hook invokes cutver, instead of detecting it at run time. |
 | `-h`, `--help` | Usage. |
 | `-v`, `--version` | The version of cutver itself. |
 
@@ -37,6 +43,12 @@ takes a value.
 | --- | --- |
 | `0` | A release was cut, or nothing was warranted and `--if-needed` was passed. |
 | `1` | Anything else — nothing to release, a refused branch declaration, a dirty tree, a package that has never been published, a malformed version. |
+
+`cutver check` inverts the interesting half: it exits **0** when nothing is
+warranted and **1 only** for the branch-declared refusal, because it is meant
+to gate a push rather than report to a person. It exits 0 on its own failures
+too — a guard that fails closed on its own bug blocks every push in the
+repository.
 
 ## What it checks, in order
 

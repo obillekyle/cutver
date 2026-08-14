@@ -60,6 +60,8 @@ curl -L -o cutver https://github.com/obillekyle/cutver/releases/latest/download/
 ```
 cutver [version] [options]
 cutver init <cargo|node|bun> [--force]
+cutver check [--branch <name>] [--rev <commit>]
+cutver hook install|uninstall
 ```
 
 | | |
@@ -97,6 +99,27 @@ binary is for.
 Nothing is overwritten without `--force`, and `CHANGELOG.md` is never
 overwritten at all: it holds prose someone wrote. The gates are left for you to
 fill in — cutver cannot know what yours are.
+
+### `cutver hook install`
+
+A `pre-push` guard that refuses a push to a release branch whose name promises
+a lower version than its commits justify. A `feat!` on `1.3.0-beta` implies
+2.0.0, so cutting 1.3.0 from it would ship a breaking change as a minor:
+
+```
+$ git push origin 1.3.0-beta
+cutver: branch '1.3.0-beta' declares 1.3.0, but the commits since v1.2.0
+        imply 2.0.0 (major).
+error: failed to push some refs to 'origin'
+```
+
+The same commit on `2.0.0-beta` passes. cutver already refuses this at release
+time; the hook moves it to where the fix is a branch rename rather than an
+un-publish.
+
+It fails open on everything else — cutver missing, git broken, no manifest —
+because a guard that blocks every push in a repository because it crashed is
+worse than no guard. `git push --no-verify` bypasses the refusal itself.
 
 ## How the version is worked out
 

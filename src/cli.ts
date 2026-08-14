@@ -30,8 +30,9 @@ import {
 } from './adapters'
 import { rollChangelog } from './changelog'
 import { ECOSYSTEMS, init, type Ecosystem } from './init'
+import { installHook, uninstallHook } from './hook'
 import { currentBranch, isGitRepo, remoteUrl, status } from './git'
-import { plan, SEMVER } from './plan'
+import { plan, PlanRefusal, SEMVER } from './plan'
 import {
   checkRegistry,
   detectOidc,
@@ -54,9 +55,13 @@ const HELP = `cutver ${VERSION} — cut a version from your commit messages.
 
   cutver [version] [options]
   cutver init <cargo|node|bun> [--force]
+  cutver check [--branch <name>] [--rev <commit>]
+  cutver hook install|uninstall
 
   version               an explicit semver, overriding the computation
   init                  write version.yml + publish.yml for that ecosystem
+  check                 exit 1 only if this branch may not release what it implies
+  hook                  install or remove the pre-push guard that runs check
 
 Options
   --dry-run             compute and report, write nothing
@@ -67,7 +72,9 @@ Options
   --if-needed           exit 0 rather than 1 when no release is warranted
   --offline             skip the registry preflight
   --allow-first-publish proceed even though a package is not on the registry yet
-  --force               (init) replace workflows that are already there
+  --force               (init, hook) replace files that are already there
+  --rev <commit>        (check) the commit to judge, default HEAD
+  --runner <cmd>        (hook) how the hook should invoke cutver
   -h, --help            this
   -v, --version         print the version of cutver itself
 
@@ -88,6 +95,8 @@ interface Options {
   allowFirstPublish: boolean
   force: boolean
   adapter?: AdapterId
+  rev?: string
+  runner?: string
   cwd?: string
   branch?: string
   channel: Channel | null
@@ -156,6 +165,18 @@ function parse(argv: string[]): Options {
         const value = next()
         if (!value) die('--branch takes a name')
         opts.branch = value
+        break
+      }
+      case '--rev': {
+        const value = next()
+        if (!value) die('--rev takes a commit')
+        opts.rev = value
+        break
+      }
+      case '--runner': {
+        const value = next()
+        if (!value) die('--runner takes a command')
+        opts.runner = value
         break
       }
       default: {
@@ -356,9 +377,97 @@ async function runInit(argv: string[]): Promise<void> {
   )
 }
 
+/**
+ * `cutver check` — is this branch allowed to release what its commits imply?
+ *
+ * Read-only, offline, and with exit codes suited to a hook rather than to a
+ * person: **0 for "nothing to release"**, which is not a problem and must not
+ * block a push, and 1 only for the branch-declared refusal.
+ *
+ * Anything else — cutver crashed, git is broken, the manifest will not parse —
+ * also exits 0, loudly. A guard that fails closed on its own bug blocks every
+ * push in the repository, and CI still catches the real thing.
+ */
+async function runCheck(argv: string[]): Promise<void> {
+  const opts = parse(argv)
+  const root = resolveRoot(opts.cwd)
+  const rev = opts.rev ?? 'HEAD'
+
+  try {
+    // Both of these are ordinary states rather than errors — a hook lives in
+    // repositories cutver was never set up for — so they are named plainly
+    // instead of arriving as a stack trace about `undefined`.
+    if (!(await isGitRepo(root))) {
+      console.error(`cutver: check skipped — ${root} is not a git repository`)
+      return
+    }
+    const ids = await applicableAdapters(root)
+    if (!opts.adapter && !ids.length) {
+      console.error('cutver: check skipped — no package.json or Cargo.toml here')
+      return
+    }
+
+    const adapter = ADAPTERS[opts.adapter ?? (ids[0] as AdapterId)]
+    const branch = opts.branch ?? (await currentBranch(root))
+    const decision = await plan({
+      root,
+      current: await adapter.readVersion(root),
+      branch,
+      channel: opts.channel,
+      rev,
+    })
+
+    console.log(
+      decision.kind === 'nothing'
+        ? `cutver: check ok — nothing to release on '${branch}' (${decision.why})`
+        : `cutver: check ok — '${branch}' would release ${decision.version}`,
+    )
+  } catch (e) {
+    if (e instanceof PlanRefusal) {
+      console.error(`cutver: ${e.message}`)
+      console.error('        Push with --no-verify if the branch is right.')
+      process.exit(1)
+    }
+    // Not the refusal. Say so and get out of the way.
+    console.error(`cutver: check skipped — ${(e as Error).message}`)
+  }
+}
+
+/** `cutver hook install|uninstall`. */
+async function runHook(argv: string[]): Promise<void> {
+  const action = argv[0]
+  if (action !== 'install' && action !== 'uninstall') {
+    die('hook takes `install` or `uninstall`')
+  }
+
+  const opts = parse(argv.slice(1))
+  const root = resolveRoot(opts.cwd)
+  if (!(await isGitRepo(root))) die(`${root} is not a git repository`)
+
+  const result =
+    action === 'install'
+      ? await installHook(root, { force: opts.force, dryRun: opts.dryRun, runner: opts.runner })
+      : await uninstallHook(root, { dryRun: opts.dryRun })
+
+  console.log(
+    `cutver: ${result.state === 'written' ? '↑' : '='} ${result.path}  ${result.detail}` +
+      (opts.dryRun ? ' (dry run)' : ''),
+  )
+
+  if (action === 'install' && result.state === 'written') {
+    console.log(
+      '\n  It refuses a push to a release branch whose name promises a lower\n' +
+        '  version than its commits justify. Everything else it lets through —\n' +
+        '  including its own failures. `git push --no-verify` bypasses it.',
+    )
+  }
+}
+
 async function main(): Promise<void> {
   const argv = process.argv.slice(2)
   if (argv[0] === 'init') return runInit(argv.slice(1))
+  if (argv[0] === 'check') return runCheck(argv.slice(1))
+  if (argv[0] === 'hook') return runHook(argv.slice(1))
 
   const opts = parse(argv)
   const root = resolveRoot(opts.cwd)
