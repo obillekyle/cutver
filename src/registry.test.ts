@@ -1,5 +1,44 @@
 import { describe, expect, test } from 'bun:test'
-import { detectOidc } from './registry'
+import { detectOidc, normaliseRepo, repositoryMatches } from './registry'
+
+describe('repository matching', () => {
+  test('the many spellings of one repository are one repository', () => {
+    const forms = [
+      'git+https://github.com/obillekyle/cutver.git',
+      'https://github.com/obillekyle/cutver',
+      'git@github.com:obillekyle/cutver.git',
+      'ssh://git@github.com/obillekyle/cutver.git',
+      'github:obillekyle/cutver',
+      'https://github.com/obillekyle/cutver/',
+    ]
+    for (const f of forms) expect(normaliseRepo(f)).toBe('github.com/obillekyle/cutver')
+  })
+
+  test('a missing repository does not match a real remote', () => {
+    // The exact failure: npm normalises the absent field to "" and reports it
+    // as a mismatch against the provenance statement, so the error reads like
+    // a disagreement rather than a missing key.
+    expect(repositoryMatches(null, 'https://github.com/obillekyle/cutver')).toBe(false)
+    expect(repositoryMatches('', 'https://github.com/obillekyle/cutver')).toBe(false)
+  })
+
+  test('a stale repository does not match either', () => {
+    // The half that auto-filling the field could never fix.
+    expect(
+      repositoryMatches(
+        'git+https://github.com/someone/template.git',
+        'git@github.com:obillekyle/cutver.git',
+      ),
+    ).toBe(false)
+  })
+
+  test('no remote means nothing to disagree with', () => {
+    // A fresh `git init`, or a mirror. Reporting a mismatch against nothing
+    // would be noise on every local release.
+    expect(repositoryMatches(null, null)).toBe(true)
+    expect(repositoryMatches('github:o/c', null)).toBe(true)
+  })
+})
 
 /**
  * No network here on purpose. `checkRegistry` is one `fetch` per package and a

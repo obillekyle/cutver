@@ -22,6 +22,56 @@ export interface Target {
   /** Repo-relative directory holding its manifest. */
   dir: string
   registry: Registry
+  /** Whatever the manifest declares as its repository, unnormalised. */
+  repository: string | null
+}
+
+/**
+ * Reduce the many spellings of one repository URL to a comparable form.
+ *
+ * `git+https://github.com/o/c.git`, `git@github.com:o/c.git`,
+ * `https://github.com/o/c` and `github:o/c` are the same repository, and npm
+ * compares them after its own normalisation. Anything unrecognised is returned
+ * lowercased rather than discarded — two odd URLs that match each other are
+ * still a match, and refusing to compare would be worse than comparing badly.
+ */
+export function normaliseRepo(url: string | null | undefined): string | null {
+  if (!url) return null
+  return url
+    .trim()
+    .replace(/^git\+/, '')
+    .replace(/^github:/, 'github.com/')
+    .replace(/^[a-z]+:\/\//, '')
+    .replace(/^[^@/]+@/, '')
+    .replace(/:(?=[^/])/, '/')
+    .replace(/\.git$/, '')
+    .replace(/\/+$/, '')
+    .toLowerCase()
+}
+
+/**
+ * Does the manifest name the repository the release is being built from?
+ *
+ * **This is a publish-time requirement that only exists under trusted
+ * publishing.** A provenance statement attests which repository produced the
+ * tarball, so npm refuses one whose manifest disagrees — or, since it
+ * normalises a missing field to the empty string, one that says nothing at
+ * all. cutver hit it on its own first automated release: OIDC token minted,
+ * tarball built, provenance signed and written to the transparency log, then
+ * `422 … "repository.url" is ""`. The release before it went out by hand with
+ * a token and sailed straight past.
+ *
+ * **Reported, never written.** cutver could derive the field from
+ * `git remote get-url origin`, and on a fork that writes the fork's URL — which
+ * passes this check locally and fails identically upstream. A wrong answer
+ * written into someone's manifest is harder to notice than a missing one, and
+ * a version tool editing unrelated metadata is not a thing to do quietly.
+ */
+export function repositoryMatches(declared: string | null, remote: string | null): boolean {
+  const a = normaliseRepo(declared)
+  const b = normaliseRepo(remote)
+  // No remote to compare against: nothing to disagree with, so nothing to say.
+  return !b || a === b
 }
 
 export interface Presence {

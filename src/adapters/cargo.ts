@@ -94,6 +94,8 @@ export function members(toml: string): string[] {
 
 const NAME = /^[ \t]*name[ \t]*=[ \t]*"([^"\r\n]*)"/m
 const PUBLISH_FALSE = /^[ \t]*publish[ \t]*=[ \t]*false/m
+/** Read between the quotes, like every other value here, so CRLF cannot ride along. */
+const REPOSITORY = /^[ \t]*repository[ \t]*=[ \t]*"([^"\r\n]*)"/m
 
 export interface Member {
   /** Repo-relative directory. */
@@ -104,6 +106,8 @@ export interface Member {
   pinned: boolean
   /** `publish = false` — a member that exists only to be depended on or tested. */
   private: boolean
+  /** Its own `repository`, when it does not inherit the workspace one. */
+  repository: string | null
 }
 
 /**
@@ -135,6 +139,7 @@ async function scanMembers(root: string, toml: string): Promise<Member[]> {
         name: NAME.exec(section)?.[1] ?? null,
         pinned: VERSION.test(section),
         private: PUBLISH_FALSE.test(section),
+        repository: REPOSITORY.exec(section)?.[1] ?? null,
       })
     }
   }
@@ -196,18 +201,32 @@ export const cargoAdapter: Adapter = {
     const toml = await Bun.file(`${root}/Cargo.toml`).text()
     const found = await scanMembers(root, toml)
 
+    // A member usually inherits `repository.workspace = true`, so the
+    // workspace table is the one that answers for all of them.
+    const wsBody = sectionBody(toml, 'workspace.package')
+    const workspaceRepo = wsBody ? (REPOSITORY.exec(toml.slice(wsBody.start, wsBody.end))?.[1] ?? null) : null
+
     // No `[workspace] members` at all: a single-crate repository, whose root
     // `[package]` is the thing that gets published.
     if (!found.length) {
       const body = sectionBody(toml, 'package')
-      const name = body ? NAME.exec(toml.slice(body.start, body.end))?.[1] : null
-      const isPrivate = body ? PUBLISH_FALSE.test(toml.slice(body.start, body.end)) : true
-      return name && !isPrivate ? [{ name, dir: '.', registry: 'crates' as const }] : []
+      const section = body ? toml.slice(body.start, body.end) : ''
+      const name = body ? NAME.exec(section)?.[1] : null
+      const isPrivate = body ? PUBLISH_FALSE.test(section) : true
+      const repository = REPOSITORY.exec(section)?.[1] ?? workspaceRepo ?? null
+      return name && !isPrivate
+        ? [{ name, dir: '.', registry: 'crates' as const, repository }]
+        : []
     }
 
     return found
       .filter(m => m.name && !m.private)
-      .map(m => ({ name: m.name as string, dir: m.dir, registry: 'crates' as const }))
+      .map(m => ({
+        name: m.name as string,
+        dir: m.dir,
+        registry: 'crates' as const,
+        repository: m.repository ?? workspaceRepo,
+      }))
   },
 
   async setVersion({ root, version, dryRun }) {

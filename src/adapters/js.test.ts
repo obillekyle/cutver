@@ -167,15 +167,15 @@ describe('setVersion', () => {
 describe('publishTargets', () => {
   test('names what would reach the registry, and nothing private', async () => {
     expect(await jsAdapter.publishTargets(await workspace())).toEqual([
-      { name: '@scope/cli', dir: 'packages/cli', registry: 'npm' },
-      { name: '@scope/core', dir: 'packages/core', registry: 'npm' },
+      { name: '@scope/cli', dir: 'packages/cli', registry: 'npm', repository: null },
+      { name: '@scope/core', dir: 'packages/core', registry: 'npm', repository: null },
     ])
   })
 
   test('a single-package repository publishes its root', async () => {
     const root = await fixture({ 'package.json': json({ name: 'solo', version: '1.0.0' }) })
     expect(await jsAdapter.publishTargets(root)).toEqual([
-      { name: 'solo', dir: '.', registry: 'npm' },
+      { name: 'solo', dir: '.', registry: 'npm', repository: null },
     ])
   })
 })

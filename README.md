@@ -55,6 +55,7 @@ curl -L -o cutver https://github.com/obillekyle/cutver/releases/latest/download/
 
 ```
 cutver [version] [options]
+cutver init <cargo|node|bun> [--force]
 ```
 
 | | |
@@ -68,6 +69,30 @@ cutver [version] [options]
 | `--if-needed` | exit 0 rather than 1 when no release is warranted |
 | `--offline` | skip the registry preflight |
 | `--allow-first-publish` | proceed even though a package is not on the registry yet |
+| `--force` | (`init`) replace workflows that are already there |
+
+### `cutver init`
+
+Writes `.github/workflows/version.yml`, `.github/workflows/publish.yml` and a
+`CHANGELOG.md` stub for the ecosystem you name.
+
+```bash
+bunx cutver@beta init cargo
+```
+
+Two workflows, always — never one `release.yml` that does both. That split is
+the thing being scaffolded: publishing is irreversible, so it gets its own
+trigger and its own credentials. Both files carry the gotchas below as
+comments, because that is the form in which they survive.
+
+`node` uses `npm ci` and `npx`; `bun` uses `bun install --frozen-lockfile` and
+`bunx`; **`cargo` downloads the executable** rather than installing another
+ecosystem's package manager to run a version bump — which is what the compiled
+binary is for.
+
+Nothing is overwritten without `--force`, and `CHANGELOG.md` is never
+overwritten at all: it holds prose someone wrote. The gates are left for you to
+fill in — cutver cannot know what yours are.
 
 ## How the version is worked out
 
@@ -183,6 +208,18 @@ It also reports OIDC status, which catches the workflow that forgot
 `permissions: id-token: write`. That one otherwise fails at `npm publish` with
 an error about *credentials*, sending you to look for the token that trusted
 publishing exists to not need.
+
+And it compares each manifest's `repository` against the git remote. Trusted
+publishing signs a provenance statement naming the repository that built the
+tarball, and npm rejects one whose manifest disagrees — including one that says
+nothing, which npm normalises to `""`. cutver hit this on its own first
+automated release, *after* the tag had been pushed: token minted, tarball
+built, provenance written to the transparency log, then `422`.
+
+It reports this rather than fixing it. Filling the field in from `git remote
+get-url origin` writes the *fork's* URL on a fork, where it passes locally and
+fails identically upstream — and it cannot fix the other half of the failure, a
+`repository` that is present and stale.
 
 ## Why it stops before publishing
 

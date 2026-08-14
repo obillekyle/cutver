@@ -14,6 +14,14 @@ interface Manifest {
   version?: string
   private?: boolean
   workspaces?: string[] | { packages?: string[] }
+  /** `"o/c"` shorthand or `{ url }` — npm accepts both. */
+  repository?: string | { url?: string }
+}
+
+function repositoryOf(json: Manifest): string | null {
+  const repo = json.repository
+  if (typeof repo === 'string') return repo
+  return repo?.url ?? null
 }
 
 async function readManifest(path: string): Promise<{ json: Manifest; text: string }> {
@@ -186,7 +194,12 @@ export const jsAdapter: Adapter = {
       // about a package that can never reach it would report every private
       // workspace as an unpublished first release.
       if (json.private || !json.name) continue
-      targets.push({ name: json.name, dir, registry: 'npm' })
+      targets.push({
+        name: json.name,
+        dir,
+        registry: 'npm',
+        repository: repositoryOf(json),
+      })
     }
 
     return targets

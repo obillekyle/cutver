@@ -29,9 +29,16 @@ import {
   type Change,
 } from './adapters'
 import { rollChangelog } from './changelog'
-import { currentBranch, isGitRepo, status } from './git'
+import { ECOSYSTEMS, init, type Ecosystem } from './init'
+import { currentBranch, isGitRepo, remoteUrl, status } from './git'
 import { plan, SEMVER } from './plan'
-import { checkRegistry, detectOidc, type Presence } from './registry'
+import {
+  checkRegistry,
+  detectOidc,
+  normaliseRepo,
+  repositoryMatches,
+  type Presence,
+} from './registry'
 import { CHANNELS, type Channel } from './version-from-commits'
 
 // Injected by `bun build --compile --define`. A compiled executable does not
@@ -46,8 +53,10 @@ const VERSION: string =
 const HELP = `cutver ${VERSION} — cut a version from your commit messages.
 
   cutver [version] [options]
+  cutver init <cargo|node|bun> [--force]
 
   version               an explicit semver, overriding the computation
+  init                  write version.yml + publish.yml for that ecosystem
 
 Options
   --dry-run             compute and report, write nothing
@@ -58,6 +67,7 @@ Options
   --if-needed           exit 0 rather than 1 when no release is warranted
   --offline             skip the registry preflight
   --allow-first-publish proceed even though a package is not on the registry yet
+  --force               (init) replace workflows that are already there
   -h, --help            this
   -v, --version         print the version of cutver itself
 
@@ -76,6 +86,7 @@ interface Options {
   ifNeeded: boolean
   offline: boolean
   allowFirstPublish: boolean
+  force: boolean
   adapter?: AdapterId
   cwd?: string
   branch?: string
@@ -88,6 +99,7 @@ function parse(argv: string[]): Options {
     ifNeeded: false,
     offline: false,
     allowFirstPublish: false,
+    force: false,
     channel: null,
   }
   const channels: Channel[] = []
@@ -122,6 +134,9 @@ function parse(argv: string[]): Options {
         break
       case '--allow-first-publish':
         opts.allowFirstPublish = true
+        break
+      case '--force':
+        opts.force = true
         break
       case '--adapter': {
         const value = next()
@@ -188,7 +203,12 @@ function report(changes: Change[]): void {
  * emphatically *not* a refusal to do a first release — it is a refusal to do
  * one by accident.
  */
-function preflight(found: Presence[], allowFirst: boolean, dryRun: boolean): void {
+function preflight(
+  found: Presence[],
+  remote: string | null,
+  allowFirst: boolean,
+  dryRun: boolean,
+): void {
   if (!found.length) {
     console.log('\npreflight: nothing this repository publishes')
     return
@@ -198,6 +218,32 @@ function preflight(found: Presence[], allowFirst: boolean, dryRun: boolean): voi
   const oidc = detectOidc()
   console.log(`\npreflight (${found.length} package(s) on ${registry})`)
   console.log(`  ${oidc.available ? '✓' : '·'} oidc  ${oidc.detail}`)
+
+  // **Warned about, not written.** A publish under trusted publishing carries
+  // a provenance statement naming the repository that built it, and npm
+  // rejects a tarball whose manifest disagrees — including one that says
+  // nothing, which it normalises to the empty string. cutver hit this on its
+  // own first automated release, after the tag had already been pushed.
+  //
+  // Deriving the field from `git remote get-url origin` would fix the common
+  // case and encode a wrong answer on a fork, where it would pass here and
+  // fail identically upstream. It also cannot fix the other half — a
+  // `repository` that is present and stale, which produces the same 422.
+  const mismatched = found.filter(p => !repositoryMatches(p.target.repository, remote))
+  if (remote && mismatched.length) {
+    const short = normaliseRepo(remote)
+    for (const p of mismatched) {
+      const declared = p.target.repository
+      console.log(
+        `  ! repo  ${p.target.name} ${declared ? `names ${normaliseRepo(declared)}` : 'names no repository'}, ` +
+          `but this checkout is ${short}`,
+      )
+    }
+    console.log(
+      '         A provenance publish is refused when those disagree (npm 422).\n' +
+        `         Set "repository" in the manifest to ${short} before tagging.`,
+    )
+  }
 
   const width = Math.max(...found.map(p => p.target.name.length), 4)
   for (const p of found) {
@@ -266,12 +312,56 @@ function preflight(found: Presence[], allowFirst: boolean, dryRun: boolean): voi
  * than at the reason. The whole entry lives in `main()` so the compiled binary
  * and `bun run src/cli.ts` are the same program.
  */
-async function main(): Promise<void> {
-  const opts = parse(process.argv.slice(2))
-  const root = (opts.cwd ? Bun.pathToFileURL(opts.cwd).pathname : process.cwd())
+/** An absolute root with forward slashes, drive letter intact on Windows. */
+function resolveRoot(cwd: string | undefined): string {
+  return (cwd ? Bun.pathToFileURL(cwd).pathname : process.cwd())
     .replace(/^\/([A-Za-z]:)/, '$1')
     .replace(/\\/g, '/')
     .replace(/\/+$/, '')
+}
+
+/**
+ * `cutver init <cargo|node|bun>`.
+ *
+ * Deliberately does not require a git repository. Scaffolding the workflows is
+ * the one thing here that makes sense in a tree that has not been initialised
+ * yet, and refusing would send people to write the files by hand — which is
+ * how the two gotchas in them get lost.
+ */
+async function runInit(argv: string[]): Promise<void> {
+  const opts = parse(argv)
+  const eco = opts.explicit
+
+  if (!eco || !(ECOSYSTEMS as readonly string[]).includes(eco)) {
+    die(`init takes one of ${ECOSYSTEMS.join(', ')} — e.g. \`cutver init cargo\``)
+  }
+
+  const root = resolveRoot(opts.cwd)
+  const results = await init(root, eco as Ecosystem, {
+    force: opts.force,
+    dryRun: opts.dryRun,
+  })
+
+  console.log(`cutver: ${root} (${eco})${opts.dryRun ? ' — dry run, nothing written' : ''}`)
+  const width = Math.max(...results.map(r => r.path.length))
+  for (const r of results) {
+    console.log(`  ${r.state === 'written' ? '↑' : '='} ${r.path.padEnd(width)}  ${r.detail}`)
+  }
+
+  console.log(
+    '\n  next: read both files — the comments in them are the reasons, not decoration.\n' +
+      '        Set your gates in version.yml; cutver cannot know what they are.\n' +
+      '        Release one is published by hand: a trusted publisher cannot\n' +
+      '        create a package that does not exist yet.',
+  )
+}
+
+async function main(): Promise<void> {
+  const argv = process.argv.slice(2)
+  if (argv[0] === 'init') return runInit(argv.slice(1))
+
+  const opts = parse(argv)
+  const root = resolveRoot(opts.cwd)
 
   if (!(await isGitRepo(root))) {
     die(`${root} is not a git repository — the version is computed from its commits`)
@@ -354,6 +444,7 @@ async function main(): Promise<void> {
   if (!opts.offline) {
     preflight(
       await checkRegistry(await adapter.publishTargets(root)),
+      await remoteUrl(root),
       opts.allowFirstPublish,
       opts.dryRun,
     )

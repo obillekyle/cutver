@@ -65,3 +65,16 @@ export async function status(root: string): Promise<string> {
   const { out } = await run(['git', 'status', '--porcelain'], root)
   return out
 }
+
+/**
+ * The `origin` remote's URL, or `null` when there is none.
+ *
+ * Used to check that a manifest names the repository it is being built from —
+ * npm refuses a provenance publish when those disagree. A checkout with no
+ * remote is normal (a fresh `git init`, a mirror) and reports nothing rather
+ * than complaining.
+ */
+export async function remoteUrl(root: string): Promise<string | null> {
+  const { ok, out } = await run(['git', 'remote', 'get-url', 'origin'], root)
+  return ok && out ? out : null
+}
