@@ -26,6 +26,7 @@ import { addDevDependency } from './adapters/js'
 import { downloadBase, HOOK_NAME, installHook } from './hook'
 import { shapeOf } from './config/match'
 import { DEFAULT_CONFIG, RELEASE, type Config } from './config/schema'
+import { parseConfig } from './config/load'
 import { configTemplate } from './config/template'
 
 export const ECOSYSTEMS = ['cargo', 'node', 'bun'] as const
@@ -499,7 +500,15 @@ export async function init(
 ): Promise<InitResult[]> {
   const out: InitResult[] = []
 
-  for (const file of initFiles(eco, version, config)) {
+  // **The workflows must match the config this run is about to write**, not
+  // the built-in defaults. Without this, `init` on a fresh repository writes a
+  // `cutver.yml` saying one thing and an `on.push.branches` list derived from
+  // another — and the disagreement is invisible until a branch silently fails
+  // to trigger. When a config already exists it wins, because it is the
+  // repository's actual policy.
+  const effective = config.source ? config : parseConfig(Bun.YAML.parse(configTemplate(eco)), 'cutver.yml')
+
+  for (const file of initFiles(eco, version, effective)) {
     const full = `${root}/${file.path}`
     const exists = await Bun.file(full).exists()
 

@@ -5,6 +5,7 @@ cutver [version] [options]
 cutver init <cargo|node|bun> [--force]
 cutver check [--branch <name>] [--rev <commit>]
 cutver hook install|uninstall
+cutver explain [--branch <name>]
 ```
 
 ## Arguments
@@ -15,6 +16,7 @@ cutver hook install|uninstall
 | `init` | Write `version.yml`, `publish.yml` and a `CHANGELOG.md` stub for that ecosystem. See [Set up CI](../getting-started/ci.md). |
 | `check` | Exit 1 only if this branch may not release what its commits imply. Read-only and offline. See [the pre-push guard](../guides/hooks.md). |
 | `hook` | Install or remove a `pre-push` hook that runs `check`. |
+| `explain` | Which rule claims this branch, and every rule that was tried and did not fire. Read-only, offline, always exits 0. See [Configuration](config.md). |
 
 ## Options
 
@@ -143,8 +145,9 @@ pointless.
 
 ## Environment
 
-cutver reads no configuration file and no environment variables of its own. It
-does read the two GitHub Actions sets when reporting OIDC status:
+cutver reads no environment variables of its own — its configuration is
+[`cutver.json` / `cutver.yml`](config.md), and that is optional. It does read
+the two GitHub Actions sets when reporting OIDC status:
 
 | | |
 | --- | --- |

@@ -121,5 +121,7 @@ rather than guessed at.
   are easy to get backwards.
 - [The pre-push guard](guides/hooks.md) — stop a `feat!` reaching a branch
   whose name promises less than it needs.
+- [Configuration](reference/config.md) — put `develop` in the beta channel,
+  or add a channel of your own by adding a key.
 - [Troubleshooting](reference/troubleshooting.md) — every error cutver prints,
   and what it actually means.
