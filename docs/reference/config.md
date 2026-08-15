@@ -39,7 +39,7 @@ channels:
 | `channels.release` | Branches that cut a stable release. |
 | `channels.<name>` | Branches that cut a prerelease under that identifier. |
 
-Every key is optional. `--adapter` and `--<channel>` on the command line beat
+Every key is optional. `--adapter` and `--channel` on the command line beat
 whatever the file says — the flag was typed just now, the file was written
 months ago.
 

@@ -23,8 +23,7 @@ cutver explain [--branch <name>]
 | | |
 | --- | --- |
 | `--dry-run` | Compute and report, write nothing. Runs nothing either — no `cargo update`, no file writes — and still reports every change the real run would make. |
-| `--alpha` `--beta` `--rc` | Cut a prerelease in that channel. Pick one; two is refused rather than resolved. |
-| `--prerelease` | An alias for `--rc`. The version it writes is the canonical `-rc.N`. |
+| `--channel <name>` | Cut a prerelease in that channel: `alpha`, `beta`, `rc`, or any channel declared in [`cutver.json` / `cutver.yml`](config.md). Pass it once; twice is refused rather than resolved. `prerelease` is accepted as a spelling of `rc`, and the version written is the canonical `-rc.N`. A name the repository does not declare is an error that lists the ones it does. |
 | `--adapter js\|cargo` | Force the manifest adapter. Only needed when a repository has both manifests. |
 | `--cwd <path>` | Repository root. Defaults to the working directory. |
 | `--branch <name>` | Branch name, for CI on a detached HEAD where git answers the literal string `HEAD`. |

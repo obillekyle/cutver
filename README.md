@@ -69,8 +69,7 @@ cutver explain [--branch <name>]
 | --- | --- |
 | `version` | an explicit semver, overriding the computation |
 | `--dry-run` | compute and report, write nothing |
-| `--alpha` `--beta` `--rc` | cut a prerelease in that channel (`--prerelease` = `--rc`) |
-| `--<channel>` | any other channel declared in `cutver.json` / `cutver.yml` |
+| `--channel <name>` | cut a prerelease in that channel — `alpha`, `beta`, `rc` (`prerelease` = `rc`), or any channel declared in `cutver.json` / `cutver.yml` |
 | `--adapter js\|cargo` | force the manifest adapter (default: detected) |
 | `--cwd <path>` | repository root (default: the working directory) |
 | `--branch <name>` | branch name, for CI on a detached HEAD |
@@ -194,7 +193,7 @@ bug in one direction or the other:
   Measuring from the last *tag* lets a `feat!` landing during a beta ship as a
   minor.
 - **A prerelease counter continues only while the base and the channel both
-  hold.** A break landing mid-beta, or `--beta` after `--alpha`, restarts at
+  hold.** A break landing mid-beta, or `beta` after `alpha`, restarts at
   `.0`; carrying the counter across would eventually produce a version sorting
   below one already published.
 - **With no tags at all the baseline is the manifest**, not `0.0.0`. From

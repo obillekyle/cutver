@@ -5,7 +5,7 @@
  *     cutver                    # version computed from the commit messages
  *     cutver --dry-run          # show the computed bump, write nothing
  *     cutver 1.4.0              # explicit, overrides the computation
- *     cutver --beta             # 1.3.0-beta.0
+ *     cutver --channel beta     # 1.3.0-beta.0
  *     cutver --adapter cargo    # when a repo has both manifests
  *
  * **Does not publish, and that is the design rather than an omission.**
@@ -71,8 +71,8 @@ const HELP = `cutver ${VERSION} — cut a version from your commit messages.
 
 Options
   --dry-run             compute and report, write nothing
-  --alpha|--beta|--rc   cut a prerelease in that channel (--prerelease = --rc)
-  --<channel>           any other channel declared in cutver.json / cutver.yml
+  --channel <name>      cut a prerelease in that channel (alpha, beta, rc, or
+                        any channel declared in cutver.json / cutver.yml)
   --adapter js|cargo    force the manifest adapter (default: detected)
   --cwd <path>          repository root (default: the working directory)
   --branch <name>       branch name, for CI on a detached HEAD
@@ -114,11 +114,12 @@ interface Options {
 }
 
 /**
- * Which channels have a flag.
+ * `known` is the set of channels `--channel` will accept.
  *
- * Derived from the config, so `--canary` exists exactly when the repository
- * declares a canary channel — and an unknown flag still dies with today's
- * message rather than being silently accepted.
+ * One flag taking a value, rather than a flag per channel. Once a config can
+ * name channels the set is open-ended, and a parser cannot enumerate names it
+ * has not read yet — so `--channel canary` asks, and a repository that has no
+ * canary channel is told which ones it does have.
  */
 function parse(argv: string[], known: readonly string[] = CHANNELS): Options {
   const opts: Options = {
@@ -207,18 +208,23 @@ function parse(argv: string[], known: readonly string[] = CHANNELS): Options {
         opts.config = value
         break
       }
-      default: {
-        // A channel flag goes through exactly the normalisation its config key
-        // does — `toKebab` then the alias table — so `--myPrefix` works wherever
-        // `myPrefix:` does, and `--prerelease` resolves to `rc` without a
-        // special case naming it. The CLI was previously the one place the
-        // normalisation contract was not honoured, and a spelling the config
-        // parser accepted died here as an unknown option.
-        const asked = KEY_ALIASES[toKebab(name.replace(/^--/, ''))] ?? toKebab(name.replace(/^--/, ''))
-        if (arg.startsWith('--') && known.includes(asked)) {
-          picked.push(asked)
-          break
+      case '--channel': {
+        const value = next()
+        if (!value) die(`--channel takes one of ${known.join(', ')}`)
+
+        // Normalised exactly as its config key is, so `--channel myPrefix` and
+        // `--channel prerelease` land where `myPrefix:` and `prerelease:` do.
+        const asked = KEY_ALIASES[toKebab(value)] ?? toKebab(value)
+        if (!known.includes(asked)) {
+          die(
+            `'${value}' is not a channel in this repository.\n` +
+              `        There is ${known.join(', ')} — add another by adding a key to your config.`,
+          )
         }
+        picked.push(asked)
+        break
+      }
+      default: {
         if (arg.startsWith('-')) die(`unknown option ${arg}\n\n${HELP}`)
         if (opts.explicit) die(`two versions given: ${opts.explicit} and ${arg}`)
         opts.explicit = arg
@@ -227,7 +233,7 @@ function parse(argv: string[], known: readonly string[] = CHANNELS): Options {
   }
 
   if (picked.length > 1) {
-    die(`pick one channel, not ${picked.map(c => `--${c}`).join(' and ')}`)
+    die(`pass --channel once, not ${picked.join(' and ')}`)
   }
   opts.channel = picked[0] ?? null
   return opts

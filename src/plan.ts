@@ -302,9 +302,9 @@ export async function plan({
   }
 
   // A branch named `beta` supplies the channel and nothing else, so the base
-  // is computed exactly as a stable release would be. An explicit `--beta` or
-  // `--rc` still wins: the flag was typed just now and the branch was named
-  // once, months ago.
+  // is computed exactly as a stable release would be. An explicit `--channel`
+  // still wins: the flag was typed just now and the branch was named once,
+  // months ago.
   const fromBranch = match.kind === 'channel' ? match.channel : null
   const effective = channel ?? fromBranch
 
