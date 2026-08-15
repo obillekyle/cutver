@@ -24,7 +24,7 @@ It never publishes. That is the whole design, not a missing feature — see
 Look before you leap. `--dry-run` writes nothing, ever:
 
 ```bash
-bunx cutver@beta --dry-run
+bunx cutver --dry-run
 ```
 
 ```
@@ -48,20 +48,15 @@ files (dry run — nothing is written)
 Happy with it? Drop the flag:
 
 ```bash
-bunx cutver@beta
+bunx cutver
 ```
 
 Now review the diff, commit, and tag. Or better, let CI do all three —
 [Set up CI](getting-started/ci.md) writes the workflows for you:
 
 ```bash
-bunx cutver@beta init cargo
+bunx cutver init cargo
 ```
-
-> **In beta.** There is no stable release yet, so ask for the channel by name.
-> `bunx cutver` without `@beta` resolves to `0.1.0-beta.0` — npm pins `latest`
-> on a package's first publish whatever `--tag` says, and that first publish
-> was a beta.
 
 ## Key concepts
 

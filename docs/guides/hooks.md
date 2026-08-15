@@ -1,7 +1,7 @@
 # The pre-push guard
 
 ```bash
-bunx cutver@beta hook install
+bunx cutver hook install
 ```
 
 It refuses a push to a release branch whose name promises a lower version than
@@ -155,16 +155,17 @@ cutver: fetching the release binary once into .git/cutver (~95 MB)
 `hook install` pins the tag it downloads from — the version of cutver that ran
 the install. That matters more than it sounds: the unpinned form,
 `releases/latest/download/…`, follows **GitHub's** idea of latest, which skips
-prereleases. Against a project that has only ever shipped betas it is a plain
-404. Installing the hook with a released cutver pins a real tag and the
-fallback works; installing it from a source checkout cannot know a version and
-falls back to the `latest` URL.
+prereleases, and against a project that has only ever shipped them it is a
+plain 404 rather than an empty result. Installing the hook with a released
+cutver pins a real tag and the fallback works; installing it from a source
+checkout cannot know a version and falls back to the `latest` URL.
 
 Pin the command instead if you would rather:
 
 ```bash
-cutver hook install --runner "bunx cutver@beta"
+cutver hook install --runner "bunx cutver@1"
 ```
 
-While cutver is in beta that is worth doing, since a bare `bunx cutver`
-resolves `latest`, which is [pinned to an old prerelease](../getting-started/install.md#bunx).
+Worth doing on a team, where detection can resolve differently on different
+machines: the hook tries `cutver` on PATH first, so a stray global install
+decides the version for whoever has one.

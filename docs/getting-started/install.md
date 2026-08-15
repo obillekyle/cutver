@@ -8,17 +8,14 @@ has rather than on preference.
 Nothing to install if the repository already has Bun:
 
 ```bash
-bunx cutver@beta --dry-run
+bunx cutver --dry-run
 ```
 
 `bunx` fetches the package, runs it, and does not add it to your dependencies —
 which is correct for a release tool. It is not part of your app.
 
-> **Why `@beta` and not a bare `bunx cutver`.** There is no stable release yet.
-> Worse, `latest` points at `0.1.0-beta.0` and will keep pointing there until
-> `0.1.0` graduates: npm pins `latest` on a package's *first* publish whatever
-> `--tag` said, because every package must have one. So `bunx cutver` today
-> gets you the oldest beta rather than the newest. Name the channel.
+Prereleases stay behind their channel — `bunx cutver@beta` for the next beta,
+`@rc` for a release candidate. A bare `bunx cutver` never resolves to one.
 
 ## npx
 
@@ -27,7 +24,7 @@ in TypeScript and run by Bun, so `npx` will fetch Bun's runtime as needed —
 if that bothers you, use the executable below.
 
 ```bash
-npx --yes cutver@beta --dry-run
+npx --yes cutver --dry-run
 ```
 
 ## The executable
@@ -56,11 +53,12 @@ Every release attaches five:
 
 No runtime, no `node_modules`, no PATH surgery. The Bun runtime is compiled in.
 
-> **`releases/latest` follows GitHub's idea of latest, not npm's.** Prereleases
-> are marked as such and are skipped by that URL, so while cutver is in beta
-> `releases/latest/download/cutver-linux-x64` is a plain **404** — measured,
-> not assumed. Name a tag until a stable release exists:
-> `.../releases/download/v0.1.0-beta.7/cutver-linux-x64`.
+> **`releases/latest` follows GitHub's idea of latest, not npm's.** It skips
+> prereleases, so the URL above resolves to the newest *stable* release and
+> never to a beta. In a repository that has only ever published prereleases it
+> is a plain **404** rather than an empty result — measured against this
+> project before 1.0.0, not assumed. Pin a tag if you want a specific one:
+> `.../releases/download/v1.0.0/cutver-linux-x64`.
 
 > **Every release's binaries are sound, but the Windows ones were not always.**
 > `v0.1.0-beta.2` through `v0.1.0-beta.6` originally shipped a

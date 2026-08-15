@@ -188,14 +188,22 @@ git push origin :refs/tags/v0.1.0 && git push origin v0.1.0
 
 It only ever happens once per repository.
 
-## `bunx cutver` installs an old beta
+## A plain install of your package gets the oldest prerelease
 
 npm pins `latest` on a package's *first* publish whatever `--tag` said, because
 every package must have a `latest`. A project whose first release was a
-prerelease therefore has `latest` stuck on it while the real channel moves on.
+prerelease therefore has `latest` stuck on it while the real channel moves on,
+and `bunx your-package` keeps handing out that first beta.
 
-Ask for the channel by name — `bunx cutver@beta` — until a stable version
-graduates, which moves `latest` forward on its own.
+cutver did this to itself: `latest` sat on `0.1.0-beta.0` through eleven more
+betas. Graduating to a stable version moves it forward on its own, since a
+stable publish carries no `--tag` and lands on `latest` by default. Before then,
+tell people to name the channel — `bunx your-package@beta` — or move the tag by
+hand:
+
+```bash
+npm dist-tag add your-package@1.3.0-beta.7 latest
+```
 
 ## A published package depends on the wrong version
 

@@ -1,7 +1,7 @@
 # Set up CI
 
 ```bash
-bunx cutver@beta init bun
+bunx cutver init bun
 ```
 
 `cargo`, `node` and `bun` are the three. It writes:

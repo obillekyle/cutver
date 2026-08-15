@@ -7,7 +7,7 @@ the expensive moment. Read this once and the rest are automatic.
 ## Look first
 
 ```bash
-bunx cutver@beta --dry-run
+bunx cutver --dry-run
 ```
 
 A dry run writes nothing, runs nothing, and still reports everything the real
@@ -87,7 +87,7 @@ cutver: 1 package(s) have never been published:
 So, for release one:
 
 ```bash
-bunx cutver@beta --allow-first-publish
+bunx cutver --allow-first-publish
 ```
 
 ```bash
@@ -116,7 +116,7 @@ bun publish
 ## Then hand it to CI
 
 ```bash
-bunx cutver@beta init bun
+bunx cutver init bun
 ```
 
 That writes the two workflows. Read them — the comments in them are the

@@ -33,17 +33,10 @@ print. Source in [docs/](docs/).
 
 ## Install
 
-> **In beta.** `0.1.0-beta.0` was published with `--tag beta`, and npm still
-> pointed `latest` at it — **a package's first publish always sets `latest`,
-> whatever `--tag` says**, because npm requires every package to have one.
-> The flag is not useless (the `beta` tag exists and is what to depend on),
-> but it cannot do the one thing it is for until a second version exists.
-> Ask for the channel by name until `0.1.0` graduates.
-
 Nothing to install for a repository that already has Bun:
 
 ```bash
-bunx cutver@beta
+bunx cutver
 ```
 
 For one that does not — a Rust workspace, a CI image without a package manager
@@ -89,7 +82,7 @@ Writes `.github/workflows/version.yml`, `.github/workflows/publish.yml` and a
 `CHANGELOG.md` stub for the ecosystem you name.
 
 ```bash
-bunx cutver@beta init cargo
+bunx cutver init cargo
 ```
 
 Two workflows, always — never one `release.yml` that does both. That split is
