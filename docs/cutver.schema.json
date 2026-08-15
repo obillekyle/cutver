@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cutver.okyle.dev/cutver.schema.json",
+  "title": "cutver",
+  "description": "Which branches release, in which channel, for which ecosystem. Every key is optional; an absent file means cutver behaves as it always has.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "This file, for editor completion. cutver ignores it."
+    },
+    "schema": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1,
+      "default": 1,
+      "description": "The config schema version — not the project's. A value above the one this cutver understands is refused rather than guessed at, because a newer schema may give a key a different meaning and the failure mode of guessing is an irreversible publish."
+    },
+    "target": {
+      "enum": ["cargo", "node", "bun"],
+      "description": "Which ecosystem this repository releases. Only needed when a repository has both a package.json and a Cargo.toml, where detection would otherwise have to guess. --adapter on the command line wins over this."
+    },
+    "channels": {
+      "type": "object",
+      "description": "Branch patterns keyed by what they produce. A channel not mentioned here keeps its default, so naming only `beta` does not switch `rc` off.",
+      "additionalProperties": false,
+      "properties": {
+        "release": {
+          "$ref": "#/$defs/branches",
+          "description": "Branches that cut a stable release. Defaults to every branch; writing this list is the opt-in to strictness."
+        }
+      },
+      "patternProperties": {
+        "^[-_ ]*[A-Za-z]+([-_ ]+[A-Za-z]+)*[-_ ]*$": {
+          "$ref": "#/$defs/branches",
+          "description": "Branches that cut a prerelease under this identifier. The key is the channel: it is the prerelease identifier in the version string and the dist-tag the release publishes under, so there is no separate tag field to drift out of step with it. camelCase, snake_case and spaces are normalised to kebab-case; digits are not accepted, because a counter that never matches its own pattern restarts at .0 on every run and the channel then reports 'nothing to release' forever."
+        }
+      }
+    }
+  },
+  "$defs": {
+    "branches": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "Literal names (`develop`), globs (`nightly/*`), or `{version}-<channel>` for a branch that declares its own base. A leading `release/` is stripped before matching."
+    }
+  }
+}

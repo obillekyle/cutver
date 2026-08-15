@@ -6,6 +6,12 @@ there is a test whose whole job is to keep that true.
 `cutver.json` or `cutver.yml` at the repository root — same schema, pick your
 poison. JSON gets editor completion from `$schema`; YAML gets comments.
 
+The schema is served at
+[cutver.okyle.dev/cutver.schema.json](https://cutver.okyle.dev/cutver.schema.json),
+and a test holds it to the loader — the same ecosystems, the same schema
+ceiling, the same verdict on a channel name. An editor that accepts a config
+cutver refuses would be worse than no completion at all.
+
 ```json
 {
   "$schema": "https://cutver.okyle.dev/cutver.schema.json",
