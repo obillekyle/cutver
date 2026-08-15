@@ -6,6 +6,48 @@ downgrade from prose that explains itself.
 
 ## [Unreleased]
 
+### Added
+
+- **`init cargo` says which matrix rows will need a setup step**, before the
+  first tag rather than after it.
+
+  cutver knows which binaries a workspace declares. It cannot know what they
+  link against — the thing that stops a build is a *system* library, and those
+  appear in no manifest at all. `fuser` needs `libfuse`; nothing in any
+  `Cargo.toml` says so.
+
+  What is readable is how a crate goes looking. A build script that searches for
+  something already installed pulls in a helper to do it, and that helper is an
+  ordinary build-dependency. So `cargo metadata --filter-platform` resolves each
+  row's graph — without compiling anything, so the macOS answer arrives in
+  seconds on a Windows laptop — and anything reaching `pkg-config`,
+  `system-deps`, `vcpkg` or `bindgen` gets named:
+
+      the matrix in publish.yml starts with three runners, and:
+        aarch64-apple-darwin
+          fuser searches for an installed library via pkg-config
+        x86_64-pc-windows-msvc
+          winfsp-sys needs libclang at build time
+
+  Both of those are the failures that cost alloyfs two release runs on a public
+  tag. `cc` is deliberately *not* flagged: it is everywhere and almost always
+  compiles vendored C, so including it would put a warning on half the ecosystem
+  and teach everyone to skip reading these.
+
+  **It reports what a crate looks for, never what a runner lacks.** Against
+  alloyfs it names all three rows and the Linux one builds fine, because the
+  ubuntu image already ships libfuse. Over-reporting is the right side to err
+  on: a false positive costs a line of reading, a miss costs a release.
+
+  It never refuses, and it fails soft — no cargo, no network, unparseable
+  output, and `init` still writes every file and says nothing.
+
+- [Binaries on a tag](https://cutver.okyle.dev/#/guides/artifacts), on the same
+  subject at length: the `cfg(unix)` trap (`cfg(unix)` is a *family*, and it is
+  true on macOS), the three ways to fix a failing row, why `matrix.target` is a
+  label rather than something passed to cargo, and why one failing row costs the
+  whole release.
+
 ## [1.1.1] — 2026-08-15
 
 ### Fixed

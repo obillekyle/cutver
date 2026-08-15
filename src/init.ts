@@ -311,6 +311,20 @@ ${
 }
 
 /**
+ * The runners the generated cargo matrix starts with.
+ *
+ * Data rather than three lines inside a template literal, because `init` probes
+ * each of these against the real dependency graph before it writes anything —
+ * see `platforms.ts`. A row nobody can build is worth saying out loud while the
+ * file is being created, not after a tag is public.
+ */
+export const CARGO_RUNNERS: readonly { os: string; target: string }[] = [
+  { os: 'ubuntu-latest', target: 'x86_64-unknown-linux-gnu' },
+  { os: 'macos-latest', target: 'aarch64-apple-darwin' },
+  { os: 'windows-latest', target: 'x86_64-pc-windows-msvc' },
+]
+
+/**
  * Building executables and attaching them to the GitHub release.
  *
  * **Native builds on three runners, not cross-compilation.** Adding a target is
@@ -340,9 +354,7 @@ const ARTIFACT_JOB: Record<Ecosystem, string> = {
       fail-fast: false
       matrix:
         include:
-          - { os: ubuntu-latest,  target: x86_64-unknown-linux-gnu }
-          - { os: macos-latest,   target: aarch64-apple-darwin }
-          - { os: windows-latest, target: x86_64-pc-windows-msvc }
+${CARGO_RUNNERS.map(r => `          - { os: ${`${r.os},`.padEnd(15)} target: ${r.target} }`).join('\n')}
     runs-on: \${{ matrix.os }}
 
     steps:

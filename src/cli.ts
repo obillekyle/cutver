@@ -30,7 +30,8 @@ import {
   type Change,
 } from './adapters'
 import { rollChangelog } from './changelog'
-import { ECOSYSTEMS, init, type Ecosystem } from './init'
+import { CARGO_RUNNERS, ECOSYSTEMS, init, type Ecosystem } from './init'
+import { platformAdvice, probeTargets } from './platforms'
 import { installHook, uninstallHook } from './hook'
 import { currentBranch, isGitRepo, remoteUrl, status } from './git'
 import { plan, PlanRefusal, SEMVER, type Survey } from './plan'
@@ -486,6 +487,20 @@ async function runInit(argv: string[]): Promise<void> {
         '         package.json and not yet in the lockfile, and the generated\n' +
         '         workflow installs with --frozen-lockfile.',
     )
+  }
+
+  // **Asked here rather than guessed at write time.** cutver cannot know
+  // whether a workspace builds on all three runners it just scaffolded — the
+  // thing that stops it is a system library, which no manifest mentions. So the
+  // dependency graph is resolved per target and anything that goes looking for
+  // a preinstalled library is named. Costs three cargo invocations and turns a
+  // failure that arrives after a public tag into a line of output here.
+  if (ADAPTER_FOR[eco as Ecosystem] === 'cargo' && publishTo('cargo', config).includes('artifacts')) {
+    const notes = await probeTargets(
+      root,
+      CARGO_RUNNERS.map(r => r.target),
+    )
+    for (const line of platformAdvice(notes)) console.log(line)
   }
 
   console.log(
