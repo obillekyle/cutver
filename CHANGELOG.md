@@ -6,6 +6,53 @@ downgrade from prose that explains itself.
 
 ## [Unreleased]
 
+## [1.0.0] — 2026-08-15
+
+The first stable release. Nothing in it is new — the last thirteen entries are
+what is in it — so this note is about what the number means rather than what
+changed.
+
+### The number is 1.0.0 rather than 0.1.0
+
+Thirteen betas is enough evidence about the shape of the thing. Under 0.x a
+minor is free to break, which would leave every rule below revocable, and the
+rules are the entire product: a release tool whose arithmetic might change is
+one nobody can leave running unattended in CI.
+
+So the CLI surface, the branch rules and the version arithmetic are the
+commitment. Breaking any of them means 2.0.0 — which is a promise cutver makes
+about itself using the rule it applies to everyone else, since `--channel`
+replacing four flags is exactly what took this to 1.0.0 rather than to 0.2.0.
+
+Two things are explicitly *not* covered: the internal module layout (nothing
+imports cutver as a library, and `src/` is free to move), and the wording of
+messages, which will keep improving.
+
+### Graduating a prerelease needs the version named
+
+Worth knowing, because it looks like a bug the first time. Whether to release is
+measured from the last tag of *any* kind, so on a branch whose last tag is
+`v1.3.0-beta.7` a graduation reports **nothing to release** — correctly, since
+nothing new has landed since that beta. That is the same rule that stops a docs
+commit spending a beta number.
+
+Pass the number:
+
+```bash
+cutver 1.3.0
+```
+
+This release was cut that way. The alternative would be a rule that treats
+"prerelease → stable" as its own kind of release, and the version it would have
+to invent is exactly the one a human should be typing deliberately.
+
+### `latest` on npm moves with it
+
+`0.1.0-beta.0` held the `latest` tag for all thirteen betas, because npm pins it
+on a package's first publish whatever `--tag` says. A stable publish carries no
+`--tag` and lands on `latest` by default, so `bunx cutver` resolves here from
+now on and the docs no longer ask for `@beta`.
+
 ## [0.1.0-beta.12] — 2026-08-15
 
 ### Added
