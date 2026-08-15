@@ -6,6 +6,8 @@ downgrade from prose that explains itself.
 
 ## [Unreleased]
 
+## [1.1.0] — 2026-08-15
+
 ### Added
 
 - **`publish` in the config: what a tag produces.** A list rather than a choice,
