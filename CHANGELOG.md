@@ -6,6 +6,8 @@ downgrade from prose that explains itself.
 
 ## [Unreleased]
 
+## [0.1.0-beta.12] — 2026-08-15
+
 ### Added
 
 - `docs/cutver.schema.json`, served at the URL the config reference has been
