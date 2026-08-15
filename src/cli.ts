@@ -46,14 +46,37 @@ import {
 } from './registry'
 import { CHANNELS } from './version-from-commits'
 
-// Injected by `bun build --compile --define`. A compiled executable does not
-// carry package.json — the docs are explicit that it is not embedded by
-// default — so reading the version from disk works in development and reports
-// nothing at all from the binary, which is the one place a user is most likely
-// to ask. `typeof` rather than a bare reference: undefined at dev time.
+/**
+ * What cutver believes its own version to be, from whichever of the two
+ * distributions is running.
+ *
+ * `CUTVER_VERSION` is injected by `bun build --compile --define`, because a
+ * compiled executable does not carry package.json and a binary that reported
+ * nothing would be reporting it in the one place a person is most likely to
+ * ask. `typeof` rather than a bare reference: the define does not exist outside
+ * a compiled build.
+ *
+ * **The manifest import is the other half, and it was missing until 1.0.1.**
+ * The npm package's `bin` points straight at `src/cli.ts`, so nothing ever
+ * defines `CUTVER_VERSION` there and every install from beta.0 onward answered
+ * `dev`. That is a cosmetic wrong answer for `--version` and a real one twice
+ * over: `hook install` writes the unpinned `releases/latest/download` URL for
+ * a version it thinks is a source checkout, and `init` skips pinning cutver as
+ * a devDependency for the same reason — so `bunx cutver init` generated exactly
+ * the floating-on-`latest` workflow that pinning exists to prevent.
+ *
+ * An import rather than a read, so it resolves synchronously and cannot fail
+ * at a path the way `../package.json` would from a bundled or relocated entry.
+ * The define still wins where it exists; `dev` now means a source checkout with
+ * no manifest, which is the only case left.
+ */
+import manifest from '../package.json' with { type: 'json' }
+
 declare const CUTVER_VERSION: string | undefined
 const VERSION: string =
-  typeof CUTVER_VERSION === 'string' && CUTVER_VERSION ? CUTVER_VERSION : 'dev'
+  typeof CUTVER_VERSION === 'string' && CUTVER_VERSION
+    ? CUTVER_VERSION
+    : (manifest.version ?? 'dev')
 
 const HELP = `cutver ${VERSION} — cut a version from your commit messages.
 

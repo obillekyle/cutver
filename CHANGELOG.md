@@ -6,6 +6,29 @@ downgrade from prose that explains itself.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Installed from npm, cutver reported its version as `dev` — and had since
+  beta.0.** `CUTVER_VERSION` is injected by `bun build --compile --define`, but
+  the npm package's `bin` points straight at `src/cli.ts`, where nothing defines
+  it. Only the compiled executable ever knew its own version.
+
+  Three bugs wearing one coat, and the third is the one that mattered. Both
+  callers that branch on `version === 'dev'` took the source-checkout path, so
+  `hook install` wrote the unpinned `releases/latest/download` URL — a 404 in
+  any repository that has only published prereleases — and `init` skipped
+  pinning cutver as a devDependency, generating exactly the workflow floating on
+  `latest` that the pin exists to prevent. The README has claimed that pin since
+  beta.3.
+
+  The manifest is now imported as the fallback, so `dev` means a source checkout
+  with no manifest and nothing else. Every unit test passed throughout, because
+  each was handed a `version` argument by the test itself; the gap was never in
+  what the functions did with a version but in which version the CLI handed
+  them. `cli.test.ts` runs the real entry point as a subprocess, which is the
+  only place that is visible — verified by reverting the fix and watching all
+  three assertions fail.
+
 ## [1.0.0] — 2026-08-15
 
 The first stable release. Nothing in it is new — the last thirteen entries are
