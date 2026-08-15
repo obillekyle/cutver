@@ -6,6 +6,8 @@ downgrade from prose that explains itself.
 
 ## [Unreleased]
 
+## [1.0.1] — 2026-08-15
+
 ### Fixed
 
 - **Installed from npm, cutver reported its version as `dev` — and had since
