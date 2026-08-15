@@ -6,6 +6,48 @@ downgrade from prose that explains itself.
 
 ## [Unreleased]
 
+### Added
+
+- **`publish` in the config: what a tag produces.** A list rather than a choice,
+  because these were never alternatives — cutver's own release publishes to npm
+  *and* attaches five standalone executables, and modelling it as an enum would
+  have made its own release shape unrepresentable.
+
+  | | |
+  | --- | --- |
+  | `registry` | publish to npm or crates.io |
+  | `artifacts` | build executables, attach them to the GitHub release |
+  | `[]` | tag and stop — a real answer, not an omission |
+
+  **The default is `[artifacts]` for cargo and `[registry]` for node and bun,**
+  and the asymmetry is the point. `cargo publish` reserves the crate name
+  permanently, for *every member of the workspace* — a ten-crate workspace
+  claims ten names the first time the generated workflow runs, with no undo. A
+  Rust workspace is also far more often an application than a library. Opting in
+  is a line of config; opting out afterwards is not possible at all. npm has no
+  reservation of that kind, so the safe default differs the same way the risk
+  does.
+
+  Two consequences beyond which jobs get written:
+
+  - `publish: []` writes no `publish.yml`, and `version.yml` drops its handoff
+    step — dispatching a workflow that is not there fails the run *after* the tag
+    is already public.
+  - **The registry preflight is only asked when a tag publishes to a registry.**
+    Its job is to refuse a release for a package the registry has never heard of,
+    since a first publish cannot go through a trusted publisher. Against a
+    repository whose tags produce executables that is not a safeguard — measured
+    against alloyfs, it was ten crates reported missing from a registry they will
+    never reach, needing `--allow-first-publish` forever to say so.
+
+  The generated artifact job builds **natively on three runners** rather than
+  cross-compiling, and asks `cargo metadata` which binaries exist rather than
+  naming them. Both are scars: cutver shipped a segfaulting
+  `cutver-windows-x64.exe` for five releases because CI cross-compiled every
+  target on Linux, and a workflow with a binary name written into it uploads
+  nothing the day someone renames it. A prerelease tag is marked as a prerelease
+  on the release, because `releases/latest/download/…` skips those.
+
 ## [1.0.1] — 2026-08-15
 
 ### Fixed

@@ -42,12 +42,67 @@ channels:
 | --- | --- |
 | `schema` | The **config** schema version, not your project's. `1` today. |
 | `target` | `bun` \| `node` \| `cargo`. Replaces `--adapter` when a repository has both a `package.json` and a `Cargo.toml`. |
+| `publish` | What a tag produces: `registry`, `artifacts`, both, or `[]`. See [What a tag produces](#what-a-tag-produces). |
 | `channels.release` | Branches that cut a stable release. |
 | `channels.<name>` | Branches that cut a prerelease under that identifier. |
 
 Every key is optional. `--adapter` and `--channel` on the command line beat
 whatever the file says — the flag was typed just now, the file was written
 months ago.
+
+## What a tag produces
+
+```yaml
+publish: [registry, artifacts]
+```
+
+A list, because these are not alternatives. cutver's own release does both:
+`cutver` is on npm *and* every tag carries five standalone executables, because
+a repository with no JavaScript runtime still needs a way to run a version bump.
+
+| | |
+| --- | --- |
+| `registry` | Publish to npm or crates.io. |
+| `artifacts` | Build executables and attach them to the GitHub release. |
+| `[]` | Tag and stop. A real answer, not an omission. |
+
+Leave it out and the ecosystem decides:
+
+| `target` | default |
+| --- | --- |
+| `bun`, `node` | `[registry]` |
+| `cargo` | `[artifacts]` |
+
+**That asymmetry is deliberate.** `cargo publish` **reserves the crate name
+permanently**, for every member of the workspace — a ten-crate workspace claims
+ten names the first time the workflow runs, and there is no undo. A Rust
+workspace is also far more often an application than a library. So a generated
+file must not publish one as a side effect of wanting version numbers: opting in
+is a line of config, opting out afterwards is not possible at all. npm has no
+reservation of that kind and a `package.json` almost always exists to be
+installed, so the safe default differs the same way the risk does.
+
+Two things follow from the setting, beyond which jobs `cutver init` writes:
+
+- **`publish: []` writes no `publish.yml` at all**, and `version.yml` drops its
+  handoff step — dispatching a workflow that is not there fails the run *after*
+  the tag is already public.
+- **The registry preflight is only asked when a tag publishes to one.** Its job
+  is to refuse a release for a package the registry has never heard of, because
+  a first publish cannot go through a trusted publisher. Against a repository
+  whose tags produce executables that is not a safeguard, just ten crates
+  reported missing from a registry they will never reach.
+
+The generated artifact job builds **natively on three runners** rather than
+cross-compiling, and asks `cargo metadata` which binaries exist rather than
+naming them. Both are scars: cutver shipped a segfaulting
+`cutver-windows-x64.exe` for five releases because CI cross-compiled every
+target on Linux, and a workflow with a binary name written into it uploads
+nothing the day someone renames it.
+
+A prerelease tag is marked as a prerelease on the GitHub release, which matters
+more than it sounds — `releases/latest/download/…` follows GitHub's idea of
+latest and skips prereleases. See [Install](../getting-started/install.md).
 
 ## Channels
 

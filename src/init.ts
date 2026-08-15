@@ -25,7 +25,16 @@
 import { addDevDependency } from './adapters/js'
 import { downloadBase, HOOK_NAME, installHook } from './hook'
 import { shapeOf } from './config/match'
-import { DEFAULT_CONFIG, ECOSYSTEMS, RELEASE, type Config, type Ecosystem } from './config/schema'
+import {
+  DEFAULT_CONFIG,
+  ECOSYSTEMS,
+  RELEASE,
+  publishTo,
+  type Config,
+  type Ecosystem,
+  type PublishTarget,
+} from './config/schema'
+import { ADAPTER_FOR } from './adapters'
 import { parseConfig } from './config/load'
 import { configTemplate } from './config/template'
 
@@ -281,6 +290,9 @@ ${GATES[eco]}
           git push origin HEAD
           git push origin "v$VERSION"
 
+${
+    publishTo(ADAPTER_FOR[eco], config).length
+      ? `
       # The tag is pushed above, but a tag pushed by GITHUB_TOKEN does not
       # trigger \`push: tags\` anywhere. \`workflow_dispatch\` is one of the two
       # documented exemptions, so publish.yml is asked directly.
@@ -291,7 +303,145 @@ ${GATES[eco]}
           VERSION: \${{ steps.check.outputs.value }}
         run: gh workflow run publish.yml -f tag="v$VERSION"
 `
+      : `
+      # No handoff: \`publish\` in cutver.yml names nothing a tag produces, so
+      # there is no publish.yml to dispatch. The tag above is the release.
+`
+  }`
 }
+
+/**
+ * Building executables and attaching them to the GitHub release.
+ *
+ * **Native builds on three runners, not cross-compilation.** Adding a target is
+ * a decision with a toolchain attached, and a generated file that quietly
+ * cross-compiles is a generated file that quietly ships a broken binary — which
+ * is not hypothetical here. cutver published a segfaulting
+ * `cutver-windows-x64.exe` for five releases because CI cross-compiled every
+ * target on Linux and `--bytecode` produces a broken executable for the Windows
+ * target. Three native runners cannot fail that way.
+ *
+ * **The binaries are discovered, never named.** `cargo metadata` lists the bin
+ * targets the workspace actually declares, so adding a binary needs no edit
+ * here and a renamed one cannot leave the workflow uploading nothing.
+ */
+const ARTIFACT_JOB: Record<Ecosystem, string> = {
+  cargo: `  artifacts:
+    name: \${{ matrix.target }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest,  target: x86_64-unknown-linux-gnu }
+          - { os: macos-latest,   target: aarch64-apple-darwin }
+          - { os: windows-latest, target: x86_64-pc-windows-msvc }
+    runs-on: \${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: \${{ inputs.tag || github.ref_name }}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - run: cargo build --workspace --release
+
+      # Every \`[[bin]]\` the workspace declares, asked of cargo rather than
+      # written down. \`--no-deps\` keeps it to this workspace's own crates.
+      - name: Collect the binaries
+        shell: bash
+        run: |
+          mkdir -p dist
+          ext=""
+          [ "\${{ runner.os }}" = "Windows" ] && ext=".exe"
+          cargo metadata --format-version 1 --no-deps \\
+            | jq -r '.packages[].targets[] | select(.kind[] == "bin") | .name' \\
+            | while read -r bin; do
+                cp "target/release/\$bin\$ext" "dist/\$bin-\${{ matrix.target }}\$ext"
+              done
+          ls -l dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: \${{ matrix.target }}
+          path: dist/*`,
+  bun: `  artifacts:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: \${{ inputs.tag || github.ref_name }}
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+
+      # **Yours to write, like the gates.** cutver knows a Rust workspace's
+      # binaries from cargo; it cannot know what a JavaScript project considers
+      # a build artifact. Put whatever belongs on the release into dist/ —
+      # \`bun build --compile\` executables, a tarball, a zip.
+      - run: bun run build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/*`,
+  node: `  artifacts:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: \${{ inputs.tag || github.ref_name }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+
+      # **Yours to write, like the gates.** Put whatever belongs on the release
+      # into dist/.
+      - run: npm run build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/*`,
+}
+
+/**
+ * Attaching what the matrix built, and marking a prerelease as one.
+ *
+ * **\`--prerelease\` is not cosmetic.** \`releases/latest/download/…\` follows
+ * GitHub's idea of latest, which skips prereleases — so a beta wrongly marked
+ * as a full release becomes the target of every unpinned download URL, and a
+ * project that has only published prereleases gets a 404 from that URL rather
+ * than an empty result. Both were measured against this project.
+ */
+const RELEASE_JOB = `  release:
+    needs: artifacts
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: staged
+          merge-multiple: true
+
+      - name: Attach them to the release
+        env:
+          GH_TOKEN: \${{ github.token }}
+          REPO: \${{ github.repository }}
+        run: |
+          case "$TAG" in
+            *-*) pre=--prerelease ;;
+            *)   pre= ;;
+          esac
+          gh release create "$TAG" --repo "$REPO" --title "$TAG" --notes "" $pre \\
+            || echo "release $TAG already exists — uploading into it"
+          gh release upload "$TAG" --repo "$REPO" --clobber staged/*`
 
 /** The publish step, which is the only part that genuinely differs per registry. */
 const PUBLISH_STEP: Record<Ecosystem, string> = {
@@ -324,18 +474,44 @@ const PUBLISH_STEP: Record<Ecosystem, string> = {
         run: cargo publish --workspace`,
 }
 
-function publishWorkflow(eco: Ecosystem, config: Config, version?: string): string {
+function publishWorkflow(
+  eco: Ecosystem,
+  config: Config,
+  version?: string,
+  targets: PublishTarget[] = publishTo(ADAPTER_FOR[eco], config),
+): string {
   const RUN = runners(version)
-  const npm = eco !== 'cargo'
+  const registry = targets.includes('registry')
+  const artifacts = targets.includes('artifacts')
+  const npm = eco !== 'cargo' && registry
   return `name: Publish
 
-# The only thing here that touches the registry, and the only one that cannot
-# be undone: a version number can never be reused, by anyone, ever. So it fires
-# on a tag rather than on a push — version.yml creates the tag, and a human can
-# also create one by hand.
-${
-  npm
-    ? `#
+# What a tag produces${
+    registry && artifacts
+      ? ': a registry publish and the executables on the release'
+      : registry
+        ? ', and the one thing here that cannot be undone'
+        : ': the executables, attached to the GitHub release'
+  }.
+#
+# It fires on a tag rather than on a push — version.yml creates the tag, and a
+# human can also create one by hand.${
+    registry
+      ? `
+#
+# **A version number can never be reused, by anyone, ever.** That is why the
+# irreversible half lives behind its own trigger rather than happening because
+# someone merged a pull request.`
+      : `
+#
+# **Nothing here touches a registry.** \`publish\` in cutver.yml does not name
+# one, so a tag builds binaries and stops. Add \`registry\` to that list to
+# publish as well — and read what it costs first: crates.io reserves a crate
+# name on its first publish, permanently, for every member of the workspace.`
+  }${
+    npm
+      ? `
+#
 # Authentication is **npm Trusted Publishing (OIDC)**: no long-lived token
 # exists anywhere. Two consequences worth knowing before editing this file:
 #
@@ -349,11 +525,14 @@ ${
 #   - Trusted publishing signs a provenance statement naming this repository,
 #     and npm rejects a tarball whose manifest does not name it back. Set
 #     \`repository\` in package.json before the first automated release.`
-    : `#
+      : registry
+        ? `
+#
 # Authenticated with CARGO_REGISTRY_TOKEN. crates.io reserves a crate name on
 # its first publish, so release one goes out by hand — cutver refuses to cut a
 # release for a crate the registry has never heard of.`
-}
+        : ''
+  }
 #
 # **A tag pushed by version.yml cannot start this workflow.** GitHub refuses to
 # create runs from events made with the default GITHUB_TOKEN, to prevent
@@ -377,14 +556,17 @@ concurrency:
 permissions:
   contents: read${npm ? `\n  # Without this the runner cannot mint the OIDC token and npm falls back to\n  # looking for a credential that does not exist — failing with an error about\n  # credentials rather than about permissions.\n  id-token: write` : ''}
 
-jobs:
-  publish:
-    runs-on: ubuntu-latest
+# One name for the tag whichever trigger fired, at workflow level so every job
+# below reads the same one. On a tag push \`ref_name\` is the tag; on a dispatch
+# it is the branch, so the input has to win.
+env:
+  TAG: \${{ inputs.tag || github.ref_name }}
 
-    # One name for the tag whichever trigger fired. On a tag push \`ref_name\` is
-    # the tag; on a dispatch it is the branch, so the input has to win.
-    env:
-      TAG: \${{ inputs.tag || github.ref_name }}
+jobs:
+${
+  registry
+    ? `  publish:
+    runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
@@ -440,7 +622,9 @@ ${distTagArms(config).join('\n')}
 `
     : ''
 }
-${PUBLISH_STEP[eco]}
+${PUBLISH_STEP[eco]}`
+    : ''
+}${artifacts ? `${registry ? '\n\n' : ''}${ARTIFACT_JOB[eco]}\n\n${RELEASE_JOB}` : ''}
 `
 }
 
@@ -455,9 +639,21 @@ export function initFiles(
   version?: string,
   config: Config = DEFAULT_CONFIG,
 ): InitFile[] {
+  // A tag that produces nothing needs no workflow to produce it. Writing an
+  // empty publish.yml would leave a file whose whole job is to be misread as
+  // broken; `version.yml`'s handoff step is skipped to match.
+  const targets = publishTo(ADAPTER_FOR[eco], config)
+
   return [
     { path: '.github/workflows/version.yml', contents: versionWorkflow(eco, config, version) },
-    { path: '.github/workflows/publish.yml', contents: publishWorkflow(eco, config, version) },
+    ...(targets.length
+      ? [
+          {
+            path: '.github/workflows/publish.yml',
+            contents: publishWorkflow(eco, config, version, targets),
+          },
+        ]
+      : []),
     // Only if absent, and never with content: a changelog is prose someone
     // writes. cutver opens the heading and fills in nothing.
     { path: 'CHANGELOG.md', contents: CHANGELOG, onlyIfAbsent: true },

@@ -21,6 +21,14 @@
       "enum": ["cargo", "node", "bun"],
       "description": "Which ecosystem this repository releases. Only needed when a repository has both a package.json and a Cargo.toml, where detection would otherwise have to guess. --adapter on the command line wins over this."
     },
+    "publish": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "enum": ["registry", "artifacts"]
+      },
+      "description": "What a tag produces. A list, because these are not alternatives — cutver itself publishes to npm and attaches five executables to every release. `registry` publishes to npm or crates.io; `artifacts` builds executables and attaches them to the GitHub release. An empty list is a real answer: tag and stop. Omitted means the default for the ecosystem — `[registry]` for node and bun, `[artifacts]` for cargo, because publishing to crates.io reserves every workspace member's name permanently and a Rust workspace is more often an application than a library."
+    },
     "channels": {
       "type": "object",
       "description": "Branch patterns keyed by what they produce. A channel not mentioned here keeps its default, so naming only `beta` does not switch `rc` off.",

@@ -17,17 +17,19 @@ import {
   DEFAULT_CONFIG,
   ECOSYSTEMS,
   KEY_ALIASES,
+  PUBLISH_TARGETS,
   RELEASE,
   toKebab,
   SCHEMA_VERSION,
   type Config,
   type Ecosystem,
+  type PublishTarget,
 } from './schema'
 
 /** Tried in this order; more than one existing is an error, not a preference. */
 const NAMES = ['cutver.json', 'cutver.yml', 'cutver.yaml'] as const
 
-const TOP_LEVEL = new Set(['$schema', 'schema', 'target', 'channels'])
+const TOP_LEVEL = new Set(['$schema', 'schema', 'target', 'channels', 'publish'])
 
 /** Nearest known key, so a typo names its own fix. */
 function nearest(key: string, known: Iterable<string>): string | null {
@@ -121,7 +123,41 @@ export function parseConfig(raw: unknown, where: string): Config {
   }
 
   const channels = parseChannels(doc.channels, where)
-  return { schema, target, channels, source: where }
+  const publish = parsePublish(doc.publish, where)
+  return { schema, target, channels, publish, source: where }
+}
+
+/**
+ * `publish: [registry, artifacts]`, or `[]` to tag and stop.
+ *
+ * Absent stays `null` so the adapter default applies; an empty list is kept as
+ * an empty list, because "publish nothing" is a thing a repository means on
+ * purpose and is not the same as not having answered.
+ */
+function parsePublish(raw: unknown, where: string): PublishTarget[] | null {
+  if (raw === undefined) return null
+  if (!Array.isArray(raw)) {
+    throw new ConfigError(
+      `${where}: \`publish\` must be a list — ${PUBLISH_TARGETS.map(t => `\`${t}\``).join(
+        ' or ',
+      )}, both, or \`[]\` to tag without publishing`,
+    )
+  }
+
+  const out: PublishTarget[] = []
+  for (const entry of raw) {
+    const name = typeof entry === 'string' ? toKebab(entry) : ''
+    if (!(PUBLISH_TARGETS as readonly string[]).includes(name)) {
+      throw new ConfigError(
+        `${where}: \`${String(entry)}\` is not something a tag can produce.\n` +
+          `        Known: ${PUBLISH_TARGETS.join(', ')}.`,
+      )
+    }
+    // Deduplicated rather than refused: a list naming the same output twice is
+    // a copy-paste, not a decision, and there is no second thing it could mean.
+    if (!out.includes(name as PublishTarget)) out.push(name as PublishTarget)
+  }
+  return out
 }
 
 function parseChannels(raw: unknown, where: string): Record<string, string[]> {

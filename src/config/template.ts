@@ -27,6 +27,25 @@ schema: 1
 # a package.json and a Cargo.toml both exist.
 target: ${eco}
 
+# What a tag produces. Both are allowed — cutver's own release publishes to npm
+# *and* attaches an executable per platform.
+#
+#   registry   publish to ${eco === 'cargo' ? 'crates.io' : 'npm'}
+#   artifacts  build executables, attach them to the GitHub release
+#
+# \`[]\` is a real answer: tag and stop.
+${
+  eco === 'cargo'
+    ? `#
+# Defaulted to artifacts here, and left commented so the choice stays visible.
+# **\`cargo publish\` reserves the crate name permanently**, for every member of
+# the workspace — that is not something a generated workflow should do as a side
+# effect of wanting version numbers. Uncomment to publish as well.
+#
+# publish: [artifacts, registry]`
+    : `publish: [registry]`
+}
+
 # Keyed by what the branch produces; the key is the prerelease identifier and
 # the registry dist-tag. A branch matching nothing here releases nothing —
 # which is the point: an accidental \`cutver\` on a feature branch cuts nothing.

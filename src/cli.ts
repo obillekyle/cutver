@@ -35,7 +35,7 @@ import { installHook, uninstallHook } from './hook'
 import { currentBranch, isGitRepo, remoteUrl, status } from './git'
 import { plan, PlanRefusal, SEMVER, type Survey } from './plan'
 import { loadConfig } from './config/load'
-import { channelNames, KEY_ALIASES, toKebab, type Config } from './config/schema'
+import { channelNames, KEY_ALIASES, publishTo, toKebab, type Config } from './config/schema'
 import { explainReport } from './explain'
 import {
   checkRegistry,
@@ -711,7 +711,8 @@ async function main(): Promise<void> {
   // The adapter. Detected from which manifest exists; asked for when both do,
   // because a repository with a Cargo.toml *and* a package.json is common and
   // guessing would eventually bump the wrong one.
-  const adapter = ADAPTERS[(await resolveAdapter(root, opts, config)).id]
+  const adapterId = (await resolveAdapter(root, opts, config)).id
+  const adapter = ADAPTERS[adapterId]
 
   let current: string
   try {
@@ -774,7 +775,20 @@ async function main(): Promise<void> {
     die(`'${version}' is not a semver version (no leading 'v')`)
   }
 
-  if (!opts.offline) {
+  // **The preflight is a question about publishing, so it is only asked when a
+  // tag publishes.** Its whole job is to refuse a release for a package the
+  // registry has never heard of, because a first publish cannot go through a
+  // trusted publisher. Against a repository whose tags produce executables and
+  // nothing else that refusal is not a safeguard — it is ten crates reported
+  // missing from a registry they are never going to reach, needing
+  // `--allow-first-publish` forever to say so.
+  const publishing = publishTo(adapterId, config).includes('registry')
+
+  if (opts.offline) {
+    console.log('\npreflight: skipped (--offline)')
+  } else if (!publishing) {
+    console.log('\npreflight: skipped — a tag here publishes to no registry')
+  } else {
     // `remoteUrl` is a git spawn with no relationship to the registry lookups,
     // so it rides alongside the HTTP rather than after it — free, since the
     // network round trip dominates.
@@ -783,8 +797,6 @@ async function main(): Promise<void> {
       remoteUrl(root),
     ])
     preflight(found, remote, opts.allowFirstPublish, opts.dryRun)
-  } else {
-    console.log('\npreflight: skipped (--offline)')
   }
 
   // A dirty tree means the release would capture edits nobody reviewed.

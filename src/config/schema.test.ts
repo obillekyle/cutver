@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import { parseConfig } from './load'
-import { ConfigError, ECOSYSTEMS, RELEASE, SCHEMA_VERSION } from './schema'
+import { ConfigError, ECOSYSTEMS, PUBLISH_TARGETS, RELEASE, SCHEMA_VERSION } from './schema'
 
 /**
  * The published JSON Schema, held to the loader.
@@ -54,7 +54,18 @@ describe('docs/cutver.schema.json', () => {
   test('allows exactly the top-level keys the loader does', () => {
     const declared = Object.keys(schema.properties).sort()
     expect(schema.additionalProperties).toBe(false)
-    expect(declared).toEqual(['$schema', 'channels', 'schema', 'target'])
+    expect(declared).toEqual(['$schema', 'channels', 'publish', 'schema', 'target'])
+  })
+
+  test('offers exactly the publish targets that exist', () => {
+    expect([...schema.properties.publish.items.enum].sort()).toEqual([...PUBLISH_TARGETS].sort())
+
+    // And agrees with the loader on what it refuses, which is where a schema
+    // and a parser usually drift apart.
+    expect(() => parseConfig({ publish: ['registry'] }, 'test')).not.toThrow()
+    expect(() => parseConfig({ publish: [] }, 'test')).not.toThrow()
+    expect(() => parseConfig({ publish: ['crates'] }, 'test')).toThrow(ConfigError)
+    expect(() => parseConfig({ publish: 'registry' }, 'test')).toThrow(ConfigError)
   })
 
   test('caps `schema` at the version this build understands', () => {

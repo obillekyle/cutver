@@ -154,6 +154,28 @@ A branch matching nothing releases nothing — `cutver` exits 1, `--if-needed`
 exits 0, and `cutver check` exits 0 so the pre-push hook never blocks a feature
 branch. `cutver explain` shows which rule matched and every rule that did not.
 
+## What a tag produces
+
+```yaml
+publish: [registry, artifacts]
+```
+
+A list, not a choice — cutver's own release publishes to npm *and* attaches five
+standalone executables, because a repository with no JavaScript runtime still
+needs a way to run a version bump. `registry` publishes to npm or crates.io,
+`artifacts` builds executables and attaches them to the GitHub release, and
+`[]` means tag and stop.
+
+Omit it and the ecosystem decides: **`[registry]` for node and bun,
+`[artifacts]` for cargo.** `cargo publish` reserves the crate name
+permanently, for every member of the workspace, so a generated workflow must not
+claim ten names as a side effect of wanting version numbers — opting in is a
+line of config, opting out afterwards is not possible at all.
+
+The registry preflight is only asked when a tag publishes to a registry, so a
+Rust workspace that ships binaries is not told ten times that its crates are
+missing from a registry they will never reach.
+
 Full reference: [cutver.okyle.dev](https://cutver.okyle.dev/#/reference/config).
 
 ## How the version is worked out

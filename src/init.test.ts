@@ -2,6 +2,8 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { ECOSYSTEMS, init, initFiles, pinFor, type Ecosystem } from './init'
+import { DEFAULT_CONFIG, RELEASE, publishTo } from './config/schema'
+import { parseConfig } from './config/load'
 import { run } from './run'
 
 const made: string[] = []
@@ -28,7 +30,7 @@ describe('the generated workflows', () => {
         if (!file.path.startsWith('.github/workflows/')) continue
         const doc = Bun.YAML.parse(file.contents) as Record<string, any>
         expect(doc.name, `${eco} ${file.path}`).toBeString()
-        expect(Object.keys(doc.jobs).length, `${eco} ${file.path}`).toBe(1)
+        expect(Object.keys(doc.jobs).length, `${eco} ${file.path}`).toBeGreaterThan(0)
       }
     }
   })
@@ -64,13 +66,61 @@ describe('the generated workflows', () => {
     }
   })
 
-  test('npm publishes ask for an OIDC token; cargo does not', () => {
+  test('npm publishes ask for an OIDC token', () => {
     const npm = Bun.YAML.parse(initFiles('bun')[1]?.contents as string) as any
     expect(npm.permissions['id-token']).toBe('write')
+    expect(JSON.stringify(npm.jobs)).toContain('npm publish')
+  })
 
+  test('a cargo tag builds executables rather than claiming ten crate names', () => {
+    // The default that costs the least to be wrong about. `cargo publish`
+    // **reserves the crate name permanently**, for every workspace member, and
+    // a Rust workspace is far more often an application than a library — so a
+    // generated file must not publish one as a side effect of wanting version
+    // numbers. Opting in is a line of config; opting out afterwards is not
+    // possible at all.
     const cargo = Bun.YAML.parse(initFiles('cargo')[1]?.contents as string) as any
+    const jobs = JSON.stringify(cargo.jobs)
+
+    expect(Object.keys(cargo.jobs)).toEqual(['artifacts', 'release'])
+    expect(jobs).not.toContain('cargo publish')
+    expect(jobs).not.toContain('CARGO_REGISTRY_TOKEN')
     expect(cargo.permissions['id-token']).toBeUndefined()
-    expect(JSON.stringify(cargo.jobs)).toContain('cargo publish')
+
+    // Discovered from cargo, never written down: a renamed binary must not
+    // leave the workflow silently uploading nothing.
+    expect(jobs).toContain('cargo metadata')
+    expect(cargo.jobs.release.permissions.contents).toBe('write')
+  })
+
+  test('a prerelease tag is marked as one on the GitHub release', () => {
+    // `releases/latest/download/…` follows GitHub's idea of latest, which skips
+    // prereleases. A beta published as a full release becomes the target of
+    // every unpinned download URL in the world — measured against this project,
+    // which also measured the 404 in the other direction.
+    const cargo = initFiles('cargo')[1]?.contents as string
+    expect(cargo).toContain('--prerelease')
+  })
+
+  test('publish: [] writes no publish workflow and no handoff to one', () => {
+    // A tag that produces nothing needs no workflow, and version.yml must not
+    // dispatch a file that is not there — that fails the release run *after*
+    // the tag is already public.
+    const config = { ...DEFAULT_CONFIG, publish: [] }
+    const files = initFiles('cargo', undefined, config)
+
+    expect(files.map(f => f.path)).not.toContain('.github/workflows/publish.yml')
+    const version = Bun.YAML.parse(files[0]?.contents as string) as any
+    expect(JSON.stringify(version.jobs)).not.toContain('gh workflow run publish.yml')
+  })
+
+  test('publish: [registry, artifacts] does both, which is cutver own shape', () => {
+    const config = { ...DEFAULT_CONFIG, publish: ['registry' as const, 'artifacts' as const] }
+    const doc = Bun.YAML.parse(initFiles('bun', undefined, config)[1]?.contents as string) as any
+
+    expect(Object.keys(doc.jobs)).toEqual(['publish', 'artifacts', 'release'])
+    expect(JSON.stringify(doc.jobs)).toContain('npm publish')
+    expect(doc.permissions['id-token']).toBe('write')
   })
 
   test('a prerelease never publishes without a dist-tag', () => {
@@ -150,6 +200,27 @@ describe('init', () => {
         'CHANGELOG.md',
         'cutver.yml',
       ])
+    }
+  })
+
+  test('the scaffolded config is one cutver itself accepts', () => {
+    // It is hand-written YAML — `Bun.YAML.stringify` drops the comments, and in
+    // this file the comments are the artifact. Hand-written means a typo ships a
+    // config that cutver refuses on the first run after `init`, which is the
+    // worst possible moment to find out.
+    for (const eco of ECOSYSTEMS as readonly Ecosystem[]) {
+      const yml = initFiles(eco).find(f => f.path === 'cutver.yml')?.contents as string
+      const config = parseConfig(Bun.YAML.parse(yml), `${eco} cutver.yml`)
+
+      expect(config.target, eco).toBe(eco)
+      expect(config.channels[RELEASE], eco).toEqual(['main'])
+
+      // cargo leaves `publish` commented out, so the adapter default applies and
+      // a scaffolded Rust workspace does not claim ten crate names on its first
+      // tag. Everything else says `registry` outright.
+      expect(publishTo(eco === 'cargo' ? 'cargo' : 'js', config), eco).toEqual(
+        eco === 'cargo' ? ['artifacts'] : ['registry'],
+      )
     }
   })
 

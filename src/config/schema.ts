@@ -17,6 +17,41 @@ export const ECOSYSTEMS = ['cargo', 'node', 'bun'] as const
 export type Ecosystem = (typeof ECOSYSTEMS)[number]
 
 /**
+ * What a tag produces. A list, because these are not alternatives.
+ *
+ * cutver's own release does both: `cutver@1.0.1` is on npm *and* every tag
+ * carries five standalone executables, because a repository with no JavaScript
+ * runtime still needs a way to run a version bump. Modelling this as an enum
+ * would have made its own release shape unrepresentable.
+ *
+ * - `registry` — publish to the ecosystem's registry (npm, crates.io).
+ * - `artifacts` — build executables and attach them to the GitHub release.
+ *
+ * An empty list is a real answer: tag and stop. That is the right shape for a
+ * private service, and it is what stops the registry preflight refusing a
+ * release for ten crates nobody intends to publish.
+ */
+export const PUBLISH_TARGETS = ['registry', 'artifacts'] as const
+export type PublishTarget = (typeof PUBLISH_TARGETS)[number]
+
+/**
+ * The default when the config says nothing, keyed by adapter rather than
+ * ecosystem because that is what every caller already has.
+ *
+ * **cargo defaults to artifacts, and js to the registry**, which is not
+ * symmetry for its own sake. Publishing to crates.io *reserves the crate name
+ * permanently* — ten members means ten names claimed by a workflow the author
+ * ran to get version numbers. A Rust workspace is also far more often an
+ * application than a library. npm has no reservation semantics of that kind and
+ * a package.json almost always exists to be installed, so the safe default
+ * differs by ecosystem the same way the risk does.
+ */
+export const DEFAULT_PUBLISH: Record<'js' | 'cargo', PublishTarget[]> = {
+  js: ['registry'],
+  cargo: ['artifacts'],
+}
+
+/**
  * The reserved channel key: branches that cut a *stable* release.
  *
  * It lives in the same map as the prerelease channels because it is the same
@@ -89,8 +124,21 @@ export interface Config {
   target: Ecosystem | null
   /** Branch patterns keyed by what they produce. Includes `release`. */
   channels: Record<string, string[]>
+  /** What a tag produces. `null` means "the default for this adapter". */
+  publish: PublishTarget[] | null
   /** Where it was loaded from, for `explain`. `null` when nothing was found. */
   source: string | null
+}
+
+/**
+ * What a tag produces here, with the adapter default applied.
+ *
+ * `null` and `[]` are deliberately different: `null` is "nothing was said, use
+ * the default", `[]` is "say it explicitly — tag and stop". Collapsing them
+ * would make opting out of publishing impossible to express.
+ */
+export function publishTo(adapter: 'js' | 'cargo', config: Config): PublishTarget[] {
+  return config.publish ?? DEFAULT_PUBLISH[adapter]
 }
 
 /**
@@ -118,6 +166,7 @@ export const DEFAULT_CONFIG: Config = {
     beta: ['beta', '{version}-beta'],
     rc: ['rc', 'prerelease', '{version}-rc', '{version}-prerelease'],
   },
+  publish: null,
   source: null,
 }
 
