@@ -33,11 +33,13 @@ async function repo(entries: string[]): Promise<string> {
   await run(['git', 'config', 'user.email', 'fixture@example.invalid'], dir)
   await run(['git', 'config', 'user.name', 'fixture'], dir)
 
-  for (const [i, entry] of entries.entries()) {
+  for (const entry of entries) {
     const [subject = '', tag] = entry.split('@')
-    await Bun.write(`${dir}/f${i}.txt`, `${i}\n`)
-    await run(['git', 'add', '-A'], dir)
-    await run(['git', 'commit', '-q', '-m', subject], dir)
+    // Empty commits: nothing under test reads a file, only `git log` and
+    // `git tag`. Writing one and staging it cost an extra spawn and an extra
+    // write per commit — around 20% of a fixture, and these fixtures are most
+    // of the suite's runtime.
+    await run(['git', 'commit', '-q', '--allow-empty', '-m', subject], dir)
     if (tag) await run(['git', 'tag', tag], dir)
   }
 
@@ -227,7 +229,7 @@ describe('branch-declared versions', () => {
     // Publishing 1.1.0 here would ship a breaking change as a minor. A warning
     // would scroll past in a CI log and the wrong version would go out anyway.
     const root = await repo(['feat: one@v1.0.0', 'feat!: the world moved'])
-    expect(at(root, '1.1.0-beta.0', '1.1.0-beta')).rejects.toThrow(/declares 1\.1\.0.*2\.0\.0/s)
+    await expect(at(root, '1.1.0-beta.0', '1.1.0-beta')).rejects.toThrow(/declares 1\.1\.0.*2\.0\.0/s)
   })
 })
 
@@ -270,10 +272,10 @@ describe('a branch that names only a channel', () => {
       'feat: two@v1.3.0-beta.0',
       'feat!: the world moved',
     ])
-    expect(await at(root, '1.3.0-beta.0', 'beta')).toMatchObject({ version: '2.0.0-beta.0' })
+    await expect(await at(root, '1.3.0-beta.0', 'beta')).toMatchObject({ version: '2.0.0-beta.0' })
 
     // The versioned form, for contrast, refuses.
-    expect(at(root, '1.3.0-beta.0', '1.3.0-beta')).rejects.toBeInstanceOf(PlanRefusal)
+    await expect(at(root, '1.3.0-beta.0', '1.3.0-beta')).rejects.toBeInstanceOf(PlanRefusal)
   })
 
   test('a flag typed now beats a branch named months ago', async () => {
@@ -410,7 +412,7 @@ describe('a repository with a config', () => {
     const root = await repo(['feat: one@v1.2.0', 'feat!: the world moved'])
     const config = withChannels({ beta: ['{version}-beta'] })
 
-    expect(
+    await expect(
       plan({ root, current: '1.3.0-beta.0', branch: '1.3.0-beta', channel: null, config }),
     ).rejects.toBeInstanceOf(PlanRefusal)
   })

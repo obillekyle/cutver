@@ -19,7 +19,7 @@
  */
 import { Glob } from 'bun'
 import { run } from '../run'
-import { AdapterError, type Adapter, type Change, type WriteOptions } from './types'
+import { AdapterError, type Adapter, type Change } from './types'
 
 /** A `[section]` header on its own line. `[[array.of.tables]]` deliberately does not match. */
 const HEADER = /^[ \t]*\[([^[\]\r\n]+)\][ \t]*\r?$/gm
@@ -182,6 +182,7 @@ async function syncLock(root: string, dryRun: boolean): Promise<Change> {
 
 export const cargoAdapter: Adapter = {
   id: 'cargo',
+  registry: 'crates',
   manifest: 'Cargo.toml',
 
   async readVersion(root) {

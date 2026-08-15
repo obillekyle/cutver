@@ -10,6 +10,7 @@
  * keep the *last* of a duplicated key. Measured, both of them. So cutver adds
  * the file path to every message and lints for duplicates itself.
  */
+import { escapeRegex } from '../text'
 import {
   CHANNEL_NAME,
   ConfigError,
@@ -52,7 +53,7 @@ function nearest(key: string, known: Iterable<string>): string | null {
  */
 function lintDuplicates(text: string, json: boolean, keys: string[], where: string): void {
   for (const key of keys) {
-    const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const escaped = escapeRegex(key)
     const re = json
       ? new RegExp(`"${escaped}"\\s*:`, 'g')
       : new RegExp(`^\\s*(?:"${escaped}"|'${escaped}'|${escaped})\\s*:`, 'gm')

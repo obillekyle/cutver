@@ -11,6 +11,7 @@
  * configurable, "why did my branch not release" stops being obvious, and `via`
  * is what turns that from a bisect into one line of `cutver explain`.
  */
+import { escapeRegex } from '../text'
 import { ConfigError, RELEASE, type Config } from './schema'
 
 export type MatchShape = 'declaring' | 'literal' | 'glob'
@@ -44,7 +45,7 @@ export function shapeOf(entry: string): MatchShape {
 function declaringRegex(entry: string): RegExp {
   const escaped = entry
     .split('{version}')
-    .map(part => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+    .map(escapeRegex)
     .join('(\\d+\\.\\d+\\.\\d+)')
   return new RegExp(`^${escaped}$`)
 }
@@ -149,13 +150,3 @@ export function matchBranch(branch: string, config: Config): Match {
   return { kind: 'none' }
 }
 
-/**
- * Every entry that was tried and did not fire, for `explain`.
- *
- * The useful half of a "nothing matched" answer is the list of things that were
- * checked — otherwise the only way to find a typo in a branch pattern is to
- * edit it and push again.
- */
-export function triedEntries(config: Config): { channel: string; entries: string[] }[] {
-  return Object.entries(config.channels).map(([channel, entries]) => ({ channel, entries }))
-}

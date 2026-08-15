@@ -26,11 +26,10 @@ async function repo(entries: string[]): Promise<string> {
   await run(['git', 'config', 'user.email', 'fixture@example.invalid'], dir)
   await run(['git', 'config', 'user.name', 'fixture'], dir)
 
-  for (const [i, entry] of entries.entries()) {
+  for (const entry of entries) {
     const [subject = '', tag] = entry.split('@')
-    await Bun.write(`${dir}/f${i}.txt`, `${i}\n`)
-    await run(['git', 'add', '-A'], dir)
-    await run(['git', 'commit', '-q', '-m', subject], dir)
+    // Empty commits — see the note on the same loop in `plan.test.ts`.
+    await run(['git', 'commit', '-q', '--allow-empty', '-m', subject], dir)
     if (tag) await run(['git', 'tag', tag], dir)
   }
 
@@ -45,7 +44,7 @@ async function repo(entries: string[]): Promise<string> {
 describe('what the hook is guarding', () => {
   test('a feat! is refused on a 1.3.0-beta branch', async () => {
     const root = await repo(['feat: one@v1.2.0', 'feat!: the world moved'])
-    expect(
+    await expect(
       plan({ root, current: '1.3.0-beta.0', branch: '1.3.0-beta', channel: null }),
     ).rejects.toBeInstanceOf(PlanRefusal)
   })
@@ -84,7 +83,7 @@ describe('what the hook is guarding', () => {
     const parent = (await run(['git', 'rev-parse', 'HEAD~1'], root)).out
 
     // At HEAD the break is present and refused…
-    expect(
+    await expect(
       plan({ root, current: '1.3.0-beta.0', branch: '1.3.0-beta', channel: null, rev: head }),
     ).rejects.toBeInstanceOf(PlanRefusal)
 

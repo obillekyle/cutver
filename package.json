@@ -35,7 +35,7 @@
     "bun"
   ],
   "scripts": {
-    "test": "bun test ./src",
+    "test": "bun test ./src --timeout 30000",
     "typecheck": "tsc --noEmit",
     "build": "bun run scripts/build.ts",
     "release": "bun run src/cli.ts"

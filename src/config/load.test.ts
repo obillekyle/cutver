@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { loadConfig, parseConfig } from './load'
-import { ConfigError, DEFAULT_CONFIG } from './schema'
+import { DEFAULT_CONFIG } from './schema'
 
 const made: string[] = []
 
@@ -43,12 +43,12 @@ describe('discovery', () => {
   test('two config files is refused rather than resolved', async () => {
     // Picking a winner means the file you edited might not be the file that ran.
     const root = await fixture({ 'cutver.json': '{}', 'cutver.yml': 'schema: 1\n' })
-    expect(loadConfig(root)).rejects.toThrow(/both exist/)
+    await expect(loadConfig(root)).rejects.toThrow(/both exist/)
   })
 
   test('--config pointing at nothing dies rather than falling back', async () => {
     const root = await fixture()
-    expect(loadConfig(root, `${root}/nope.json`)).rejects.toThrow(/no such file/)
+    await expect(loadConfig(root, `${root}/nope.json`)).rejects.toThrow(/no such file/)
   })
 
   test('an empty file is the default, not a crash', async () => {
@@ -67,10 +67,10 @@ describe('discovery', () => {
     const json = await fixture({
       'cutver.json': '{"channels":{"beta":["a"]},"channels":{"beta":["b"]}}',
     })
-    expect(loadConfig(json)).rejects.toThrow(/declared more than once/)
+    await expect(loadConfig(json)).rejects.toThrow(/declared more than once/)
 
     const yaml = await fixture({ 'cutver.yml': 'channels:\n  beta: [a]\n  beta: [b]\n' })
-    expect(loadConfig(yaml)).rejects.toThrow(/declared more than once/)
+    await expect(loadConfig(yaml)).rejects.toThrow(/declared more than once/)
   })
 })
 

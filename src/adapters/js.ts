@@ -7,7 +7,7 @@
 import { Glob } from 'bun'
 import { detectEol, detectIndent, withEol } from '../text'
 import type { Target } from '../registry'
-import { AdapterError, type Adapter, type Change, type WriteOptions } from './types'
+import { AdapterError, type Adapter, type Change } from './types'
 
 interface Manifest {
   name?: string
@@ -211,6 +211,7 @@ async function foreignLocks(root: string): Promise<Change[]> {
 
 export const jsAdapter: Adapter = {
   id: 'js',
+  registry: 'npm',
   manifest: 'package.json',
 
   async readVersion(root) {

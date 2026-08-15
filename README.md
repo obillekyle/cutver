@@ -62,20 +62,27 @@ cutver [version] [options]
 cutver init <cargo|node|bun> [--force]
 cutver check [--branch <name>] [--rev <commit>]
 cutver hook install|uninstall
+cutver explain [--branch <name>]
 ```
 
 | | |
 | --- | --- |
 | `version` | an explicit semver, overriding the computation |
 | `--dry-run` | compute and report, write nothing |
-| `--alpha` `--beta` `--rc` | cut a prerelease in that channel |
+| `--alpha` `--beta` `--rc` | cut a prerelease in that channel (`--prerelease` = `--rc`) |
+| `--<channel>` | any other channel declared in `cutver.json` / `cutver.yml` |
 | `--adapter js\|cargo` | force the manifest adapter (default: detected) |
 | `--cwd <path>` | repository root (default: the working directory) |
 | `--branch <name>` | branch name, for CI on a detached HEAD |
 | `--if-needed` | exit 0 rather than 1 when no release is warranted |
 | `--offline` | skip the registry preflight |
 | `--allow-first-publish` | proceed even though a package is not on the registry yet |
-| `--force` | (`init`) replace workflows that are already there |
+| `--force` | (`init`, `hook`) replace files that are already there |
+| `--config <path>` | read this config instead of looking for one |
+| `--rev <commit>` | (`check`) the commit to judge, default `HEAD` |
+| `--runner <cmd>` | (`hook`) pin how the hook invokes cutver |
+| `--no-hook` | (`init`) do not install the pre-push guard |
+| `-h`, `-v` | help, and the version of cutver itself |
 
 ### `cutver init`
 
@@ -120,6 +127,42 @@ un-publish.
 It fails open on everything else — cutver missing, git broken, no manifest —
 because a guard that blocks every push in a repository because it crashed is
 worse than no guard. `git push --no-verify` bypasses the refusal itself.
+
+## Configuring which branches release what
+
+Optional. Without a config file cutver behaves exactly as it always has, and a
+test exists whose only job is keeping that true.
+
+`cutver.json` or `cutver.yml` at the repository root:
+
+```json
+{
+  "schema": 1,
+  "target": "bun",
+  "channels": {
+    "release": ["main"],
+    "beta": ["beta", "develop", "{version}-beta"],
+    "canary": ["canary", "nightly/*"]
+  }
+}
+```
+
+**The key is the channel** — the prerelease identifier in the version and the
+dist-tag it publishes under. `alpha`, `beta` and `rc` are known without being
+told; any other name works the same way, so a channel is created by adding a
+key. Registries have no objection: react publishes `next` and `canary`,
+typescript publishes `dev` and `insiders`.
+
+Names are kebab-case and converted for you — `myPrefix` and `my_prefix` both
+become `my-prefix`. Branch patterns come in three shapes: a literal (`develop`),
+a glob (`nightly/*`), or `{version}-beta`, which matches `1.3.0-beta` and lets
+the branch declare its own base.
+
+A branch matching nothing releases nothing — `cutver` exits 1, `--if-needed`
+exits 0, and `cutver check` exits 0 so the pre-push hook never blocks a feature
+branch. `cutver explain` shows which rule matched and every rule that did not.
+
+Full reference: [cutver.okyle.dev](https://cutver.okyle.dev/#/reference/config).
 
 ## How the version is worked out
 

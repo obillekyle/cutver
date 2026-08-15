@@ -15,6 +15,18 @@
  * somewhere it should not have.
  */
 
+/**
+ * Escape a string so it is a literal inside a regex.
+ *
+ * Both callers are in `config/`, and both are feeding user-supplied text into
+ * `new RegExp` — a branch pattern and a config key. Written out twice, the two
+ * character classes could drift apart, and the one that lost a character would
+ * be the one that stopped treating a `.` as a `.`.
+ */
+export function escapeRegex(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
 /** The dominant line ending, for writing a file back the way it arrived. */
 export function detectEol(text: string): '\r\n' | '\n' {
   // A file with *any* CRLF is treated as a CRLF file. Mixed endings are

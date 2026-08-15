@@ -173,16 +173,28 @@ export interface InstallOptions extends ScriptOptions {
   dryRun?: boolean
 }
 
+/**
+ * Where this repository's pre-push hook lives.
+ *
+ * `hooksDir` answers relative to the repository root for an ordinary checkout
+ * and absolutely for a worktree, so both are handled here — once. Written out
+ * at each call site, the rule's explanation sat on only one of the two copies,
+ * and an uninstall that kept looking in the old place would be silent.
+ */
+async function hookPath(root: string): Promise<string> {
+  const dir = await hooksDir(root)
+  if (!dir) throw new Error("could not find this repository's hooks directory")
+
+  return dir.startsWith('/') || /^[A-Za-z]:/.test(dir)
+    ? `${dir}/${HOOK_NAME}`
+    : `${root}/${dir}/${HOOK_NAME}`
+}
+
 export async function installHook(
   root: string,
   { force = false, dryRun = false, runner: explicit, version }: InstallOptions = {},
 ): Promise<HookResult> {
-  const dir = await hooksDir(root)
-  if (!dir) throw new Error('could not find this repository\'s hooks directory')
-
-  // `hooksDir` answers relative to the repository root for an ordinary
-  // checkout and absolutely for a worktree, so both are handled.
-  const path = dir.startsWith('/') || /^[A-Za-z]:/.test(dir) ? `${dir}/${HOOK_NAME}` : `${root}/${dir}/${HOOK_NAME}`
+  const path = await hookPath(root)
   const existing = await Bun.file(path)
     .text()
     .catch(() => null)
@@ -193,7 +205,7 @@ export async function installHook(
   // it had.
   if (existing !== null && !existing.includes(MARKER) && !force) {
     return {
-      path: `${HOOK_NAME}`,
+      path: HOOK_NAME,
       state: 'skipped',
       detail: 'a pre-push hook is already there and is not ours — --force to replace it',
     }
@@ -215,10 +227,7 @@ export async function installHook(
 }
 
 export async function uninstallHook(root: string, { dryRun = false } = {}): Promise<HookResult> {
-  const dir = await hooksDir(root)
-  if (!dir) throw new Error('could not find this repository\'s hooks directory')
-
-  const path = dir.startsWith('/') || /^[A-Za-z]:/.test(dir) ? `${dir}/${HOOK_NAME}` : `${root}/${dir}/${HOOK_NAME}`
+  const path = await hookPath(root)
   const existing = await Bun.file(path)
     .text()
     .catch(() => null)

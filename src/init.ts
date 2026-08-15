@@ -25,12 +25,15 @@
 import { addDevDependency } from './adapters/js'
 import { downloadBase, HOOK_NAME, installHook } from './hook'
 import { shapeOf } from './config/match'
-import { DEFAULT_CONFIG, RELEASE, type Config } from './config/schema'
+import { DEFAULT_CONFIG, ECOSYSTEMS, RELEASE, type Config, type Ecosystem } from './config/schema'
 import { parseConfig } from './config/load'
 import { configTemplate } from './config/template'
 
-export const ECOSYSTEMS = ['cargo', 'node', 'bun'] as const
-export type Ecosystem = (typeof ECOSYSTEMS)[number]
+// Declared once, in `config/schema.ts`, because `target:` in the config names
+// the same set. Two copies type-checked only because the unions happened to be
+// identical — the day one gained an entry the other did not, the error would
+// have surfaced somewhere unrelated to either.
+export { ECOSYSTEMS, type Ecosystem }
 
 export interface InitFile {
   /** Repo-relative path. */
@@ -41,14 +44,6 @@ export interface InitFile {
 }
 
 /**
- * How each ecosystem gets hold of cutver in CI.
- *
- * `cargo` downloads the executable rather than installing a JavaScript runtime
- * to run a version bump. That is the whole reason the binary is built: a Rust
- * workspace should not need a package manager from another ecosystem to cut a
- * release.
- */
-/**
  * The workflow's `on.push.branches` list, derived from the config.
  *
  * Nine hard-coded literals used to live here, which meant adding a channel took
@@ -58,23 +53,27 @@ export interface InitFile {
  * cross a `/` in either, and `**` does in both. A translation layer here would
  * be a second place to be wrong about the same thing.
  *
- * Two entries do not survive the trip. `**` and `*` in `channels.release` mean
- * "no branch gating configured" — the default — and turning that into a trigger
- * would wake CI on every branch in the repository. When the release list
- * contributes nothing, `main` stands in, which is what the generated workflow
- * has always said.
+ * A catch-all is dropped **only when there is no config file**, and the
+ * distinction is provenance rather than the text. `release: ['**']` is the
+ * built-in default meaning "no branch gating configured"; turning that into a
+ * trigger would wake CI on every branch in the repository, so `main` stands in.
+ * But a repository that *wrote* `['**']` down meant it, and overruling a written
+ * rule with a branch that may not even exist is the opposite of what this
+ * function is for. Testing the literal text conflated the two, and it silently
+ * dropped a `canary: ['**']` as well.
  */
 export function branchTriggers(config: Config): string[] {
   const globs = new Set<string>()
   const literals = new Set<string>()
   const stable: string[] = []
+  const configured = config.source !== null
 
   for (const [channel, entries] of Object.entries(config.channels)) {
     for (const entry of entries) {
       // A branch that declares its own version triggers on the shape, since
       // the version part is different every time.
       const value = shapeOf(entry) === 'declaring' ? entry.replace('{version}', '*') : entry
-      if (value === '**' || value === '*') continue
+      if (!configured && (value === '**' || value === '*')) continue
 
       if (channel === RELEASE) stable.push(value)
       else if (/[*?]/.test(value)) globs.add(value)
@@ -105,6 +104,14 @@ export function distTagArms(config: Config): string[] {
     .map(c => `            *-${c}.*)${' '.repeat(Math.max(1, 10 - c.length))}tag=${c} ;;`)
 }
 
+/**
+ * How each ecosystem gets hold of cutver in CI.
+ *
+ * `cargo` downloads the executable rather than installing a JavaScript runtime
+ * to run a version bump. That is the whole reason the binary is built: a Rust
+ * workspace should not need a package manager from another ecosystem to cut a
+ * release.
+ */
 function runners(version?: string): Record<Ecosystem, { setup: string; cutver: string }> {
   return {
     bun: {
@@ -141,20 +148,24 @@ function runners(version?: string): Record<Ecosystem, { setup: string; cutver: s
   }
 }
 
+/**
+ * The note above the gates, written once.
+ *
+ * It is the highest-traffic comment in the generated file — the one telling the
+ * reader this is the block they are meant to edit — and it was previously
+ * spelled out in all three arms, so changing the sentence meant changing it
+ * three times or letting the ecosystems disagree.
+ */
+const GATE_NOTE = `      # cutver does not run your gates: it cannot know what they are. They go
+      # here, before anything is written, so a release cannot be cut from a
+      # tree that does not pass.
+`
+
 /** The gates each ecosystem runs before a version is written. Edit to taste — that is the point of them. */
 const GATES: Record<Ecosystem, string> = {
-  bun: `      # cutver does not run your gates: it cannot know what they are. They go
-      # here, before anything is written, so a release cannot be cut from a
-      # tree that does not pass.
-      - run: bun test`,
-  node: `      # cutver does not run your gates: it cannot know what they are. They go
-      # here, before anything is written, so a release cannot be cut from a
-      # tree that does not pass.
-      - run: npm test`,
-  cargo: `      # cutver does not run your gates: it cannot know what they are. They go
-      # here, before anything is written, so a release cannot be cut from a
-      # tree that does not pass.
-      - uses: dtolnay/rust-toolchain@stable
+  bun: `${GATE_NOTE}      - run: bun test`,
+  node: `${GATE_NOTE}      - run: npm test`,
+  cargo: `${GATE_NOTE}      - uses: dtolnay/rust-toolchain@stable
       - run: cargo test --workspace`,
 }
 

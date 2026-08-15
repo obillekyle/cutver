@@ -18,9 +18,9 @@
  * half.
  */
 
-import type { Target } from '../registry'
+import type { Registry, Target } from '../registry'
 
-export type { Target } from '../registry'
+export type { Registry, Target } from '../registry'
 
 export const ADAPTER_IDS = ['js', 'cargo'] as const
 export type AdapterId = (typeof ADAPTER_IDS)[number]
@@ -54,6 +54,16 @@ export interface Adapter {
   readonly id: AdapterId
   /** The manifest whose presence means this adapter applies. Repo-relative. */
   readonly manifest: string
+  /**
+   * Where this adapter publishes.
+   *
+   * A member rather than something the caller derives, because the questions
+   * that need it are *registry* questions — does a prerelease silently become
+   * the default tag here, what does a first publish mean — and answering those
+   * by testing the adapter's identity is the CLI guessing at something the
+   * adapter already knows.
+   */
+  readonly registry: Registry
   /** The version the repository is at now. Throws if the manifest cannot be read. */
   readVersion(root: string): Promise<string>
   /** Write `version` everywhere this ecosystem keeps one. */

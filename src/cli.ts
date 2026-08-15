@@ -22,6 +22,7 @@
  */
 import {
   ADAPTER_IDS,
+  ADAPTER_FOR,
   ADAPTERS,
   AdapterError,
   applicableAdapters,
@@ -32,9 +33,9 @@ import { rollChangelog } from './changelog'
 import { ECOSYSTEMS, init, type Ecosystem } from './init'
 import { installHook, uninstallHook } from './hook'
 import { currentBranch, isGitRepo, remoteUrl, status } from './git'
-import { plan, PlanRefusal, SEMVER } from './plan'
+import { plan, PlanRefusal, SEMVER, type Survey } from './plan'
 import { loadConfig } from './config/load'
-import { channelNames, ConfigError, DEFAULT_CONFIG, type Config } from './config/schema'
+import { channelNames, KEY_ALIASES, toKebab, type Config } from './config/schema'
 import { explainReport } from './explain'
 import {
   checkRegistry,
@@ -43,7 +44,7 @@ import {
   repositoryMatches,
   type Presence,
 } from './registry'
-import { CHANNELS, type Channel } from './version-from-commits'
+import { CHANNELS } from './version-from-commits'
 
 // Injected by `bun build --compile --define`. A compiled executable does not
 // carry package.json — the docs are explicit that it is not embedded by
@@ -207,14 +208,15 @@ function parse(argv: string[], known: readonly string[] = CHANNELS): Options {
         break
       }
       default: {
-        // `--prerelease` is the same spelling alias the branch names take, and
-        // resolves to the same canonical `rc`.
-        const channel =
-          name === '--prerelease' && known.includes('rc')
-            ? 'rc'
-            : known.find(c => name === `--${c}`)
-        if (channel) {
-          picked.push(channel)
+        // A channel flag goes through exactly the normalisation its config key
+        // does — `toKebab` then the alias table — so `--myPrefix` works wherever
+        // `myPrefix:` does, and `--prerelease` resolves to `rc` without a
+        // special case naming it. The CLI was previously the one place the
+        // normalisation contract was not honoured, and a spelling the config
+        // parser accepted died here as an unknown option.
+        const asked = KEY_ALIASES[toKebab(name.replace(/^--/, ''))] ?? toKebab(name.replace(/^--/, ''))
+        if (arg.startsWith('--') && known.includes(asked)) {
+          picked.push(asked)
           break
         }
         if (arg.startsWith('-')) die(`unknown option ${arg}\n\n${HELP}`)
@@ -358,14 +360,6 @@ function preflight(
 // -------------------------------------------------------------------- main
 
 /**
- * A function rather than a top-level await, and it is not a style choice.
- * `bun build --compile --bytecode` emits CommonJS — bytecode compilation
- * requires it — and CommonJS has no top-level await, so a module-scoped
- * `await` here fails the build with an error that points at the line rather
- * than at the reason. The whole entry lives in `main()` so the compiled binary
- * and `bun run src/cli.ts` are the same program.
- */
-/**
  * The two flags that must be read before the real parse can happen.
  *
  * Channel flags come from the config, and the config's location comes from
@@ -398,7 +392,7 @@ async function resolveAdapter(
   config: Config,
 ): Promise<{ id: AdapterId; from: 'flag' | 'config' | 'detected' }> {
   if (opts.adapter) return { id: opts.adapter, from: 'flag' }
-  if (config.target) return { id: config.target === 'cargo' ? 'cargo' : 'js', from: 'config' }
+  if (config.target) return { id: ADAPTER_FOR[config.target], from: 'config' }
 
   const available = await applicableAdapters(root)
   if (!available.length) die(`no package.json or Cargo.toml in ${root}`)
@@ -623,6 +617,49 @@ async function runExplain(argv: string[]): Promise<void> {
   }
 }
 
+/**
+ * The commit survey — what was counted, and where the base came from.
+ *
+ * Lifted out of `main()` because it is the one block in that function that is
+ * not a step in the release sequence: pure output, two nested loops and a
+ * conditional sub-report, touching nothing but its argument. `main()` reads
+ * top-to-bottom as the thing it does; this was the only place that lost.
+ */
+function reportSurvey(survey: Survey): void {
+  console.log(`cutver: ${survey.total} commit(s) since ${survey.since}`)
+  for (const { level, subjects } of survey.tally) {
+    console.log(`  ${level.padEnd(5)} ${subjects.length}`)
+    // Show the work. A computed version nobody can check is worse than a typed
+    // one: the reason for a major has to be visible before it is tagged.
+    for (const s of subjects.slice(0, 3)) console.log(`        ${s}`)
+    if (subjects.length > 3) console.log(`        … and ${subjects.length - 3} more`)
+  }
+
+  // The two ranges, when they differ. Without this line the output shows a
+  // single `fix:` and then announces a major, with nothing on screen saying
+  // where the major came from — and an unexplained number is the one thing
+  // showing the work is supposed to prevent.
+  if (survey.base) {
+    console.log(
+      `  base  ${survey.base.bump} across ${survey.base.total} commit(s) since ` +
+        // Only call it the last stable release when there is one. With no
+        // stable tag the base came from the manifest, and saying otherwise
+        // would name a release that has never happened.
+        (survey.base.since === 'the first commit'
+          ? 'the first commit'
+          : `${survey.base.since}, the last stable release`),
+    )
+  }
+}
+
+/**
+ * A function rather than a top-level await, and it is not a style choice.
+ * `bun build --compile --bytecode` emits CommonJS — bytecode compilation
+ * requires it — and CommonJS has no top-level await, so a module-scoped
+ * `await` here fails the build with an error that points at the line rather
+ * than at the reason. The whole entry lives in `main()` so the compiled binary
+ * and `bun run src/cli.ts` are the same program.
+ */
 async function main(): Promise<void> {
   const argv = process.argv.slice(2)
   if (argv[0] === 'init') return runInit(argv.slice(1))
@@ -666,33 +703,7 @@ async function main(): Promise<void> {
     config,
   }).catch((e: Error) => die(e.message))
 
-  if (decision.survey) {
-    const { survey } = decision
-    console.log(`cutver: ${survey.total} commit(s) since ${survey.since}`)
-    for (const { level, subjects } of survey.tally) {
-      console.log(`  ${level.padEnd(5)} ${subjects.length}`)
-      // Show the work. A computed version nobody can check is worse than a typed
-      // one: the reason for a major has to be visible before it is tagged.
-      for (const s of subjects.slice(0, 3)) console.log(`        ${s}`)
-      if (subjects.length > 3) console.log(`        … and ${subjects.length - 3} more`)
-    }
-
-    // The two ranges, when they differ. Without this line the output shows a
-    // single `fix:` and then announces a major, with nothing on screen saying
-    // where the major came from — and an unexplained number is the one thing
-    // showing the work is supposed to prevent.
-    if (survey.base) {
-      console.log(
-        `  base  ${survey.base.bump} across ${survey.base.total} commit(s) since ` +
-          // Only call it the last stable release when there is one. With no
-          // stable tag the base came from the manifest, and saying otherwise
-          // would name a release that has never happened.
-          (survey.base.since === 'the first commit'
-            ? 'the first commit'
-            : `${survey.base.since}, the last stable release`),
-      )
-    }
-  }
+  if (decision.survey) reportSurvey(decision.survey)
 
   if (decision.kind === 'no-rule') {
     // Configured branch gating, doing its job: this branch may not release at
@@ -735,19 +746,27 @@ async function main(): Promise<void> {
   }
 
   if (!opts.offline) {
-    preflight(
-      await checkRegistry(await adapter.publishTargets(root)),
-      await remoteUrl(root),
-      opts.allowFirstPublish,
-      opts.dryRun,
-    )
+    // `remoteUrl` is a git spawn with no relationship to the registry lookups,
+    // so it rides alongside the HTTP rather than after it — free, since the
+    // network round trip dominates.
+    const [found, remote] = await Promise.all([
+      checkRegistry(await adapter.publishTargets(root)),
+      remoteUrl(root),
+    ])
+    preflight(found, remote, opts.allowFirstPublish, opts.dryRun)
   } else {
     console.log('\npreflight: skipped (--offline)')
   }
 
   // A dirty tree means the release would capture edits nobody reviewed.
-  const dirt = await status(root)
-  if (dirt && !opts.dryRun) die(`working tree is not clean:\n${dirt}`)
+  //
+  // Guarded on the flag rather than on the answer: under `--dry-run` nothing is
+  // written, so the result can never be used — and asking anyway spends a whole
+  // git spawn on the flag people iterate with.
+  if (!opts.dryRun) {
+    const dirt = await status(root)
+    if (dirt) die(`working tree is not clean:\n${dirt}`)
+  }
 
   console.log(`\nfiles${opts.dryRun ? ' (dry run — nothing is written)' : ''}`)
   const changes = await adapter
@@ -764,11 +783,9 @@ async function main(): Promise<void> {
     today: new Date().toISOString().slice(0, 10),
   })
 
-  report(changelog ? [...changes, changelog] : changes)
-
-  const updated = [...changes, ...(changelog ? [changelog] : [])].filter(
-    c => c.state === 'updated',
-  ).length
+  const all = changelog ? [...changes, changelog] : changes
+  report(all)
+  const updated = all.filter(c => c.state === 'updated').length
 
   // **A prerelease published without a dist-tag becomes `latest`.** That is npm's
   // default, it is silent, and the consequence is that every plain install in the
@@ -783,7 +800,7 @@ async function main(): Promise<void> {
       : `\ncutver: ${updated} file(s) updated.\n` +
           '  next: review the diff, commit, tag ' +
           `v${version}, and publish from the tag.` +
-          (channel && adapter.id === 'js'
+          (channel && adapter.registry === 'npm'
             ? `\n\n  Publish this one with \`--tag ${channel}\`. Without it npm marks\n` +
               `  ${version} as \`latest\` and every plain install resolves to a\n` +
               `  prerelease. Consumers opt in with \`@${channel}\`.`

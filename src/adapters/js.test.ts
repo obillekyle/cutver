@@ -122,7 +122,7 @@ describe('setVersion', () => {
       'packages/a/package.json': json({ name: 'a', version: '1.0.0' }),
       'bun.lock': '{\n  "workspaces": {\n    "": {\n      "name": "root",\n    },\n  },\n}\n',
     })
-    expect(jsAdapter.setVersion({ root, version: '1.1.0', dryRun: false })).rejects.toThrow(
+    await expect(jsAdapter.setVersion({ root, version: '1.1.0', dryRun: false })).rejects.toThrow(
       /no workspace entry for packages\/a/,
     )
   })
