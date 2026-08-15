@@ -6,6 +6,33 @@ downgrade from prose that explains itself.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The generated cargo artifact job could not collect a binary on Windows.**
+  `shell: bash` on a Windows runner is Git Bash, where jq writes CRLF and
+  `read -r` keeps the carriage return — so a crate whose binary is `app` yields
+  `app\r`, and every path built from it is one nothing will ever match:
+
+      cp: cannot stat 'target/release/app'$'\r''.exe': No such file or directory
+
+  The file is sitting right there. `tr -d '\r'` between jq and the loop is the
+  whole fix. Found on alloyfs's first release, after the tag was public — the
+  Linux leg had been green throughout, which is exactly how this survives a
+  review.
+
+  Third time this shape of bug has cost something in this family of projects:
+  the cargo adapter reads a version from *between the quotes* for the same
+  reason, and alloyfs's own installer strips `\r` before building a path.
+
+### Changed
+
+- The artifact job's docblock now says plainly that **the three runners are a
+  starting point, not a promise.** cutver knows which binaries a workspace
+  declares; it cannot know what they link against. A crate pulling `fuser` under
+  `cfg(unix)` builds on Linux and fails on macOS — `cfg(unix)` is true there and
+  libfuse is not — and a Windows crate reading an SDK at build time needs it
+  installed first. Both are the caller's to add, the same way the gates are.
+
 ## [1.1.0] — 2026-08-15
 
 ### Added

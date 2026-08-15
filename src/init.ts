@@ -324,6 +324,14 @@ ${
  * **The binaries are discovered, never named.** `cargo metadata` lists the bin
  * targets the workspace actually declares, so adding a binary needs no edit
  * here and a renamed one cannot leave the workflow uploading nothing.
+ *
+ * **The three runners are a starting point, not a promise.** cutver knows which
+ * binaries a workspace declares; it cannot know what they link against. A crate
+ * pulling `fuser` under `cfg(unix)` builds on Linux and fails on macOS, because
+ * `cfg(unix)` is true there and libfuse is not — measured, on a real release.
+ * Windows crates that read an SDK at build time need it installed first. Both
+ * are for the caller to add or to delete the row, the same way the gates are:
+ * a generated file that guessed would ship a binary nobody tested.
  */
 const ARTIFACT_JOB: Record<Ecosystem, string> = {
   cargo: `  artifacts:
@@ -348,6 +356,12 @@ const ARTIFACT_JOB: Record<Ecosystem, string> = {
 
       # Every \`[[bin]]\` the workspace declares, asked of cargo rather than
       # written down. \`--no-deps\` keeps it to this workspace's own crates.
+      #
+      # **\`tr -d '\\r'\` is load-bearing.** On a Windows runner \`shell: bash\` is
+      # Git Bash, jq writes CRLF there, and \`read -r\` keeps the carriage
+      # return — so a crate whose binary is \`app\` yields \`app\\r\`, and the copy
+      # fails with \`cannot stat 'target/release/app'$'\\r''.exe'\` while the file
+      # sits right there. Measured on a real release, after the tag was public.
       - name: Collect the binaries
         shell: bash
         run: |
@@ -356,6 +370,7 @@ const ARTIFACT_JOB: Record<Ecosystem, string> = {
           [ "\${{ runner.os }}" = "Windows" ] && ext=".exe"
           cargo metadata --format-version 1 --no-deps \\
             | jq -r '.packages[].targets[] | select(.kind[] == "bin") | .name' \\
+            | tr -d '\\r' \\
             | while read -r bin; do
                 cp "target/release/\$bin\$ext" "dist/\$bin-\${{ matrix.target }}\$ext"
               done

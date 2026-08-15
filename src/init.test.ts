@@ -93,6 +93,21 @@ describe('the generated workflows', () => {
     expect(cargo.jobs.release.permissions.contents).toBe('write')
   })
 
+  test('the collect step survives a Windows runner', () => {
+    // `shell: bash` on Windows is Git Bash, where jq writes CRLF and `read -r`
+    // keeps the carriage return. Without the strip, a crate whose binary is
+    // `app` yields `app\r` and the copy fails with
+    // `cannot stat 'target/release/app'$'\r''.exe'` while the file is right
+    // there. Cost a real release a run, after the tag was already public.
+    const cargo = initFiles('cargo')[1]?.contents as string
+    const collect = cargo.slice(cargo.indexOf('Collect the binaries'))
+
+    expect(collect).toContain("tr -d '\\r'")
+    // Order matters: after jq, before the loop that builds paths from it.
+    expect(collect.indexOf('jq -r')).toBeLessThan(collect.indexOf("tr -d '\\r'"))
+    expect(collect.indexOf("tr -d '\\r'")).toBeLessThan(collect.indexOf('while read -r bin'))
+  })
+
   test('a prerelease tag is marked as one on the GitHub release', () => {
     // `releases/latest/download/…` follows GitHub's idea of latest, which skips
     // prereleases. A beta published as a full release becomes the target of
