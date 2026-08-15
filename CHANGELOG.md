@@ -6,6 +6,8 @@ downgrade from prose that explains itself.
 
 ## [Unreleased]
 
+## [1.1.1] — 2026-08-15
+
 ### Fixed
 
 - **The generated cargo artifact job could not collect a binary on Windows.**
