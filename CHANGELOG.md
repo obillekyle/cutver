@@ -6,6 +6,8 @@ downgrade from prose that explains itself.
 
 ## [Unreleased]
 
+## [1.2.0] — 2026-08-15
+
 ### Added
 
 - **`init cargo` says which matrix rows will need a setup step**, before the
