@@ -21,7 +21,7 @@ import { normaliseRepo } from '../registry'
 /** What happened to one release, for the report. */
 export interface ReleaseUpdate {
   tag: string
-  state: 'updated' | 'skipped' | 'unchanged' | 'missing'
+  state: 'created' | 'updated' | 'skipped' | 'unchanged' | 'missing'
   /** Why it was skipped, or what changed. */
   detail: string
 }
@@ -137,6 +137,71 @@ interface Release {
   body: string | null
 }
 
+/**
+ * Create the release page for a tag that has none.
+ *
+ * **The remote tag is verified first, and that check is the whole risk here.**
+ * GitHub's create-release endpoint does not require the tag to exist — given a
+ * name it does not know, it *creates* one, at `target_commitish`, which
+ * defaults to the repository's default branch. So a tag sitting unpushed in a
+ * local clone would become a real tag on origin pointing at the wrong commit,
+ * from a command whose job is to write release notes. One extra request buys
+ * that not happening.
+ *
+ * Prereleases are marked as such, from the version rather than from a flag:
+ * an unmarked beta becomes what `releases/latest` resolves to, and then every
+ * install script that follows that URL gets a prerelease.
+ */
+async function createRelease(
+  repo: string,
+  token: string,
+  tag: string,
+  body: string | (() => Promise<string>),
+  dryRun: boolean,
+): Promise<ReleaseUpdate> {
+  const ref = await api(`/repos/${repo}/git/ref/tags/${tag}`, token).catch(
+    () => null,
+  )
+
+  if (!ref?.ok) {
+    return {
+      tag,
+      state: 'missing',
+      detail:
+        ref?.status === 404
+          ? 'no release, and the tag is not on the remote — push it first'
+          : 'no release, and the tag could not be checked',
+    }
+  }
+
+  if (dryRun) {
+    return { tag, state: 'created', detail: 'would be created (dry run)' }
+  }
+
+  const created = await api(`/repos/${repo}/releases`, token, {
+    method: 'POST',
+    body: JSON.stringify({
+      tag_name: tag,
+      name: tag,
+      body: typeof body === 'string' ? body : await body(),
+      prerelease: tag.includes('-'),
+    }),
+  }).catch(() => null)
+
+  if (!created?.ok) {
+    return {
+      tag,
+      state: 'missing',
+      detail: `could not create it${created ? ` (${created.status})` : ''}`,
+    }
+  }
+  return {
+    tag,
+    state: 'created',
+    detail: tag.includes('-') ? 'created, marked prerelease' : 'created',
+  }
+}
+
 async function api(
   path: string,
   token: string,
@@ -185,8 +250,14 @@ export async function updateRelease(
   )
 
   if (!found) return { tag, state: 'missing', detail: 'could not reach GitHub' }
+
+  // **A tag with no release gets one, because that is the case this command
+  // is for.** A project that tagged for a year and adopted `changelog:` last
+  // week has a good file and nothing under Releases — and updating bodies that
+  // do not exist helped none of it. Creating destroys nothing, so it needs no
+  // `--force`: the rule is still that a body somebody wrote is never replaced.
   if (found.status === 404) {
-    return { tag, state: 'missing', detail: 'no GitHub release for this tag' }
+    return createRelease(repo, token, tag, body, dryRun)
   }
   if (!found.ok) {
     return { tag, state: 'missing', detail: `GitHub answered ${found.status}` }

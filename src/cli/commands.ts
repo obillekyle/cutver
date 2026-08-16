@@ -16,7 +16,12 @@ import {
   sectionOrCompile,
 } from '../changelog/compile'
 import { writeChangelog } from '../changelog'
-import { githubRepo, resolveToken, updateRelease } from '../changelog/releases'
+import {
+  githubRepo,
+  resolveToken,
+  updateRelease,
+  type ReleaseUpdate,
+} from '../changelog/releases'
 import { loadConfig } from '../config/load'
 import { channelNames, producesArtifacts, type Config } from '../config/schema'
 import { explainReport } from '../explain'
@@ -566,7 +571,21 @@ async function overwriteReleases(
   // with two hundred tags firing two hundred concurrent requests is how a
   // command that was meant to tidy up gets an account throttled. The summariser
   // has the same shape of limit, measured in tokens per minute.
-  for (const release of releases) {
+  // **Oldest first, and the report is put back the other way round.**
+  //
+  // GitHub marks the most recently *created* release as `Latest`, which is
+  // what `releases/latest/download` resolves to and what every install script
+  // pinned to that URL follows. Walking newest-first meant the oldest release
+  // was created last, so backfilling nine tags left `v1.0.0` labelled Latest
+  // and `releases/latest` pointing eight versions behind — measured, on the
+  // first repository this ran against.
+  //
+  // Creation order is the fix rather than `make_latest`, because it is also
+  // right for the mixed case: a run that creates some pages and updates others
+  // only ever moves the label forward.
+  const rows: { tag: string; result: ReleaseUpdate; note: string | null }[] = []
+
+  for (const release of [...releases].reverse()) {
     const tag = `v${release.version}`
 
     // **Summarised where the release path would summarise.** A page written by
@@ -598,8 +617,19 @@ async function overwriteReleases(
       dryRun,
       force,
     )
+    rows.push({ tag, result, note })
+  }
+
+  // Newest first again, which is the order a changelog is read in.
+  for (const { tag, result, note } of rows.reverse()) {
     const mark =
-      result.state === 'updated' ? '↑' : result.state === 'skipped' ? '·' : '='
+      result.state === 'created'
+        ? '+'
+        : result.state === 'updated'
+          ? '↑'
+          : result.state === 'skipped'
+            ? '·'
+            : '='
     console.log(`  ${mark} ${tag.padEnd(width)}  ${result.detail}`)
 
     // **Said per page, because it is per page.** Every summariser failure falls

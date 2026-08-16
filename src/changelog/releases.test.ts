@@ -224,3 +224,99 @@ describe('resolveToken', () => {
     expect(found.token === null || typeof found.token === 'string').toBe(true)
   })
 })
+
+/**
+ * A tag with no release page.
+ *
+ * The case `--overwrite` exists for and could not serve: a project that tagged
+ * for a year and adopted `changelog:` last week has a good file and an empty
+ * Releases tab. Nine tags, nine "no GitHub release for this tag", nothing
+ * written.
+ */
+describe('updateRelease, creating what is missing', () => {
+  const real = globalThis.fetch
+  afterEach(() => {
+    globalThis.fetch = real
+  })
+
+  /** No release for the tag; `hasTag` decides whether the tag is on the remote. */
+  function stub(hasTag: boolean): { posted: Record<string, unknown>[] } {
+    const posted: Record<string, unknown>[] = []
+    globalThis.fetch = (async (url: string, init?: RequestInit) => {
+      const path = String(url)
+      if (init?.method === 'POST') {
+        posted.push(JSON.parse(String(init.body)))
+        return new Response('{}', { status: 201 })
+      }
+      if (path.includes('/git/ref/tags/')) {
+        return new Response('{}', { status: hasTag ? 200 : 404 })
+      }
+      return new Response('{}', { status: 404 })
+    }) as unknown as typeof fetch
+
+    return { posted }
+  }
+
+  test('creates the release, with the tag as its title', async () => {
+    const { posted } = stub(true)
+    const result = await updateRelease('o/r', 't', 'v1.2.0', 'compiled', false)
+
+    expect(result.state).toBe('created')
+    expect(posted).toEqual([
+      {
+        tag_name: 'v1.2.0',
+        name: 'v1.2.0',
+        body: 'compiled',
+        prerelease: false,
+      },
+    ])
+  })
+
+  test('marks a prerelease as one', async () => {
+    // An unmarked beta becomes what `releases/latest` resolves to, and then
+    // every install script following that URL gets a prerelease.
+    const { posted } = stub(true)
+    const result = await updateRelease(
+      'o/r',
+      't',
+      'v2.0.0-beta.1',
+      'compiled',
+      false,
+    )
+
+    expect(result.detail).toContain('prerelease')
+    expect(posted[0]?.prerelease).toBe(true)
+  })
+
+  test('refuses when the tag is not on the remote', async () => {
+    // **The reason the ref is checked at all.** GitHub creates a tag it does
+    // not know, at the default branch — so an unpushed local tag would become
+    // a real one pointing at the wrong commit, from a notes command.
+    const { posted } = stub(false)
+    const result = await updateRelease('o/r', 't', 'v9.9.9', 'compiled', false)
+
+    expect(result.state).toBe('missing')
+    expect(result.detail).toContain('push it first')
+    expect(posted).toEqual([])
+  })
+
+  test('a dry run creates nothing and costs no summary', async () => {
+    const { posted } = stub(true)
+    let produced = 0
+    const result = await updateRelease(
+      'o/r',
+      't',
+      'v1.2.0',
+      async () => {
+        produced++
+        return 'compiled'
+      },
+      true,
+    )
+
+    expect(result.state).toBe('created')
+    expect(result.detail).toContain('dry run')
+    expect(posted).toEqual([])
+    expect(produced).toBe(0)
+  })
+})
