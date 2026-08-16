@@ -12,6 +12,7 @@
  * checks the reference page against it. Adding a command means adding a row.
  */
 import { ADAPTER_IDS } from '../adapters'
+import { pad, plain } from './style'
 
 /** A flag, as it appears in help and in completions. */
 export interface Flag {
@@ -397,35 +398,60 @@ function flagLabel(f: Flag): string {
   return f.takes ? `${f.name} <${f.takes}>` : f.name
 }
 
-function table(rows: readonly [string, string][], indent = '  '): string {
-  const width = Math.max(...rows.map(([l]) => l.length), 0)
-  return rows.map(([l, r]) => `${indent}${l.padEnd(width)}  ${r}`).join('\n')
+/**
+ * Two aligned columns, the left one styled.
+ *
+ * Padded on the plain text and coloured after, because an escape code counts
+ * as characters — `padEnd` on a styled string aligns the table only while
+ * colour is off, which is exactly when nobody is looking at it.
+ */
+function table(
+  rows: readonly [string, string][],
+  indent = '  ',
+  mark = (s: string) => `%c${s}%0`,
+): string {
+  const width = Math.max(...rows.map(([l]) => plain(mark(l)).length), 0)
+  return rows
+    .map(([l, r]) => `${indent}${pad(mark(l), width)}  ${r}`)
+    .join('\n')
 }
+
+/** A section heading, which is what someone scanning is looking for. */
+const heading = (s: string): string => `%<bold>${s}%0`
 
 /** The whole surface, for a bare `cutver` or `cutver help`. */
 export function help(version: string): string {
+  // The command is what someone is looking for; its arguments are a reminder
+  // of the shape. Styled apart so the eye lands on the word it came for.
   const commands = table(
     COMMANDS.map(c => [`${c.name} ${c.args}`.trim(), c.summary]),
+    '  ',
+    label => {
+      const [name, ...rest] = label.split(' ')
+      const args = rest.join(' ')
+      return `%<bold>${name}%0` + (args ? ` %d${args}%0` : '')
+    },
   )
   const globals = table(GLOBAL_FLAGS.map(f => [flagLabel(f), f.summary]))
+  const width = Math.max(...GLOBAL_FLAGS.map(f => flagLabel(f).length))
 
-  return `cutver ${version} — cut a version from your commit messages.
+  return `%<bold>cutver ${version}%0 — cut a version from your commit messages.
 
-  cutver <command> [options]
+  %dcutver <command> [options]%0
 
-Commands
+${heading('Commands')}
 ${commands}
 
-Everywhere
+${heading('Everywhere')}
 ${globals}
-  ${'-h, --help'.padEnd(Math.max(...GLOBAL_FLAGS.map(f => flagLabel(f).length)))}  this
-  ${'-v, --version'.padEnd(Math.max(...GLOBAL_FLAGS.map(f => flagLabel(f).length)))}  print the version of cutver itself
+  ${pad('%c-h, --help%0', width)}  this
+  ${pad('%c-v, --version%0', width)}  print the version of cutver itself
 
-\`cutver help <command>\` for one command in full.
+%d\`cutver help <command>\` for one command in full.%0
 
 It never publishes. It stages a release and prints what to do next.
 The release body can be handed to a model — see \`summarizer:\` in the config.
-Docs: https://cutver.okyle.dev`
+%dDocs: https://cutver.okyle.dev%0`
 }
 
 /** One command in full, for `cutver help <name>`. */
@@ -435,11 +461,11 @@ export function helpFor(c: Command): string {
     ? `\n${c.detail.map(p => wrap(p)).join('\n\n')}\n`
     : ''
   const options = flags.length
-    ? `\nOptions\n${table(flags.map(f => [flagLabel(f), f.summary]))}\n`
+    ? `\n${heading('Options')}\n${table(flags.map(f => [flagLabel(f), f.summary]))}\n`
     : ''
 
   return (
-    `cutver ${c.name} ${c.args}`.trimEnd() +
+    `%<bold>cutver ${c.name}%0 %d${c.args}%0`.trimEnd() +
     `\n\n  ${c.summary}\n${body}${options}`
   )
 }

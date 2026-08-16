@@ -44,15 +44,22 @@ import {
   type Options,
 } from './args'
 import { runChangelog } from './commands'
+import { say } from './style'
 
 /** How each file's outcome is marked in the report column. */
-const MARK = { updated: '↑', unchanged: '=', absent: '·' } as const
+// Green for a file that moved, dim for one that did not — the report is read
+// by someone deciding whether to commit, and "what changed" is the question.
+const MARK = {
+  updated: '%g↑%0',
+  unchanged: '%d=%0',
+  absent: '%d·%0',
+} as const
 
 /** One aligned line per file touched, or deliberately not touched. */
 function report(changes: Change[]): void {
   const width = Math.max(...changes.map(c => c.file.length), 0)
   for (const c of changes) {
-    console.log(`  ${MARK[c.state]} ${c.file.padEnd(width)}  ${c.detail}`)
+    say(`  ${MARK[c.state]} ${c.file.padEnd(width)}  ${c.detail}`)
   }
 }
 

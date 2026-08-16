@@ -32,11 +32,16 @@ import { keyFor } from '../summarize/connectors'
 import { COMMAND_ENV } from '../summarize'
 import { parse, preScan, resolveAdapter, resolveRoot } from './args'
 import { env } from '../runtime'
+import { say as write } from './style'
 
 /** How each line is marked. `✗` is the only one that changes the exit code. */
 type Level = 'ok' | 'note' | 'bad'
 
-const MARK: Record<Level, string> = { ok: '✓', note: '·', bad: '✗' }
+const MARK: Record<Level, string> = {
+  ok: '%g✓%0',
+  note: '%d·%0',
+  bad: '%r✗%0',
+}
 
 /** One finding, in the order it was asked. */
 interface Finding {
@@ -60,7 +65,7 @@ function firstLine(message: string): string {
 }
 
 function say(f: Finding, width: number): void {
-  console.log(`  ${MARK[f.level]} ${f.topic.padEnd(width)}  ${f.detail}`)
+  write(`  ${MARK[f.level]} ${f.topic.padEnd(width)}  ${f.detail}`)
   if (f.more)
     for (const line of f.more.split('\n'))
       console.log(`      ${' '.repeat(width)}${line}`)
@@ -126,7 +131,7 @@ export async function runDoctor(argv: string[]): Promise<void> {
   if (loaded instanceof Error) {
     // Nothing below can be asked without it, so this is the one early exit.
     console.log(`cutver: ${root}`)
-    console.log(`  ${MARK.bad} config  ${firstLine(loaded.message)}`)
+    write(`  ${MARK.bad} config  ${firstLine(loaded.message)}`)
     process.exit(1)
   }
 

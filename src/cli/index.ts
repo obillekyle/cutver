@@ -31,6 +31,7 @@ import {
 import { runCompletions } from './completions'
 import { runDoctor } from './doctor'
 import { commandNamed, help, helpFor } from './help'
+import { say, warn } from './style'
 import { runStage } from './stage'
 
 /**
@@ -50,11 +51,11 @@ import { runStage } from './stage'
  */
 function noCommand(): never {
   if (process.stdin.isTTY) {
-    console.log(help(VERSION))
+    say(help(VERSION))
     process.exit(0)
   }
 
-  console.error(help(VERSION))
+  warn(help(VERSION))
   console.error(
     '\ncutver: no command given.\n' +
       '        Releasing is `cutver stage` since 2.0 — a workflow generated before\n' +
@@ -80,8 +81,7 @@ async function main(): Promise<void> {
 
   // The two that are flags as well as words, checked before anything else so
   // `cutver --help` and `cutver help` cannot answer differently.
-  if (command === '-h' || command === '--help')
-    return void console.log(help(VERSION))
+  if (command === '-h' || command === '--help') return void say(help(VERSION))
   if (command === '-v' || command === '--version')
     return void console.log(VERSION)
 
@@ -93,7 +93,7 @@ async function main(): Promise<void> {
       const named = commandNamed(rest[0])
       if (rest[0] && !named)
         die(`no command named '${rest[0]}' — \`cutver help\` lists them`)
-      return void console.log(named ? helpFor(named) : help(VERSION))
+      return void say(named ? helpFor(named) : help(VERSION))
     }
     case 'version':
       return void console.log(VERSION)
