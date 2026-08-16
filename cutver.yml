@@ -10,10 +10,17 @@ target: bun
 # One key naming a category could not say that without saying it twice.
 publish: true
 
-# And the executables, named rather than guessed at: `bun run build --all`
-# writes five of them into dist/, one per platform.
+# Named rather than guessed at. `bun run build --all` writes both kinds into
+# dist/: the bundle npm installs, and five standalone executables, one per
+# platform. The two globs are disjoint — `cutver-*` needs the hyphen, so it
+# never matches `cutver.mjs`.
+#
+# The bundle is attached as well as published, so a machine with Node and no
+# package manager can fetch one file and run it.
 artifacts:
-  files: [dist/cutver-*]
+  files:
+    - dist/cutver.mjs
+    - dist/cutver-*
 
 # **The changelog is compiled from the commit bodies.**
 #

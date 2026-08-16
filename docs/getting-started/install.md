@@ -72,6 +72,16 @@ Every release attaches five:
 
 No runtime, no `node_modules`, no PATH surgery. The Bun runtime is compiled in.
 
+Every release also attaches **`cutver.mjs`** — the same 412 kB bundle the npm
+package installs, for a machine that has Node but no package manager, or one
+where fetching 90 MB to bump a version number is the wrong trade:
+
+```bash
+curl -L -o cutver.mjs https://github.com/obillekyle/cutver/releases/latest/download/cutver.mjs && node cutver.mjs stage --dry-run
+```
+
+It needs Node 18 or newer and nothing else. Attached from 2.0.2 onward.
+
 > **`releases/latest` follows GitHub's idea of latest, not npm's.** It skips
 > prereleases, so the URL above resolves to the newest *stable* release and
 > never to a beta. In a repository that has only ever published prereleases it
