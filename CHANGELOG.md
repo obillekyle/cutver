@@ -8,9 +8,19 @@ is only ever as good as the commits — which is the point.
 explanation in the commit body, where it is also visible in `git log`, in a
 pull request, and on the release page.
 
+## [2.0.3] — 2026-08-16
+
+diff: [8c7f569...36b6f32](https://github.com/obillekyle/cutver/compare/8c7f569...36b6f32)
+
+### Fixes
+
+- **stage:** refuse a version whose tag already exists, and rate a dead workflow as broken ([36b6f32](https://github.com/obillekyle/cutver/commit/36b6f32))
+
+    Two gaps found integrating cutver into two repositories, both of which were one push away from the first.
+
 ## [2.0.2] — 2026-08-16
 
-diff: [627f047...52b1b16](https://github.com/obillekyle/cutver/compare/627f047...52b1b16)
+diff: [627f047...8c7f569](https://github.com/obillekyle/cutver/compare/627f047...8c7f569)
 
 ### Fixes
 
