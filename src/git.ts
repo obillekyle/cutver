@@ -6,13 +6,16 @@
  * anywhere here is a bug waiting for the first `--cwd` invocation.
  *
  * Nothing here writes. The commit and the tag are left to the caller — see the
- * note at the end of `cli.ts` for why the tool stops where it does.
+ * note at the end of `cli/index.ts` for why the tool stops where it does.
  */
 import { run } from './run'
 import type { Commit } from './version-from-commits'
 
 export async function isGitRepo(root: string): Promise<boolean> {
-  const { ok, out } = await run(['git', 'rev-parse', '--is-inside-work-tree'], root)
+  const { ok, out } = await run(
+    ['git', 'rev-parse', '--is-inside-work-tree'],
+    root,
+  )
   return ok && out === 'true'
 }
 
@@ -23,7 +26,10 @@ export async function isGitRepo(root: string): Promise<boolean> {
  * `v1.3.0-beta.2`, and measuring commits from there is how a breaking change
  * that lands mid-beta gets released as a minor. See `nextVersion`.
  */
-export async function lastStableTag(root: string, rev = 'HEAD'): Promise<string | null> {
+export async function lastStableTag(
+  root: string,
+  rev = 'HEAD',
+): Promise<string | null> {
   const { out } = await run(
     ['git', 'tag', '--list', 'v*', '--merged', rev, '--sort=-v:refname'],
     root,
@@ -45,7 +51,10 @@ export async function lastStableTag(root: string, rev = 'HEAD'): Promise<string 
  * configured — so `v1.0.0-beta.1` would read as newer than `v1.0.0`, and a
  * release tool would be depending on a git config nobody set.
  */
-export async function lastAnyTag(root: string, rev = 'HEAD'): Promise<string | null> {
+export async function lastAnyTag(
+  root: string,
+  rev = 'HEAD',
+): Promise<string | null> {
   // **Ordered by when the tag was made, with semver only as a tiebreak.**
   //
   // Sorting by semver precedence alone is correct only while the channels are
@@ -80,24 +89,50 @@ export async function lastAnyTag(root: string, rev = 'HEAD'): Promise<string | n
     .filter(t => /^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(t.name))
 
   if (!found.length) return null
-  found.sort((a, b) => b.when - a.when || Bun.semver.order(b.name.slice(1), a.name.slice(1)))
+  found.sort(
+    (a, b) =>
+      b.when - a.when || Bun.semver.order(b.name.slice(1), a.name.slice(1)),
+  )
   return found[0]?.name ?? null
 }
 
+/**
+ * A commit with the sha it came from.
+ *
+ * **Declared here rather than added to `Commit`.** That interface lives in
+ * `version-from-commits.ts`, which is a verbatim port and stays byte-identical;
+ * extending it is how the notes get a sha without reaching into it. Everything
+ * that decides a *version* reads `Commit` and is untouched by this — the sha is
+ * only ever a thing to link to.
+ */
+export interface ShaCommit extends Commit {
+  /** Abbreviated, as `%h` gives it — long enough to resolve, short enough to read. */
+  sha: string
+}
+
 /** Commits in `range`, newest first. `range` is a git revision range or `HEAD`. */
-export async function commitsIn(range: string, root: string): Promise<Commit[]> {
+export async function commitsIn(
+  range: string,
+  root: string,
+): Promise<ShaCommit[]> {
   // \x1e between records, \x1f between fields: a commit body can contain
   // anything, newlines included, so the separators have to be bytes that
   // cannot appear in one.
-  const { out } = await run(['git', 'log', range, '--format=%s%x1f%b%x1e'], root)
+  //
+  // `%h` last of the three would be ambiguous — a body ends wherever the record
+  // separator says it does, so the sha goes first where its field is fixed.
+  const { out } = await run(
+    ['git', 'log', range, '--format=%h%x1f%s%x1f%b%x1e'],
+    root,
+  )
 
   return out
     .split('\x1e')
     .map(r => r.trim())
     .filter(Boolean)
     .map(r => {
-      const [subject = '', body = ''] = r.split('\x1f')
-      return { subject, body: body.trim() }
+      const [sha = '', subject = '', body = ''] = r.split('\x1f')
+      return { sha: sha.trim(), subject, body: body.trim() }
     })
 }
 
@@ -125,10 +160,17 @@ export async function currentBranch(root: string): Promise<string> {
  * does not exist.
  */
 export async function hooksDir(root: string): Promise<string | null> {
-  const configured = await run(['git', 'config', '--get', 'core.hooksPath'], root)
-  if (configured.ok && configured.out) return configured.out.replaceAll('\\', '/')
+  const configured = await run(
+    ['git', 'config', '--get', 'core.hooksPath'],
+    root,
+  )
+  if (configured.ok && configured.out)
+    return configured.out.replaceAll('\\', '/')
 
-  const { ok, out } = await run(['git', 'rev-parse', '--git-path', 'hooks'], root)
+  const { ok, out } = await run(
+    ['git', 'rev-parse', '--git-path', 'hooks'],
+    root,
+  )
   return ok && out ? out.replaceAll('\\', '/') : null
 }
 
@@ -149,4 +191,78 @@ export async function status(root: string): Promise<string> {
 export async function remoteUrl(root: string): Promise<string | null> {
   const { ok, out } = await run(['git', 'remote', 'get-url', 'origin'], root)
   return ok && out ? out : null
+}
+
+/**
+ * A commit's abbreviated sha, or `null` when the rev does not resolve.
+ *
+ * `--short` rather than a fixed slice: git picks a length that is unambiguous
+ * in *this* repository, which is the only length that is actually a reference.
+ */
+export async function shortSha(
+  rev: string,
+  root: string,
+): Promise<string | null> {
+  const { ok, out } = await run(['git', 'rev-parse', '--short', rev], root)
+  return ok && out ? out : null
+}
+
+/**
+ * The first commit reachable from `rev`, for a range that has no earlier tag.
+ *
+ * `--max-parents=0` rather than the last line of a full log: a repository with
+ * grafted or merged histories has more than one root, and the oldest of them is
+ * where "since the first commit" actually starts.
+ */
+export async function rootCommit(root: string, rev = 'HEAD'): Promise<string> {
+  const { ok, out } = await run(
+    ['git', 'rev-list', '--max-parents=0', rev],
+    root,
+  )
+  const first = ok ? out.split('\n').filter(Boolean).pop() : null
+  return first?.trim() || rev
+}
+
+export interface ReleaseTag {
+  /** `v1.2.0`, as written. */
+  tag: string
+  /** `1.2.0` — what a changelog heading uses. */
+  version: string
+  /** ISO-8601 date the tag was created. */
+  date: string
+}
+
+/**
+ * Every `v*` tag, newest first, with the date it was made.
+ *
+ * **Ordered by creation, not by version.** Semver order among prereleases is
+ * alphabetical, which is right only by accident — the same trap `lastAnyTag`
+ * documents. A changelog reads in the order releases happened, and that is what
+ * `creatordate` reports.
+ *
+ * `%(creatordate:short)` is the tag's own date for an annotated tag and the
+ * commit's for a lightweight one, which is the right answer in both cases.
+ */
+export async function releaseTags(root: string): Promise<ReleaseTag[]> {
+  const { ok, out } = await run(
+    [
+      'git',
+      'for-each-ref',
+      '--sort=-creatordate',
+      '--format=%(refname:short)%09%(creatordate:short)',
+      'refs/tags/v*',
+    ],
+    root,
+  )
+  if (!ok || !out) return []
+
+  return out
+    .split('\n')
+    .map(line => line.split('\t'))
+    .filter(([tag]) => tag && /^v\d+\.\d+\.\d+/.test(tag))
+    .map(([tag, date]) => ({
+      tag: tag as string,
+      version: (tag as string).slice(1),
+      date: (date ?? '').trim(),
+    }))
 }

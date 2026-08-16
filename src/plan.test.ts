@@ -10,7 +10,8 @@ import { run } from './run'
 const made: string[] = []
 
 afterEach(async () => {
-  while (made.length) await rm(made.pop() as string, { recursive: true, force: true })
+  while (made.length)
+    await rm(made.pop() as string, { recursive: true, force: true })
 })
 
 /**
@@ -58,7 +59,10 @@ describe('with no tags at all', () => {
     // `0.1.0` for a minor: the version the manifest already says, so the tool
     // reports "nothing to release" across the entire history.
     const root = await repo(['chore: init', 'feat: sync engine', 'fix: a race'])
-    expect(await at(root, '0.1.0')).toMatchObject({ kind: 'release', version: '0.2.0' })
+    expect(await at(root, '0.1.0')).toMatchObject({
+      kind: 'release',
+      version: '0.2.0',
+    })
   })
 
   test('a patch does not go backwards', async () => {
@@ -66,7 +70,10 @@ describe('with no tags at all', () => {
     // 0.0.1, which is *lower* than the version in the manifest and which the
     // semver check would happily accept.
     const root = await repo(['chore: init', 'fix: a race'])
-    expect(await at(root, '0.1.0')).toMatchObject({ kind: 'release', version: '0.1.1' })
+    expect(await at(root, '0.1.0')).toMatchObject({
+      kind: 'release',
+      version: '0.1.1',
+    })
   })
 
   test('reports the range it measured as the first commit', async () => {
@@ -79,7 +86,10 @@ describe('with no tags at all', () => {
 describe('with a stable tag', () => {
   test('measures from the tag, not from the manifest', async () => {
     const root = await repo(['feat: one@v1.0.0', 'fix: two'])
-    expect(await at(root, '1.0.0')).toMatchObject({ kind: 'release', version: '1.0.1' })
+    expect(await at(root, '1.0.0')).toMatchObject({
+      kind: 'release',
+      version: '1.0.1',
+    })
   })
 
   test('ignores prerelease tags when choosing the baseline', async () => {
@@ -153,7 +163,9 @@ describe('a prerelease already tagged', () => {
     expect(p).toMatchObject({ kind: 'release', version: '2.0.0-beta.1' })
     // What is *new* is one patch; what set the base is a major, from earlier.
     expect(p.survey?.since).toBe('v2.0.0-beta.0')
-    expect(p.survey?.tally).toEqual([{ level: 'patch', subjects: ['fix: a small thing'] }])
+    expect(p.survey?.tally).toEqual([
+      { level: 'patch', subjects: ['fix: a small thing'] },
+    ])
     expect(p.survey?.base).toMatchObject({ since: 'v1.0.0', bump: 'major' })
   })
 
@@ -229,7 +241,9 @@ describe('branch-declared versions', () => {
     // Publishing 1.1.0 here would ship a breaking change as a minor. A warning
     // would scroll past in a CI log and the wrong version would go out anyway.
     const root = await repo(['feat: one@v1.0.0', 'feat!: the world moved'])
-    await expect(at(root, '1.1.0-beta.0', '1.1.0-beta')).rejects.toThrow(/declares 1\.1\.0.*2\.0\.0/s)
+    await expect(at(root, '1.1.0-beta.0', '1.1.0-beta')).rejects.toThrow(
+      /declares 1\.1\.0.*2\.0\.0/s,
+    )
   })
 })
 
@@ -245,20 +259,32 @@ describe('a branch that names only a channel', () => {
 
   test('alpha and rc too, and release/beta for symmetry', async () => {
     const root = await repo(['feat: one@v1.2.0', 'fix: two'])
-    expect((await at(root, '1.2.0', 'alpha')) as { version: string }).toMatchObject({
+    expect(
+      (await at(root, '1.2.0', 'alpha')) as { version: string },
+    ).toMatchObject({
       version: '1.2.1-alpha.0',
     })
-    expect((await at(root, '1.2.0', 'rc')) as { version: string }).toMatchObject({
+    expect(
+      (await at(root, '1.2.0', 'rc')) as { version: string },
+    ).toMatchObject({
       version: '1.2.1-rc.0',
     })
-    expect((await at(root, '1.2.0', 'release/beta')) as { version: string }).toMatchObject({
+    expect(
+      (await at(root, '1.2.0', 'release/beta')) as { version: string },
+    ).toMatchObject({
       version: '1.2.1-beta.0',
     })
   })
 
   test('the counter continues while the base holds', async () => {
-    const root = await repo(['feat: one@v1.2.0', 'feat: two@v1.3.0-beta.0', 'fix: three'])
-    expect(await at(root, '1.3.0-beta.0', 'beta')).toMatchObject({ version: '1.3.0-beta.1' })
+    const root = await repo([
+      'feat: one@v1.2.0',
+      'feat: two@v1.3.0-beta.0',
+      'fix: three',
+    ])
+    expect(await at(root, '1.3.0-beta.0', 'beta')).toMatchObject({
+      version: '1.3.0-beta.1',
+    })
   })
 
   test('a break re-bases and restarts the counter, with nothing to rename', async () => {
@@ -272,10 +298,14 @@ describe('a branch that names only a channel', () => {
       'feat: two@v1.3.0-beta.0',
       'feat!: the world moved',
     ])
-    await expect(await at(root, '1.3.0-beta.0', 'beta')).toMatchObject({ version: '2.0.0-beta.0' })
+    await expect(await at(root, '1.3.0-beta.0', 'beta')).toMatchObject({
+      version: '2.0.0-beta.0',
+    })
 
     // The versioned form, for contrast, refuses.
-    await expect(at(root, '1.3.0-beta.0', '1.3.0-beta')).rejects.toBeInstanceOf(PlanRefusal)
+    await expect(at(root, '1.3.0-beta.0', '1.3.0-beta')).rejects.toBeInstanceOf(
+      PlanRefusal,
+    )
   })
 
   test('a flag typed now beats a branch named months ago', async () => {
@@ -289,8 +319,17 @@ describe('a branch that names only a channel', () => {
     // `feat/beta-ui` is not a release channel, and a tool that guessed
     // otherwise would start publishing prereleases off a feature branch.
     const root = await repo(['feat: one@v1.2.0', 'feat: two'])
-    for (const name of ['beta-two', 'my-beta', 'betas', 'feat/beta-ui', 'alpha/x']) {
-      expect((await at(root, '1.2.0', name)) as { version: string }, name).toMatchObject({
+    for (const name of [
+      'beta-two',
+      'my-beta',
+      'betas',
+      'feat/beta-ui',
+      'alpha/x',
+    ]) {
+      expect(
+        (await at(root, '1.2.0', name)) as { version: string },
+        name,
+      ).toMatchObject({
         version: '1.3.0',
       })
     }
@@ -302,8 +341,12 @@ describe('a branch that names only a channel', () => {
     // never `-prerelease.N` — because the dist-tag is derived from the version
     // and a fourth spelling in there is a channel no registry has heard of.
     const root = await repo(['feat: one@v1.2.0', 'fix: two'])
-    expect(await at(root, '1.2.0', 'prerelease')).toMatchObject({ version: '1.2.1-rc.0' })
-    expect((await at(root, '1.2.0', 'release/prerelease')) as { version: string }).toMatchObject({
+    expect(await at(root, '1.2.0', 'prerelease')).toMatchObject({
+      version: '1.2.1-rc.0',
+    })
+    expect(
+      (await at(root, '1.2.0', 'release/prerelease')) as { version: string },
+    ).toMatchObject({
       version: '1.2.1-rc.0',
     })
   })
@@ -320,7 +363,10 @@ describe('a branch that names only a channel', () => {
   test('the alias cannot eat an ordinary branch', async () => {
     const root = await repo(['feat: one@v1.2.0', 'feat: two'])
     for (const name of ['prereleases', 'my-prerelease', 'prerelease/x']) {
-      expect((await at(root, '1.2.0', name)) as { version: string }, name).toMatchObject({
+      expect(
+        (await at(root, '1.2.0', name)) as { version: string },
+        name,
+      ).toMatchObject({
         version: '1.3.0',
       })
     }
@@ -341,7 +387,11 @@ describe('a branch that names only a channel', () => {
     expect(versionFromBranch('beta')).toBeNull()
 
     const bare = matchBranch('beta', DEFAULT_CONFIG)
-    expect(bare).toMatchObject({ kind: 'channel', channel: 'beta', declared: null })
+    expect(bare).toMatchObject({
+      kind: 'channel',
+      channel: 'beta',
+      declared: null,
+    })
 
     const versioned = matchBranch('1.3.0-beta', DEFAULT_CONFIG)
     expect(versioned).toMatchObject({ channel: 'beta', declared: '1.3.0' })
@@ -352,14 +402,30 @@ describe('an explicit version', () => {
   test('wins over the computation, without consulting git', async () => {
     const root = await repo(['docs: nothing releasable'])
     expect(
-      await plan({ root, current: '1.0.0', branch: 'main', channel: null, explicit: '3.0.0' }),
-    ).toMatchObject({ kind: 'release', version: '3.0.0', why: 'given explicitly' })
+      await plan({
+        root,
+        current: '1.0.0',
+        branch: 'main',
+        channel: null,
+        explicit: '3.0.0',
+      }),
+    ).toMatchObject({
+      kind: 'release',
+      version: '3.0.0',
+      why: 'given explicitly',
+    })
   })
 
   test('except when it is the version already in the manifests', async () => {
     const root = await repo(['feat: one'])
     expect(
-      await plan({ root, current: '1.0.0', branch: 'main', channel: null, explicit: '1.0.0' }),
+      await plan({
+        root,
+        current: '1.0.0',
+        branch: 'main',
+        channel: null,
+        explicit: '1.0.0',
+      }),
     ).toMatchObject({ kind: 'nothing' })
   })
 })
@@ -375,7 +441,15 @@ describe('a repository with a config', () => {
     const root = await repo(['feat: one@v1.2.0', 'feat: two'])
     const config = withChannels({ beta: ['develop'] })
 
-    expect(await plan({ root, current: '1.2.0', branch: 'develop', channel: null, config })).toMatchObject({
+    expect(
+      await plan({
+        root,
+        current: '1.2.0',
+        branch: 'develop',
+        channel: null,
+        config,
+      }),
+    ).toMatchObject({
       version: '1.3.0-beta.0',
       why: "minor, beta from branch 'develop'",
     })
@@ -388,11 +462,25 @@ describe('a repository with a config', () => {
     const root = await repo(['feat: one@v1.2.0', 'feat: two'])
     const config = withChannels({ canary: ['canary', 'nightly/*'] })
 
-    expect(await plan({ root, current: '1.2.0', branch: 'canary', channel: null, config })).toMatchObject({
+    expect(
+      await plan({
+        root,
+        current: '1.2.0',
+        branch: 'canary',
+        channel: null,
+        config,
+      }),
+    ).toMatchObject({
       version: '1.3.0-canary.0',
     })
     expect(
-      await plan({ root, current: '1.3.0-canary.0', branch: 'nightly/x', channel: null, config }),
+      await plan({
+        root,
+        current: '1.3.0-canary.0',
+        branch: 'nightly/x',
+        channel: null,
+        config,
+      }),
     ).toMatchObject({ version: '1.3.0-canary.1' })
   })
 
@@ -403,7 +491,13 @@ describe('a repository with a config', () => {
     const root = await repo(['feat: one@v1.2.0', 'feat: two'])
     const config = withChannels({ release: ['main'], beta: ['develop'] })
 
-    const decision = await plan({ root, current: '1.2.0', branch: 'feat/login', channel: null, config })
+    const decision = await plan({
+      root,
+      current: '1.2.0',
+      branch: 'feat/login',
+      channel: null,
+      config,
+    })
     expect(decision.kind).toBe('no-rule')
     expect(decision.why).toContain('matches no channel and no release rule')
   })
@@ -413,7 +507,13 @@ describe('a repository with a config', () => {
     const config = withChannels({ beta: ['{version}-beta'] })
 
     await expect(
-      plan({ root, current: '1.3.0-beta.0', branch: '1.3.0-beta', channel: null, config }),
+      plan({
+        root,
+        current: '1.3.0-beta.0',
+        branch: '1.3.0-beta',
+        channel: null,
+        config,
+      }),
     ).rejects.toBeInstanceOf(PlanRefusal)
   })
 
@@ -422,7 +522,13 @@ describe('a repository with a config', () => {
     const config = withChannels({ beta: ['develop'], canary: ['canary'] })
 
     expect(
-      await plan({ root, current: '1.2.0', branch: 'develop', channel: 'canary', config }),
+      await plan({
+        root,
+        current: '1.2.0',
+        branch: 'develop',
+        channel: 'canary',
+        config,
+      }),
     ).toMatchObject({ version: '1.3.0-canary.0', why: 'minor, canary' })
   })
 })

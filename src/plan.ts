@@ -1,16 +1,22 @@
 /**
  * Decide the number, without deciding anything about files or the terminal.
  *
- * `version-from-commits.ts` is the arithmetic; this is the policy that feeds
- * it — where the baseline comes from, when a branch name wins, and what
- * counts as "nothing to release". Kept out of `cli.ts` so it can be tested
+ * `version-from-commits.ts` is the arithmetic; this is the policy that feeds it
+ * — where the baseline comes from, when a branch name wins, and what counts as
+ * "nothing to release". Kept out of `cli/release.ts` so it can be tested
  * without a process, which is the same reason the arithmetic was kept out of
  * the original release script.
  */
 import { commitsIn, lastAnyTag, lastStableTag } from './git'
 import { matchBranch } from './config/match'
 import { DEFAULT_CONFIG, type Config } from './config/schema'
-import { applyBump, classify, highestBump, type Bump } from './version-from-commits'
+import {
+  applyBump,
+  classify,
+  highestBump,
+  type Bump,
+  type Commit,
+} from './version-from-commits'
 
 /**
  * The prerelease counter, for channel names the ported one cannot read.
@@ -34,7 +40,11 @@ import { applyBump, classify, highestBump, type Bump } from './version-from-comm
  */
 const STAGE = /^(?<base>\d+\.\d+\.\d+)-(?<tag>[a-z]+(?:-[a-z]+)*)\.(?<n>\d+)$/
 
-export function withStage(base: string, channel: string, current: string): string {
+export function withStage(
+  base: string,
+  channel: string,
+  current: string,
+): string {
   const m = STAGE.exec(current)
   const continuing = m?.groups?.base === base && m.groups.tag === channel
   const n = continuing ? Number(m?.groups?.n) + 1 : 0
@@ -63,6 +73,11 @@ export interface PlanInput {
   branch: string
   /** A channel asked for on the command line. A config channel name, not just alpha/beta/rc. */
   channel: string | null
+  /**
+   * `cutver stage release` — cut a stable version whatever the branch is
+   * configured to cut. Beats `channel` and beats the branch.
+   */
+  stable?: boolean
   /** The repository's rules. Defaults to today's hard-coded behaviour. */
   config?: Config | undefined
   /** A version typed on the command line. Wins over everything computed. */
@@ -92,10 +107,33 @@ export interface Survey {
    * explaining where the major came from.
    */
   base?: { since: string; bump: Exclude<Bump, null>; total: number }
+  /** Every commit in the freshness range, bodies included. */
+  commits: Commit[]
+  /**
+   * Subjects that are not conventional commits, merges excluded.
+   *
+   * **They count for nothing twice over, and silently.** An unrecognised
+   * subject cannot raise the version — cutver guesses at nothing — and it lands
+   * in no changelog section either, so a repository whose history is half `wip`
+   * gets a patch bump and a thin changelog with nothing on screen connecting
+   * the two. Reported rather than acted on: guessing what `wip` meant is
+   * exactly the thing this tool refuses to do.
+   *
+   * Merge commits are left out. They are not authored changes, every merge
+   * workflow produces them, and counting them would make the warning permanent
+   * noise for a repository doing nothing wrong.
+   */
+  unconventional: string[]
 }
 
 export type Plan =
-  | { kind: 'release'; version: string; from: string; why: string; survey: Survey | null }
+  | {
+      kind: 'release'
+      version: string
+      from: string
+      why: string
+      survey: Survey | null
+    }
   | { kind: 'nothing'; why: string; survey: Survey | null }
   /**
    * The branch matches no rule in the config, so nothing here may release.
@@ -148,13 +186,31 @@ function baseline(
     : { from: stableCore(current), since: 'the first commit', tagged: false }
 }
 
-function survey(commits: { subject: string; bump: Bump }[], since: string): Survey {
+function survey(
+  commits: { subject: string; body: string; bump: Bump }[],
+  since: string,
+): Survey {
   const tally: Tally[] = []
   for (const level of ['major', 'minor', 'patch'] as const) {
     const at = commits.filter(c => c.bump === level)
     if (at.length) tally.push({ level, subjects: at.map(c => c.subject) })
   }
-  return { since, total: commits.length, tally }
+  // The commits themselves, not only the tallied subjects. The tally answers
+  // "what justified this number" and drops the bodies; compiling changelog
+  // sections needs both, and re-reading git for a range already in memory
+  // would be a second chance to disagree about which range it was.
+  const kept = commits.map(({ subject, body }) => ({ subject, body }))
+
+  // `type:` or `type(scope):`, with an optional `!`. The same shape `classify`
+  // reads, tested here only to say a subject is not one — deciding what it
+  // *means* stays in one place.
+  const CONVENTIONAL = /^[a-zA-Z]+(\([^)]*\))?!?:/
+  const MERGE = /^(Merge|Revert)\b/
+  const unconventional = commits
+    .map(c => c.subject)
+    .filter(s => !CONVENTIONAL.test(s) && !MERGE.test(s))
+
+  return { since, total: commits.length, tally, commits: kept, unconventional }
 }
 
 export async function plan({
@@ -162,15 +218,41 @@ export async function plan({
   current,
   branch,
   channel,
+  stable = false,
   explicit,
   rev = 'HEAD',
   config = DEFAULT_CONFIG,
 }: PlanInput): Promise<Plan> {
   if (explicit) {
     if (explicit === current) {
-      return { kind: 'nothing', why: `${explicit} is already the current version`, survey: null }
+      return {
+        kind: 'nothing',
+        why: `${explicit} is already the current version`,
+        survey: null,
+      }
     }
-    return { kind: 'release', version: explicit, from: current, why: 'given explicitly', survey: null }
+
+    // **The commits are still surveyed, even though nothing here needs them to
+    // pick a number.** A typed version skips the arithmetic, not the history:
+    // the changelog sections are compiled from this range, and graduating a
+    // prerelease to stable *always* takes an explicit version — so returning
+    // `survey: null` here would produce empty notes on precisely the release
+    // that most deserves them. Costs one `git log` on a path that was already
+    // going to write files.
+    const since = (await lastAnyTag(root, rev)) ?? 'the first commit'
+    const range = since === 'the first commit' ? rev : `${since}..${rev}`
+    const commits = await commitsIn(range, root)
+
+    return {
+      kind: 'release',
+      version: explicit,
+      from: current,
+      why: 'given explicitly',
+      survey: survey(
+        commits.map(c => ({ ...c, bump: classify(c) })),
+        since,
+      ),
+    }
   }
 
   // Which rule claims this branch, before any git archaeology: a branch that
@@ -290,7 +372,11 @@ export async function plan({
 
     const declaredNext = withStage(declared.base, declared.channel, current)
     if (declaredNext === current) {
-      return { kind: 'nothing', why: `${current} is already the current version`, survey: s }
+      return {
+        kind: 'nothing',
+        why: `${current} is already the current version`,
+        survey: s,
+      }
     }
     return {
       kind: 'release',
@@ -306,7 +392,13 @@ export async function plan({
   // still wins: the flag was typed just now and the branch was named once,
   // months ago.
   const fromBranch = match.kind === 'channel' ? match.channel : null
-  const effective = channel ?? fromBranch
+
+  // **`cutver stage release` overrules the branch, which nothing else can.**
+  // `channel` names a prerelease to cut; there is no prerelease identifier
+  // meaning "none", so asking for a stable release from a branch that is
+  // configured to cut betas needs its own signal rather than a magic name.
+  // Without it, `stage release` on `develop` would emit `1.3.0-release.0`.
+  const effective = stable ? null : (channel ?? fromBranch)
 
   // The base is measured from the last stable release, not from `current` and
   // not from the last tag. `nextVersion`'s comment documents why both of those
