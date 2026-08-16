@@ -278,13 +278,25 @@ export async function releaseTags(root: string): Promise<ReleaseTag[]> {
   )
   if (!ok || !out) return []
 
-  return out
-    .split('\n')
-    .map(line => line.split('\t'))
-    .filter(([tag]) => tag && /^v\d+\.\d+\.\d+/.test(tag))
-    .map(([tag, date]) => ({
-      tag: tag as string,
-      version: (tag as string).slice(1),
-      date: (date ?? '').trim(),
-    }))
+  return (
+    out
+      .split('\n')
+      .map(line => line.split('\t'))
+      .filter(([tag]) => tag && /^v\d+\.\d+\.\d+/.test(tag))
+      .map(([tag, date]) => ({
+        tag: tag as string,
+        version: (tag as string).slice(1),
+        date: (date ?? '').trim(),
+      }))
+      // **Same-second tags need a tiebreak, and git's is alphabetical.** Two tags
+      // created in the same second — which is what a scripted release does when
+      // it cuts and immediately tags — fall back to refname order, so `v1.0.0`
+      // sorts above `v1.1.0-beta.1` and the changelog lists them in an order that
+      // never happened. `lastStableTag` already breaks this tie by precedence;
+      // this is the same repository answering the same question.
+      .sort(
+        (a, b) =>
+          b.date.localeCompare(a.date) || semverOrder(b.version, a.version),
+      )
+  )
 }

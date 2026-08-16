@@ -230,21 +230,33 @@ export async function compileReleases(
   //
   // `plan.ts` already draws this distinction for a different question: any tag
   // decides *whether* to release, the last stable one decides *from what*.
-  const listed = prereleases ? tags : tags.filter(t => !t.version.includes('-'))
+  const isPrerelease = (version: string) => version.includes('-')
+  const listed = prereleases ? tags : tags.filter(t => !isPrerelease(t.version))
+
+  // **The release being cut is filtered by the same rule as the tags.**
+  //
+  // It used to be added unconditionally, so with `prereleases: false` a beta
+  // got a heading the moment it was cut — and lost it again on the next
+  // regeneration, when the same version was a tag and the filter above caught
+  // it. An entry that appears at release time and disappears later is worse
+  // than either answer on its own.
+  //
+  // The span was wrong too, in a way that outlives the heading. A pending
+  // prerelease measures from `listed[0]`, the last *stable* tag, so its section
+  // listed every commit since that release — the same commits the eventual
+  // stable version lists again when it lands. Two headings, one set of changes.
+  const heads =
+    pending && (prereleases || !isPrerelease(pending.version)) ? [pending] : []
 
   // `[being cut, newest tag, …]` paired with what each one measures from. The
   // oldest release measures from the first commit, which is not a tag.
   const spans = [
-    ...(pending
-      ? [
-          {
-            version: pending.version,
-            date: pending.date,
-            from: listed[0]?.tag ?? root0,
-            to: 'HEAD',
-          },
-        ]
-      : []),
+    ...heads.map(p => ({
+      version: p.version,
+      date: p.date,
+      from: listed[0]?.tag ?? root0,
+      to: 'HEAD',
+    })),
     ...listed.map((t, i) => ({
       version: t.version,
       date: t.date,
