@@ -124,7 +124,10 @@ export function downloadBase(version?: string): string {
     : `${RELEASES}/latest/download`
 }
 
-export function hookScript({ runner: explicit, version }: ScriptOptions = {}): string {
+export function hookScript({
+  runner: explicit,
+  version,
+}: ScriptOptions = {}): string {
   return `#!/bin/sh
 ${MARKER}
 #
@@ -192,7 +195,12 @@ async function hookPath(root: string): Promise<string> {
 
 export async function installHook(
   root: string,
-  { force = false, dryRun = false, runner: explicit, version }: InstallOptions = {},
+  {
+    force = false,
+    dryRun = false,
+    runner: explicit,
+    version,
+  }: InstallOptions = {},
 ): Promise<HookResult> {
   const path = await hookPath(root)
   const existing = await Bun.file(path)
@@ -207,7 +215,9 @@ export async function installHook(
     return {
       path: HOOK_NAME,
       state: 'skipped',
-      detail: 'a pre-push hook is already there and is not ours — --force to replace it',
+      detail:
+        'a pre-push hook is already there and is not ours — --force to ' +
+        'replace it',
     }
   }
 
@@ -226,7 +236,10 @@ export async function installHook(
   }
 }
 
-export async function uninstallHook(root: string, { dryRun = false } = {}): Promise<HookResult> {
+export async function uninstallHook(
+  root: string,
+  { dryRun = false } = {},
+): Promise<HookResult> {
   const path = await hookPath(root)
   const existing = await Bun.file(path)
     .text()
@@ -236,7 +249,11 @@ export async function uninstallHook(root: string, { dryRun = false } = {}): Prom
     return { path: HOOK_NAME, state: 'skipped', detail: 'not installed' }
   }
   if (!existing.includes(MARKER)) {
-    return { path: HOOK_NAME, state: 'skipped', detail: 'not ours — left alone' }
+    return {
+      path: HOOK_NAME,
+      state: 'skipped',
+      detail: 'not ours — left alone',
+    }
   }
 
   if (!dryRun) await Bun.file(path).delete()

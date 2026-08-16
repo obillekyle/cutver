@@ -67,7 +67,10 @@ export function normaliseRepo(url: string | null | undefined): string | null {
  * written into someone's manifest is harder to notice than a missing one, and
  * a version tool editing unrelated metadata is not a thing to do quietly.
  */
-export function repositoryMatches(declared: string | null, remote: string | null): boolean {
+export function repositoryMatches(
+  declared: string | null,
+  remote: string | null,
+): boolean {
   const a = normaliseRepo(declared)
   const b = normaliseRepo(remote)
   // No remote to compare against: nothing to disagree with, so nothing to say.
@@ -99,7 +102,9 @@ async function probe(target: Target): Promise<Presence> {
       // crates.io rejects a request with no User-Agent outright, and npm's
       // registry is friendlier to one. Naming the tool also means the traffic
       // is identifiable if it ever needs to be.
-      headers: { 'user-agent': 'cutver (https://www.npmjs.com/package/cutver)' },
+      headers: {
+        'user-agent': 'cutver (https://www.npmjs.com/package/cutver)',
+      },
       signal: AbortSignal.timeout(TIMEOUT_MS),
     })
 
@@ -113,13 +118,18 @@ async function probe(target: Target): Promise<Presence> {
       crate?: { max_version?: string }
     }
     const latest =
-      target.registry === 'npm' ? body['dist-tags']?.latest : body.crate?.max_version
+      target.registry === 'npm'
+        ? body['dist-tags']?.latest
+        : body.crate?.max_version
 
-    return latest ? { target, published: true, latest } : { target, published: true }
+    return latest
+      ? { target, published: true, latest }
+      : { target, published: true }
   } catch (e) {
     // Offline, DNS down, corporate proxy, timeout. **Never fatal** — a release
     // that cannot be cut because a laptop is on a train is a worse failure than
-    // the one this check is trying to prevent, and `--offline` says so out loud.
+    // the one this check is trying to prevent, and `--offline` says so out
+    // loud.
     return { target, published: null, error: (e as Error).message }
   }
 }
@@ -145,7 +155,11 @@ export interface OidcStatus {
  * about permissions — so the natural next move is to go looking for a missing
  * token, which is exactly the thing trusted publishing exists to not have.
  */
-export function detectOidc(env: Record<string, string | undefined> = process.env): OidcStatus {
+export function detectOidc(
+  env: Record<string, string | undefined> = process.env,
+  /** Named in the local-credential line, which said 'npm' to Cargo users. */
+  registry = 'npm',
+): OidcStatus {
   const ci = env.GITHUB_ACTIONS === 'true'
   const endpoint = env.ACTIONS_ID_TOKEN_REQUEST_URL
   const token = env.ACTIONS_ID_TOKEN_REQUEST_TOKEN
@@ -154,7 +168,8 @@ export function detectOidc(env: Record<string, string | undefined> = process.env
     return {
       available: true,
       ci: true,
-      detail: 'GitHub Actions OIDC available — trusted publishing can authenticate',
+      detail:
+        'GitHub Actions OIDC available — trusted publishing can authenticate',
     }
   }
 
@@ -163,13 +178,14 @@ export function detectOidc(env: Record<string, string | undefined> = process.env
       available: false,
       ci: true,
       detail:
-        'in GitHub Actions but no OIDC token endpoint — the job is missing `permissions: id-token: write`',
+        'in GitHub Actions but no OIDC token endpoint — the job is missing ' +
+        '`permissions: id-token: write`',
     }
   }
 
   return {
     available: false,
     ci: false,
-    detail: 'not in CI — publishing will use whatever credential npm finds locally',
+    detail: `not in CI — publishing will use whatever credential ${registry} finds locally`,
   }
 }

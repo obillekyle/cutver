@@ -11,15 +11,20 @@ describe('repository matching', () => {
       'github:obillekyle/cutver',
       'https://github.com/obillekyle/cutver/',
     ]
-    for (const f of forms) expect(normaliseRepo(f)).toBe('github.com/obillekyle/cutver')
+    for (const f of forms)
+      expect(normaliseRepo(f)).toBe('github.com/obillekyle/cutver')
   })
 
   test('a missing repository does not match a real remote', () => {
     // The exact failure: npm normalises the absent field to "" and reports it
     // as a mismatch against the provenance statement, so the error reads like
     // a disagreement rather than a missing key.
-    expect(repositoryMatches(null, 'https://github.com/obillekyle/cutver')).toBe(false)
-    expect(repositoryMatches('', 'https://github.com/obillekyle/cutver')).toBe(false)
+    expect(
+      repositoryMatches(null, 'https://github.com/obillekyle/cutver'),
+    ).toBe(false)
+    expect(repositoryMatches('', 'https://github.com/obillekyle/cutver')).toBe(
+      false,
+    )
   })
 
   test('a stale repository does not match either', () => {

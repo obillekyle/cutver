@@ -15,7 +15,8 @@ import { run } from './run'
 const made: string[] = []
 
 afterEach(async () => {
-  while (made.length) await rm(made.pop() as string, { recursive: true, force: true })
+  while (made.length)
+    await rm(made.pop() as string, { recursive: true, force: true })
 })
 
 async function repo(entries: string[]): Promise<string> {
@@ -45,7 +46,12 @@ describe('what the hook is guarding', () => {
   test('a feat! is refused on a 1.3.0-beta branch', async () => {
     const root = await repo(['feat: one@v1.2.0', 'feat!: the world moved'])
     await expect(
-      plan({ root, current: '1.3.0-beta.0', branch: '1.3.0-beta', channel: null }),
+      plan({
+        root,
+        current: '1.3.0-beta.0',
+        branch: '1.3.0-beta',
+        channel: null,
+      }),
     ).rejects.toBeInstanceOf(PlanRefusal)
   })
 
@@ -54,7 +60,12 @@ describe('what the hook is guarding', () => {
     // what the commits imply, so there is nothing to refuse.
     const root = await repo(['feat: one@v1.2.0', 'feat!: the world moved'])
     expect(
-      await plan({ root, current: '2.0.0-beta.0', branch: '2.0.0-beta', channel: null }),
+      await plan({
+        root,
+        current: '2.0.0-beta.0',
+        branch: '2.0.0-beta',
+        channel: null,
+      }),
     ).toMatchObject({ kind: 'release', version: '2.0.0-beta.1' })
   })
 
@@ -84,7 +95,13 @@ describe('what the hook is guarding', () => {
 
     // At HEAD the break is present and refused…
     await expect(
-      plan({ root, current: '1.3.0-beta.0', branch: '1.3.0-beta', channel: null, rev: head }),
+      plan({
+        root,
+        current: '1.3.0-beta.0',
+        branch: '1.3.0-beta',
+        channel: null,
+        rev: head,
+      }),
     ).rejects.toBeInstanceOf(PlanRefusal)
 
     // …one commit earlier it is not there yet, so the same branch is fine.
@@ -138,20 +155,28 @@ describe('the generated script', () => {
   })
 
   test('--runner pins it when you want it pinned', () => {
-    expect(hookScript({ runner: 'bunx cutver@beta' })).toContain('RUN="bunx cutver@beta"')
+    expect(hookScript({ runner: 'bunx cutver@beta' })).toContain(
+      'RUN="bunx cutver@beta"',
+    )
   })
 })
 
 describe('installHook', () => {
   test('writes an executable hook where git will find it', async () => {
     const root = await repo(['chore: init'])
-    expect(await installHook(root)).toMatchObject({ state: 'written', detail: 'created' })
+    expect(await installHook(root)).toMatchObject({
+      state: 'written',
+      detail: 'created',
+    })
 
     const written = await Bun.file(`${root}/.git/hooks/${HOOK_NAME}`).text()
     expect(written).toContain(MARKER)
 
     if (process.platform !== 'win32') {
-      const { out } = await run(['test', '-x', `${root}/.git/hooks/${HOOK_NAME}`], root)
+      const { out } = await run(
+        ['test', '-x', `${root}/.git/hooks/${HOOK_NAME}`],
+        root,
+      )
       expect(out).toBe('')
     }
   })
@@ -163,16 +188,25 @@ describe('installHook', () => {
     await Bun.write(`${root}/.git/hooks/${HOOK_NAME}`, '#!/bin/sh\necho mine\n')
 
     expect(await installHook(root)).toMatchObject({ state: 'skipped' })
-    expect(await Bun.file(`${root}/.git/hooks/${HOOK_NAME}`).text()).toContain('echo mine')
+    expect(await Bun.file(`${root}/.git/hooks/${HOOK_NAME}`).text()).toContain(
+      'echo mine',
+    )
 
-    expect(await installHook(root, { force: true })).toMatchObject({ state: 'written' })
-    expect(await Bun.file(`${root}/.git/hooks/${HOOK_NAME}`).text()).toContain(MARKER)
+    expect(await installHook(root, { force: true })).toMatchObject({
+      state: 'written',
+    })
+    expect(await Bun.file(`${root}/.git/hooks/${HOOK_NAME}`).text()).toContain(
+      MARKER,
+    )
   })
 
   test('replaces its own without ceremony', async () => {
     const root = await repo(['chore: init'])
     await installHook(root)
-    expect(await installHook(root)).toMatchObject({ state: 'written', detail: 'replaced' })
+    expect(await installHook(root)).toMatchObject({
+      state: 'written',
+      detail: 'replaced',
+    })
   })
 
   test('honours core.hooksPath', async () => {
@@ -184,24 +218,38 @@ describe('installHook', () => {
 
     await installHook(root)
     expect(await Bun.file(`${root}/myhooks/${HOOK_NAME}`).exists()).toBe(true)
-    expect(await Bun.file(`${root}/.git/hooks/${HOOK_NAME}`).exists()).toBe(false)
+    expect(await Bun.file(`${root}/.git/hooks/${HOOK_NAME}`).exists()).toBe(
+      false,
+    )
   })
 
   test('a dry run writes nothing', async () => {
     const root = await repo(['chore: init'])
-    expect(await installHook(root, { dryRun: true })).toMatchObject({ state: 'written' })
-    expect(await Bun.file(`${root}/.git/hooks/${HOOK_NAME}`).exists()).toBe(false)
+    expect(await installHook(root, { dryRun: true })).toMatchObject({
+      state: 'written',
+    })
+    expect(await Bun.file(`${root}/.git/hooks/${HOOK_NAME}`).exists()).toBe(
+      false,
+    )
   })
 })
 
 describe('uninstallHook', () => {
   test('removes ours and leaves anyone else alone', async () => {
     const root = await repo(['chore: init'])
-    expect(await uninstallHook(root)).toMatchObject({ state: 'skipped', detail: 'not installed' })
+    expect(await uninstallHook(root)).toMatchObject({
+      state: 'skipped',
+      detail: 'not installed',
+    })
 
     await installHook(root)
-    expect(await uninstallHook(root)).toMatchObject({ state: 'written', detail: 'removed' })
-    expect(await Bun.file(`${root}/.git/hooks/${HOOK_NAME}`).exists()).toBe(false)
+    expect(await uninstallHook(root)).toMatchObject({
+      state: 'written',
+      detail: 'removed',
+    })
+    expect(await Bun.file(`${root}/.git/hooks/${HOOK_NAME}`).exists()).toBe(
+      false,
+    )
 
     await Bun.write(`${root}/.git/hooks/${HOOK_NAME}`, '#!/bin/sh\necho mine\n')
     expect(await uninstallHook(root)).toMatchObject({
@@ -220,8 +268,12 @@ describe('the download fallback', () => {
       'https://github.com/obillekyle/cutver/releases/download/v1.2.3',
     )
     expect(downloadBase('0.1.0-beta.7')).toContain('/download/v0.1.0-beta.7')
-    expect(downloadBase()).toBe('https://github.com/obillekyle/cutver/releases/latest/download')
-    expect(downloadBase('dev')).toBe('https://github.com/obillekyle/cutver/releases/latest/download')
+    expect(downloadBase()).toBe(
+      'https://github.com/obillekyle/cutver/releases/latest/download',
+    )
+    expect(downloadBase('dev')).toBe(
+      'https://github.com/obillekyle/cutver/releases/latest/download',
+    )
   })
 
   test('maps every platform the release actually ships', () => {

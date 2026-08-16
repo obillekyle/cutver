@@ -6,8 +6,9 @@
  * pattern is to edit it and push again, which is a slow loop for a question
  * with a local answer.
  *
- * A pure report builder: it returns lines and `cli.ts` prints them, for the
- * same reason `plan.ts` returns a `Plan` instead of writing to a terminal.
+ * A pure report builder: it returns lines and `cli/commands.ts` prints them,
+ * for the same reason `plan.ts` returns a `Plan` instead of writing to a
+ * terminal.
  */
 import { matchBranch, type Match } from './config/match'
 import { RELEASE, type Config } from './config/schema'
@@ -59,8 +60,15 @@ export function explainReport(input: ExplainInput): string[] {
 
   // What was tried, and did not fire. This is the half that turns "nothing
   // matched" from a bisect into a read.
-  const fired = match?.kind === 'channel' ? match.channel : match?.kind === 'release' ? RELEASE : null
-  const others = Object.entries(config.channels).filter(([name]) => name !== fired)
+  const fired =
+    match?.kind === 'channel'
+      ? match.channel
+      : match?.kind === 'release'
+        ? RELEASE
+        : null
+  const others = Object.entries(config.channels).filter(
+    ([name]) => name !== fired,
+  )
   if (others.length) {
     lines.push(`            tried:`)
     for (const [name, entries] of others) {
