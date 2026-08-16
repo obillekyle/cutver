@@ -144,6 +144,11 @@ export const COMMANDS: readonly Command[] = [
         takes: null,
         summary: 'also update GitHub release bodies that nobody wrote',
       },
+      {
+        name: '--force',
+        takes: null,
+        summary: 'with --overwrite, replace written bodies too',
+      },
     ],
   },
   {

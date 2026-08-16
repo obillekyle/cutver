@@ -62,17 +62,37 @@ of `rc`, and the version written is the canonical `-rc.N`.
 | `--if-needed` | (`stage`) Exit 0 rather than 1 when no release is warranted. What CI wants. |
 | `--offline` | (`stage`, `doctor`) Skip the registry lookups entirely. |
 | `--allow-first-publish` | (`stage`) Proceed even though a package is not on the registry yet. |
-| `--force` | (`init`, `hook`) Replace files that are already there. Never replaces `CHANGELOG.md`, and never a `pre-push` hook cutver did not write. |
+| `--force` | (`init`, `hook`, `changelog`) Replace files that are already there. Never replaces `CHANGELOG.md`, and never a `pre-push` hook cutver did not write. With `changelog --overwrite` it replaces written release bodies too — see below. |
 | `--rev <commit>` | (`check`) The commit to judge, default `HEAD`. The hook passes the sha of the ref being pushed, which is not always the one checked out. |
 | `--runner <cmd>` | (`hook`) Pin how the hook invokes cutver, instead of detecting it at run time. |
 | `--no-hook` | (`init`) Do not install the pre-push guard. Everything else is written as usual. |
-| `--overwrite` | (`changelog`) Also update GitHub release bodies from the compiled sections. **Only replaces a body nobody wrote** — empty, the version repeated, or GitHub’s own generated notes; anything else is reported and left alone. Needs `GH_TOKEN` or `GITHUB_TOKEN`. |
+| `--overwrite` | (`changelog`) Also update GitHub release bodies from the compiled sections. **Only replaces a body nobody wrote** — empty, the version repeated, or GitHub’s own generated notes; anything else is reported and left alone. Summarised when a [summariser](config.md#the-summariser) is configured, so a page filled in afterwards reads the same as one written at release time. Needs `GH_TOKEN` or `GITHUB_TOKEN`. |
 | `--config <path>` | Read this config instead of looking for one. Given and missing is an error, never a silent fallback to the defaults. |
 | `-h`, `--help` | Usage. |
 | `-v`, `--version` | The version of cutver itself. |
 
 `--adapter js` and `--adapter=js` both work, as does every other option that
 takes a value.
+
+### `changelog --overwrite --force`
+
+`--force` removes the one protection `--overwrite` has: it replaces release
+bodies **somebody wrote**, and GitHub keeps no history of a release body, so
+there is nothing to restore them from afterwards.
+
+It exists because "nobody wrote this" is deliberately conservative. A page whose
+body is a single line above GitHub's generated list counts as authored, and so
+does one an earlier `--overwrite` filled in — which is the case worth knowing
+about, since it means re-running after changing `sections` reports every page as
+left alone until this flag is passed.
+
+Run `--overwrite --dry-run` first: it names which pages hold a written body
+without touching any of them. On a terminal `--force` then asks before the first
+write; in CI it proceeds, because the flag was typed explicitly.
+
+```bash
+cutver changelog --overwrite --dry-run
+```
 
 ### Deprecated in 2.0
 

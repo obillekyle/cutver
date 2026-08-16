@@ -493,7 +493,9 @@ export async function runChangelog(argv: string[]): Promise<void> {
   )
   console.log(`  ${opts.dryRun ? '=' : '↑'} CHANGELOG.md  ${change.detail}`)
 
-  if (opts.overwrite) await overwriteReleases(root, releases, opts.dryRun)
+  if (opts.overwrite) {
+    await overwriteReleases(root, config, releases, opts.dryRun, opts.force)
+  }
 }
 
 /**
@@ -510,8 +512,10 @@ export async function runChangelog(argv: string[]): Promise<void> {
  */
 async function overwriteReleases(
   root: string,
+  config: Config,
   releases: { version: string; notes: string }[],
   dryRun: boolean,
+  force: boolean,
 ): Promise<void> {
   const repo = await githubRepo(root)
   if (!repo) {
@@ -531,18 +535,72 @@ async function overwriteReleases(
     return
   }
 
+  // **`--force` destroys published prose, so it asks.** Everything else in this
+  // command is safe by construction — a body is replaced only when nobody wrote
+  // it. `--force` removes exactly that protection, and GitHub keeps no history
+  // of a release body, so there is nothing to restore it from.
+  //
+  // Not a terminal proceeds, on the same reasoning as `init --force`: the flag
+  // was typed explicitly, and a prompt nobody can answer would hang a pipeline
+  // instead of protecting it.
+  if (force && !dryRun) {
+    console.error(
+      'cutver: --force will replace release bodies that someone wrote, and\n' +
+        '        GitHub keeps no history of them. `--dry-run` lists which.',
+    )
+    if (process.stdin.isTTY && !confirm('        Replace them?')) {
+      die('nothing written to the release pages')
+    }
+  }
+
   console.log(`\nrelease pages on ${repo}`)
   const width = Math.max(...releases.map(r => r.version.length + 1), 4)
 
   // Sequential on purpose: GitHub rate-limits by the hour, and a repository
   // with two hundred tags firing two hundred concurrent requests is how a
-  // command that was meant to tidy up gets an account throttled.
+  // command that was meant to tidy up gets an account throttled. The summariser
+  // has the same shape of limit, measured in tokens per minute.
   for (const release of releases) {
     const tag = `v${release.version}`
-    const result = await updateRelease(repo, token, tag, release.notes, dryRun)
+
+    // **Summarised where the release path would summarise.** A page written by
+    // `cutver notes` at release time gets the readable version; one written by
+    // this command was getting the compiled section, so the same surface read
+    // two different ways depending only on when it was filled in.
+    //
+    // The compiled section stays the fallback, per release rather than for the
+    // run: a rate limit on the fourth of twenty leaves that one compiled and
+    // lets the rest through.
+    //
+    // Passed unevaluated — `updateRelease` calls it only once this page is
+    // known to be eligible, so the pages it leaves alone cost no inference.
+    let note: string | null = null
+    const result = await updateRelease(
+      repo,
+      token,
+      tag,
+      async () => {
+        const summary = await summarize(
+          release.notes,
+          config.changelog,
+          Bun.env,
+          release.notes,
+        )
+        note = summary.note
+        return summary.text
+      },
+      dryRun,
+      force,
+    )
     const mark =
       result.state === 'updated' ? '↑' : result.state === 'skipped' ? '·' : '='
     console.log(`  ${mark} ${tag.padEnd(width)}  ${result.detail}`)
+
+    // **Said per page, because it is per page.** Every summariser failure falls
+    // back to the compiled section, which is publishable — so without this a
+    // page that hit a rate limit reports `replaced` and reads as a success,
+    // while sitting there in a different voice from the four around it.
+    if (note) console.log(`    ${note}`)
   }
 }
 

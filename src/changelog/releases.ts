@@ -132,8 +132,19 @@ export async function updateRelease(
   repo: string,
   token: string,
   tag: string,
-  body: string,
+  /**
+   * The new body, or a function producing it.
+   *
+   * **A function, because producing it can cost minutes.** With a summariser
+   * configured the body is a model call, and the decision to skip a release
+   * needs only the *old* body — so a re-run over twenty pages that are all
+   * left alone would otherwise pay twenty model calls to reach twenty skips.
+   * Nothing is produced until this release is known to be eligible.
+   */
+  body: string | (() => Promise<string>),
   dryRun: boolean,
+  /** Replace a body somebody wrote. Never set without a person asking twice. */
+  force = false,
 ): Promise<ReleaseUpdate> {
   const found = await api(`/repos/${repo}/releases/tags/${tag}`, token).catch(
     () => null,
@@ -150,23 +161,50 @@ export async function updateRelease(
   const release = (await found.json()) as Release
   const current = (release.body ?? '').trim()
 
-  if (current === body.trim()) {
+  // **The free comparison first, so a second run is quiet.** A page cutver
+  // already filled in reads as authored — it is prose, and nothing marks it as
+  // machine-written — so without this an unchanged re-run would report every
+  // page as "has a written body" and recommend `--force` for a no-op.
+  //
+  // Only possible when the body is already in hand. Behind a summariser it is
+  // not, and could not be compared anyway: two runs of a model produce two
+  // different paragraphs from the same commits.
+  if (typeof body === 'string' && current === body.trim()) {
     return { tag, state: 'unchanged', detail: 'already matches the changelog' }
   }
-  if (!isUnauthored(release.body, tag)) {
+
+  // Decided before the body is produced, so a skip costs nothing.
+  const authored = !isUnauthored(release.body, tag)
+  if (authored && !force) {
     return {
       tag,
       state: 'skipped',
-      detail: 'has a written body — left alone',
+      detail: 'has a written body — left alone (--force replaces it)',
     }
   }
+
+  // Answered before the body is produced too. A dry run exists to say which
+  // pages this would touch, and behind a summariser producing them costs a
+  // model call each to reach the same answer — a preview nobody expects to be
+  // billed for.
   if (dryRun) {
-    return { tag, state: 'updated', detail: 'would be replaced (dry run)' }
+    return {
+      tag,
+      state: 'updated',
+      detail: authored
+        ? 'would replace a WRITTEN body (dry run)'
+        : 'would be replaced (dry run)',
+    }
+  }
+
+  const next = typeof body === 'string' ? body : await body()
+  if (current === next.trim()) {
+    return { tag, state: 'unchanged', detail: 'already matches the changelog' }
   }
 
   const patched = await api(`/repos/${repo}/releases/${release.id}`, token, {
     method: 'PATCH',
-    body: JSON.stringify({ body }),
+    body: JSON.stringify({ body: next }),
   }).catch(() => null)
 
   if (!patched?.ok) {
@@ -176,5 +214,13 @@ export async function updateRelease(
       detail: `could not write it back${patched ? ` (${patched.status})` : ''}`,
     }
   }
-  return { tag, state: 'updated', detail: current ? 'replaced' : 'was empty' }
+  return {
+    tag,
+    state: 'updated',
+    detail: authored
+      ? 'replaced a written body'
+      : current
+        ? 'replaced'
+        : 'was empty',
+  }
 }
