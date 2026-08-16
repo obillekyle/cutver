@@ -30,6 +30,7 @@ import {
   type Ecosystem,
   type SummarizerConfig,
 } from './schema'
+import { exists, parseYaml, readText } from '../runtime'
 
 /** Tried in this order; more than one existing is an error, not a preference. */
 const NAMES = ['cutver.json', 'cutver.yml', 'cutver.yaml'] as const
@@ -516,8 +517,7 @@ export async function loadConfig(
   explicit?: string,
 ): Promise<Loaded> {
   if (explicit) {
-    const file = Bun.file(explicit)
-    if (!(await file.exists())) {
+    if (!(await exists(explicit))) {
       // An explicit path that quietly falls back to defaults is how a
       // repository releases the wrong numbers for a month.
       throw new ConfigError(`--config ${explicit}: no such file`)
@@ -527,7 +527,7 @@ export async function loadConfig(
 
   const found: string[] = []
   for (const name of NAMES) {
-    if (await Bun.file(`${root}/${name}`).exists()) found.push(name)
+    if (await exists(`${root}/${name}`)) found.push(name)
   }
 
   if (found.length > 1) {
@@ -543,14 +543,14 @@ export async function loadConfig(
 }
 
 async function read(path: string, where: string): Promise<Config> {
-  const text = await Bun.file(path).text()
+  const text = await readText(path)
   const json = path.endsWith('.json')
 
   let raw: unknown
   try {
     // Parsed by extension: each parser gives better errors for its own syntax,
     // and neither gives a line number, so the file name is added here.
-    raw = json ? (text.trim() ? JSON.parse(text) : null) : Bun.YAML.parse(text)
+    raw = json ? (text.trim() ? JSON.parse(text) : null) : parseYaml(text)
   } catch (e) {
     throw new ConfigError(`${where}: ${(e as Error).message}`)
   }

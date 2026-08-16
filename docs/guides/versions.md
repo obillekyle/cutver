@@ -117,7 +117,7 @@ semver check would happily accept.
 Pass a version and the computation is skipped entirely:
 
 ```bash
-cutver 1.4.0
+cutver stage 1.4.0
 ```
 
 Still validated — a computed version is checked too, as cheap insurance against

@@ -42,6 +42,7 @@ import {
   resolveRoot,
   VERSION,
 } from './args'
+import { env, exists } from '../runtime'
 
 /**
  * `--force` names the files it is about to replace, and asks.
@@ -68,7 +69,7 @@ async function confirmForce(
   for (const file of initFiles(eco, VERSION, config)) {
     // `onlyIfAbsent` files are never replaced, with or without the flag.
     if (file.onlyIfAbsent) continue
-    if (await Bun.file(`${root}/${file.path}`).exists()) at.add(file.path)
+    if (await exists(`${root}/${file.path}`)) at.add(file.path)
   }
 
   if (!at.size) return
@@ -131,8 +132,8 @@ export async function runInit(argv: string[]): Promise<void> {
     // file — no manifest, or both — so the message names which one it is.
     const both =
       !opts.explicit &&
-      (await Bun.file(`${root}/Cargo.toml`).exists()) &&
-      (await Bun.file(`${root}/package.json`).exists())
+      (await exists(`${root}/Cargo.toml`)) &&
+      (await exists(`${root}/package.json`))
 
     die(
       opts.explicit
@@ -282,7 +283,7 @@ export async function runNotes(argv: string[]): Promise<void> {
   const { text, note } = await summarize(
     raw?.commits ?? body,
     config.changelog,
-    Bun.env,
+    env,
     body,
     raw?.metadata ?? null,
   )
@@ -525,7 +526,7 @@ async function overwriteReleases(
     return
   }
 
-  const token = tokenFor(Bun.env)
+  const token = tokenFor(env)
   if (!token) {
     console.error(
       'cutver: --overwrite needs a token, and there is none — the changelog was\n' +
@@ -583,7 +584,7 @@ async function overwriteReleases(
         const summary = await summarize(
           release.notes,
           config.changelog,
-          Bun.env,
+          env,
           release.notes,
         )
         note = summary.note

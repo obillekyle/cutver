@@ -10,6 +10,7 @@
  */
 import { run } from './run'
 import type { Commit } from './version-from-commits'
+import { semverOrder } from './runtime'
 
 export async function isGitRepo(root: string): Promise<boolean> {
   const { ok, out } = await run(
@@ -90,8 +91,7 @@ export async function lastAnyTag(
 
   if (!found.length) return null
   found.sort(
-    (a, b) =>
-      b.when - a.when || Bun.semver.order(b.name.slice(1), a.name.slice(1)),
+    (a, b) => b.when - a.when || semverOrder(b.name.slice(1), a.name.slice(1)),
   )
   return found[0]?.name ?? null
 }

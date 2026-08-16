@@ -173,10 +173,12 @@ contradict.
 
 ## Graduating
 
-Cut it stable. No flag, no branch declaration:
+Cut it stable. From a branch with no channel declared, `cutver stage` does this
+on its own; `release` says it outright, and is what a branch that *is* declared
+a channel needs in order to leave it:
 
 ```bash
-cutver
+cutver stage release
 ```
 
 The base comes from the last stable tag plus the bump across every commit since

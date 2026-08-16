@@ -140,17 +140,23 @@ jobs:
             echo "value=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Publish to npm
-        if: steps.exists.outputs.value != 'true'
-        env:
-          DIST_TAG: ${{ steps.disttag.outputs.value }}
-        run: npm publish --tag "$DIST_TAG"
-
-      # The other half of shipping this: a repository that has no package
-      # manager — a Rust workspace, say — should not have to install one to cut
-      # a version. Five binaries, no runtime.
-      - name: Compile every target
+      # **Before the publish, because the tarball is one of the outputs.**
+      # `bin` points at `dist/cutver.mjs` — the bundle Node runs, since the
+      # source is TypeScript against Bun — and `dist/` is gitignored, so a
+      # checkout has nothing there until this step. Publishing first would ship
+      # a package whose `bin` names a file that is not in it.
+      #
+      # The five executables come from the same step: a repository with no
+      # package manager — a Rust workspace, say — should not have to install one
+      # to cut a version.
+      - name: Build the bundle and every executable
         run: bun run build --all
+
+      - name: Refuse to publish a tarball with no entry point
+        run: |
+          test -s dist/cutver.mjs
+          head -1 dist/cutver.mjs | grep -qx '#!/usr/bin/env node'
+          echo "dist/cutver.mjs is present and starts with a node shebang"
 
       # Same idempotency, for the same reason: a re-run must not die on a
       # release that already exists. Binaries are uploaded either way, so a
@@ -200,6 +206,12 @@ jobs:
           else
             gh release create "$TAG" dist/cutver-* --title "$TAG" --notes-file notes.md $PRERELEASE
           fi
+
+      - name: Publish to npm
+        if: steps.exists.outputs.value != 'true'
+        env:
+          DIST_TAG: ${{ steps.disttag.outputs.value }}
+        run: npm publish --tag "$DIST_TAG"
 
       - name: Summary
         env:

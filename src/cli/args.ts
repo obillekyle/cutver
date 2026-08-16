@@ -43,6 +43,7 @@ import { flagsAllowedFor, help } from './help'
  * checkout with no manifest, which is the only case left.
  */
 import manifest from '../../package.json' with { type: 'json' }
+import { pathToFileURL } from '../runtime'
 
 declare const CUTVER_VERSION: string | undefined
 
@@ -358,7 +359,7 @@ export function reportDeprecated(
 
 /** An absolute root with forward slashes, drive letter intact on Windows. */
 export function resolveRoot(cwd: string | undefined): string {
-  return (cwd ? Bun.pathToFileURL(cwd).pathname : process.cwd())
+  return (cwd ? pathToFileURL(cwd).pathname : process.cwd())
     .replace(/^\/([A-Za-z]:)/, '$1')
     .replace(/\\/g, '/')
     .replace(/\/+$/, '')

@@ -8,6 +8,7 @@
  * workflows into a GitLab repository as readily as into a GitHub one, where
  * they sit in a directory nothing reads.
  */
+import { exists } from '../runtime'
 
 /** The CI systems worth telling apart, and the file that gives each away. */
 const CI_MARKERS = [
@@ -42,12 +43,10 @@ export interface Ci {
  */
 export async function detectCi(root: string): Promise<Ci | null> {
   for (const marker of CI_MARKERS) {
-    // A directory is not a file, and `Bun.file(dir).exists()` answers false for
+    // A directory is not a file, and `exists(dir)` answers false for
     // one. `.github/workflows` is the marker that matters most, so it is probed
     // through its stat rather than through the file API.
-    const found = await Bun.file(`${root}/${marker.path}`)
-      .exists()
-      .catch(() => false)
+    const found = await exists(`${root}/${marker.path}`).catch(() => false)
 
     if (found || (await isDirectory(`${root}/${marker.path}`))) {
       return { id: marker.id, name: marker.name, path: marker.path }
@@ -84,8 +83,8 @@ export type Detected = 'cargo' | 'node' | 'bun'
  */
 export async function detectEcosystem(root: string): Promise<Detected | null> {
   const [cargo, npm] = await Promise.all([
-    Bun.file(`${root}/Cargo.toml`).exists(),
-    Bun.file(`${root}/package.json`).exists(),
+    exists(`${root}/Cargo.toml`),
+    exists(`${root}/package.json`),
   ])
 
   if (cargo && npm) return null
@@ -93,8 +92,8 @@ export async function detectEcosystem(root: string): Promise<Detected | null> {
   if (!npm) return null
 
   const [lockb, lock] = await Promise.all([
-    Bun.file(`${root}/bun.lockb`).exists(),
-    Bun.file(`${root}/bun.lock`).exists(),
+    exists(`${root}/bun.lockb`),
+    exists(`${root}/bun.lock`),
   ])
   return lockb || lock ? 'bun' : 'node'
 }

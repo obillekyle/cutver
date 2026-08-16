@@ -6,11 +6,12 @@
  * markdown on stdin and writes markdown on stdout. cutver ships no keys and
  * hosts nothing either way.
  *
- * Run through Bun Shell rather than `sh -c`, so the same command works on a
- * Windows runner, a Linux one, and a laptop cutting a release by hand. That
- * seam is not hypothetical: `shell: bash` on a Windows runner is Git Bash, and
- * the difference between it and POSIX is what put a carriage return inside a
- * binary name and cost a public release two runs.
+ * The command is read by the platform's own shell, so a line that works in your
+ * terminal works here. It is worth knowing that this differs by platform —
+ * `/bin/sh` against `cmd.exe` — and that the difference is not theoretical:
+ * `shell: bash` on a Windows runner is Git Bash, and the gap between it and
+ * POSIX once put a carriage return inside a binary name and cost a public
+ * release two runs.
  *
  * **Nothing here is allowed to fail a release.** A missing binary, a non-zero
  * exit, an empty answer, a model that hangs — every one of them returns the
@@ -18,10 +19,10 @@
  * release pipeline and the least important thing in this one; the notes were
  * already correct and already publishable before it ran.
  */
-import { $ } from 'bun'
 import type { ChangelogConfig } from '../config/schema'
 import { ask, keyFor } from './connectors'
 import DEFAULT_PROMPT from './prompt.md' with { type: 'text' }
+import { env as processEnv, runShell, sleep } from '../runtime'
 
 /**
  * The instruction sent ahead of every release's commits, unless a config
@@ -157,7 +158,7 @@ export const COMMAND_ENV = 'CUTVER_SUMMARIZE'
 export async function summarize(
   notes: string,
   config: ChangelogConfig | null,
-  env: Record<string, string | undefined> = Bun.env,
+  env: Record<string, string | undefined> = processEnv,
   fallback: string = notes,
   metadata: string | null = null,
 ): Promise<Summary> {
@@ -208,7 +209,7 @@ export async function summarize(
         `cutver: ${summarizer.connector}: ${answer.error} — retrying in ` +
           `${summarizer.retry}m`,
       )
-      await Bun.sleep(summarizer.retry * 60_000)
+      await sleep(summarizer.retry * 60_000)
       answer = await ask(summarizer, key, input)
     }
 
@@ -257,25 +258,22 @@ export async function summarize(
   const input = payload(notes, config?.prompt ?? null, metadata)
 
   try {
-    // `raw` so Bun Shell parses the configured string as a command line rather
-    // than passing it as one escaped argument. Redirect rather than a pipe
-    // through `echo`, which would append a newline the model then has to guess
-    // about.
-    // No timeout here, deliberately: `ShellPromise` exposes neither one nor an
-    // abort signal, and a fake one built from `Promise.race` would return while
-    // leaving the child running and the process unable to exit. A model that
-    // hangs is a real risk, so it is handled where the mechanism actually
-    // exists — `timeout-minutes` on the generated step, which GitHub enforces
-    // and anyone can see and change.
-    const result = await $`${{ raw: command }} < ${new Response(input)}`
-      .quiet()
-      .nothrow()
+    // The command line goes to the platform's shell, so the string in
+    // `CUTVER_SUMMARIZE` is read the way the person who wrote it expects.
+    // Written to stdin rather than piped through `echo`, which would append a
+    // newline the model then has to guess about.
+    // No timeout here, deliberately: a fake one built from `Promise.race` would
+    // return while leaving the child running and the process unable to exit. A
+    // model that hangs is a real risk, so it is handled where the mechanism
+    // actually exists — `timeout-minutes` on the generated step, which GitHub
+    // enforces and anyone can see and change.
+    const result = await runShell(command, input)
 
-    const text = extractRelease(result.stdout.toString())
-    if (result.exitCode !== 0) {
+    const text = extractRelease(result.out)
+    if (!result.ok) {
       return {
         text: fallback,
-        note: `summariser exited ${result.exitCode} — notes used as written`,
+        note: `summariser exited ${result.code} — notes used as written`,
       }
     }
     if (!text) {

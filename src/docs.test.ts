@@ -167,6 +167,24 @@ describe('the CLI reference', () => {
     }
   })
 
+  /**
+   * The command list, checked the way the flags are.
+   *
+   * The page claims to be generated from the same table it is checked against,
+   * and only half of that was true: nothing compared the command list to
+   * `COMMANDS`, so `version` shipped in `cutver help` and in the dispatcher
+   * while appearing in neither the synopsis nor the table on this page.
+   */
+  test('lists every command the CLI has', async () => {
+    const md = await read('reference/cli.md')
+    for (const { name } of COMMANDS) {
+      expect(
+        md,
+        `\`cutver ${name}\` is in --help but not in reference/cli.md`,
+      ).toContain(`cutver ${name}`)
+    }
+  })
+
   test('documents no flag the CLI does not have', async () => {
     const real = realFlags()
     for (const flag of flags(await optionsTable())) {
@@ -228,7 +246,7 @@ describe('the CLI reference', () => {
   })
 })
 
-describe('documented config actually loads', () => {
+describe('what the docs tell you to run and write', () => {
   /**
    * **Parsing is not loading, and that gap is how a page came to document a
    * key the loader rejects.** The YAML check above proves a block is
@@ -283,41 +301,76 @@ describe('documented config actually loads', () => {
    * surface left to rot. This covers what remains: every command it shows must
    * be one the CLI has.
    */
-  test('the README shows no command the CLI does not have', async () => {
+  /**
+   * **Fenced `bash` blocks only.** Scanning whole files matched prose — "the
+   * only input cutver reads" parses as `cutver reads` — and the install line
+   * `curl -L -o cutver https://…` as `cutver https`. A command is something
+   * someone can copy and run, which is exactly what a shell fence marks.
+   *
+   * The first word after `cutver` is captured whatever it looks like, not just
+   * `[a-z-]+`. Restricting it to letters is how `cutver 1.4.0` — the pre-2.0
+   * invocation, which now exits 1 — sat in two guide pages unnoticed: a version
+   * number simply did not match, so there was nothing to compare against the
+   * command list.
+   */
+  function commandsShown(md: string): string[] {
+    return [...md.matchAll(/```bash\n([\s\S]*?)```/g)]
+      .flatMap(([, body]) => (body as string).split('\n'))
+      .map(line =>
+        /^(?:bunx |npx --yes )?cutver(?: +(\S+))?\s*$|^(?:bunx |npx --yes )?cutver +(?!https?:)(\S+)/.exec(
+          line.trim(),
+        ),
+      )
+      .map(m => (m ? (m[1] ?? m[2] ?? '') : null))
+      .filter((w): w is string => w !== null && !w.startsWith('-'))
+  }
+
+  test('no page shows a command the CLI does not have', async () => {
+    const names = new Set(COMMANDS.map(c => c.name))
     const readme = await Bun.file(
       new URL('../README.md', import.meta.url),
     ).text()
-    const names = new Set(COMMANDS.map(c => c.name))
 
-    // **Fenced `bash` blocks only.** Scanning the whole file matched prose —
-    // "the only input cutver reads" parses as `cutver reads` — and the install
-    // line `curl -L -o cutver https://…` as `cutver https`. A command is
-    // something someone can copy and run, which is exactly what a shell fence
-    // marks.
-    const shown = [...readme.matchAll(/```bash\n([\s\S]*?)```/g)]
-      .flatMap(([, body]) => (body as string).split('\n'))
-      .map(
-        line =>
-          /^(?:bunx |npx --yes )?cutver (?!https?:)([a-z-]+)/.exec(
-            line.trim(),
-          )?.[1],
-      )
-      .filter((w): w is string => !!w && !w.startsWith('-'))
+    const sources: [string, string][] = [['README.md', readme]]
+    for (const page of await pages()) sources.push([page, await read(page)])
+
+    let checked = 0
+    for (const [where, md] of sources) {
+      for (const word of commandsShown(md)) {
+        checked++
+        // The empty string is a bare `cutver` on its own line. It was the
+        // release invocation before 2.0 and is now the help — including in the
+        // one place a guide used it as the last step of graduating a
+        // prerelease, where it did nothing at all and exited 1 in CI.
+        expect(
+          [...names],
+          word
+            ? `${where} shows \`cutver ${word}\``
+            : `${where} shows a bare \`cutver\`, which prints help`,
+        ).toContain(word)
+      }
+    }
 
     expect(
-      shown.length,
+      checked,
       'no cutver commands found — has the regex stopped matching?',
-    ).toBeGreaterThan(2)
-    for (const word of shown) {
-      expect([...names], `README shows \`cutver ${word}\``).toContain(word)
-    }
+    ).toBeGreaterThan(10)
   })
 
-  test('every config example in the reference is one cutver accepts', async () => {
-    const pages = ['reference/config.md']
+  /**
+   * **Every page, not the reference page.**
+   *
+   * Both checks below used to run over a hand-written `['reference/config.md']`,
+   * which is the same shape of mistake they exist to catch: the reference page
+   * documented the current spelling while `guides/changelog.md` taught the
+   * deprecated one for as long as nobody read both in the same sitting. A guide
+   * is where somebody copies a block from, so it is the page that most needs
+   * checking.
+   */
+  test('every documented config example is one cutver accepts', async () => {
     let checked = 0
 
-    for (const page of pages) {
+    for (const page of await pages()) {
       for (const { text, doc } of await configBlocks(page)) {
         checked++
         expect(() => parseConfig(doc, page), `${page}:\n${text}`).not.toThrow()
@@ -333,7 +386,7 @@ describe('documented config actually loads', () => {
     // Deprecated shapes still parse — that is the point of deprecating rather
     // than removing them — so `not.toThrow()` cannot catch one. The warnings
     // the loader collects can.
-    for (const page of ['reference/config.md']) {
+    for (const page of await pages()) {
       for (const { text, doc } of await configBlocks(page)) {
         expect(parseConfig(doc, page).warnings, `${page}:\n${text}`).toEqual([])
       }

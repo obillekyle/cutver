@@ -24,6 +24,7 @@ import {
   sectionFor,
   type ReleaseSection,
 } from './notes'
+import { readText } from '../runtime'
 
 /** What the summariser is sent: the material, and the facts to copy through. */
 export interface RawRange {
@@ -122,9 +123,7 @@ export async function sectionOrCompile(
   tag: string,
   config: Config,
 ): Promise<string> {
-  const changelog = await Bun.file(`${root}/CHANGELOG.md`)
-    .text()
-    .catch(() => null)
+  const changelog = await readText(`${root}/CHANGELOG.md`).catch(() => null)
 
   const section = changelog === null ? '' : sectionFor(changelog, tag)
   if (section) return section

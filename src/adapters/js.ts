@@ -4,10 +4,10 @@
  * The third one is the part that is easy to leave out and expensive to leave
  * out — see `syncLock` below.
  */
-import { Glob } from 'bun'
 import { detectEol, detectIndent, withEol } from '../text'
 import type { Target } from '../registry'
 import { AdapterError, type Adapter, type Change } from './types'
+import { exists, glob, readText, write } from '../runtime'
 
 interface Manifest {
   name?: string
@@ -27,7 +27,7 @@ function repositoryOf(json: Manifest): string | null {
 async function readManifest(
   path: string,
 ): Promise<{ json: Manifest; text: string }> {
-  const text = await Bun.file(path).text()
+  const text = await readText(path)
   try {
     return { json: JSON.parse(text) as Manifest, text }
   } catch (e) {
@@ -50,7 +50,7 @@ async function writeManifest(
 ): Promise<void> {
   const body = JSON.stringify(json, null, detectIndent(original))
   const trailing = /\n$/.test(original) ? '\n' : ''
-  await Bun.write(path, withEol(body + trailing, detectEol(original)))
+  await write(path, withEol(body + trailing, detectEol(original)))
 }
 
 /**
@@ -117,13 +117,8 @@ export async function workspaceDirs(root: string): Promise<string[]> {
   const found = new Set<string>()
 
   for (const pattern of patterns(json)) {
-    const glob = new Glob(`${pattern.replace(/\/+$/, '')}/package.json`)
-    for await (const hit of glob.scan({
-      cwd: root,
-      onlyFiles: true,
-      followSymlinks: false,
-    })) {
-      const rel = hit.replaceAll('\\', '/')
+    const hits = await glob(`${pattern.replace(/\/+$/, '')}/package.json`, root)
+    for (const rel of hits) {
       // A `**` pattern will happily walk into an installed dependency, and a
       // vendored copy of some package is not this repository's to version.
       if (rel.split('/').includes('node_modules')) continue
@@ -164,9 +159,7 @@ async function syncLock(
   dryRun: boolean,
 ): Promise<Change> {
   const path = `${root}/bun.lock`
-  const lock = await Bun.file(path)
-    .text()
-    .catch(() => '')
+  const lock = await readText(path).catch(() => '')
 
   if (!lock) {
     // A checkout that has never installed. Nothing to keep in sync, and the
@@ -204,7 +197,7 @@ async function syncLock(
     }
   }
 
-  if (!dryRun) await Bun.write(path, patched)
+  if (!dryRun) await write(path, patched)
   return {
     file: 'bun.lock',
     state: 'updated',
@@ -223,7 +216,7 @@ async function syncLock(
 async function foreignLocks(root: string): Promise<Change[]> {
   const out: Change[] = []
   for (const name of ['package-lock.json', 'pnpm-lock.yaml', 'yarn.lock']) {
-    if (await Bun.file(`${root}/${name}`).exists()) {
+    if (await exists(`${root}/${name}`)) {
       out.push({
         file: name,
         state: 'unchanged',

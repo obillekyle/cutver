@@ -12,7 +12,7 @@ a workflow that is usually red is a workflow nobody reads. Pass a version
 explicitly if you want one anyway:
 
 ```bash
-cutver 1.2.4
+cutver stage 1.2.4
 ```
 
 Or check that your commits are conventional. `Feat: capitalised` and

@@ -42,6 +42,7 @@ import { ADAPTER_FOR } from '../adapters'
 import { parseConfig } from '../config/load'
 import { configTemplate } from '../config/template'
 import { publishWorkflow, versionWorkflow } from './workflows'
+import { exists, parseYaml, write } from '../runtime'
 
 // Declared once, in `config/schema.ts`, because `target:` in the config names
 // the same set. Two copies type-checked only because the unions happened to be
@@ -198,13 +199,13 @@ export async function init(
   // repository's actual policy.
   const effective = config.source
     ? config
-    : parseConfig(Bun.YAML.parse(configTemplate(eco)), 'cutver.yml')
+    : parseConfig(parseYaml(configTemplate(eco)), 'cutver.yml')
 
   for (const file of initFiles(eco, version, effective)) {
     const full = `${root}/${file.path}`
-    const exists = await Bun.file(full).exists()
+    const present = await exists(full)
 
-    if (exists && (file.onlyIfAbsent || !force)) {
+    if (present && (file.onlyIfAbsent || !force)) {
       out.push({
         path: file.path,
         state: 'skipped',
@@ -215,11 +216,11 @@ export async function init(
       continue
     }
 
-    if (!dryRun) await Bun.write(full, file.contents)
+    if (!dryRun) await write(full, file.contents)
     out.push({
       path: file.path,
       state: 'written',
-      detail: exists ? 'replaced' : 'created',
+      detail: present ? 'replaced' : 'created',
     })
   }
 

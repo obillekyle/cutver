@@ -17,7 +17,8 @@ It never publishes. That is the whole design, not a missing feature — see
 | --- | --- |
 | **git** | Non-negotiable. The version is computed from commit messages and measured from tags; there is nothing to compute without them. |
 | **Conventional commits** | `feat:`, `fix:`, `feat!:` and friends. Not perfectly — anything unrecognised is ignored rather than guessed at — but the ones that should cut a release have to say so. |
-| **Bun** | Only if you run it with `bunx`. The [standalone executable](getting-started/install.md#the-executable) has no runtime at all, which is the point for Cargo repositories. |
+| **A way to run it** | Any of three, and none of them needs Bun: [`bunx`](getting-started/install.md#bunx) where a repository already has it, [`npx`](getting-started/install.md#npx) on Node 18+ for npm, yarn and pnpm, or the [standalone executable](getting-started/install.md#the-executable), which has no runtime at all and is the point for Cargo repositories. |
+| **GitHub** | For `init`, `notes`, `changelog --overwrite` and release artifacts, which write GitHub Actions and GitHub release pages. The version arithmetic needs none of it — `cutver stage` works on any host, and is one step in any CI. |
 
 ## Quickstart
 
@@ -37,13 +38,17 @@ cutver: 49 commit(s) since the first commit
 cutver: 0.1.0 -> 0.2.0 (minor)
 
 preflight (10 package(s) on crates.io)
-  · oidc  not in CI — publishing will use whatever credential npm finds locally
+  · oidc  not in CI — publishing will use whatever credential crates.io finds locally
   ✗ alloyfs-proto  NOT on the registry — this would be its first publish
 
 files (dry run — nothing is written)
   ↑ Cargo.toml  [workspace.package] 0.1.0 -> 0.2.0
   ↑ Cargo.lock  would run `cargo update -w`
 ```
+
+That `preflight` block is a repository with [`publish: true`](reference/config.md#what-a-tag-produces).
+A Cargo repository publishes nothing by default, and prints
+`preflight: skipped — a tag here publishes to no registry` in its place.
 
 Happy with it? Drop the flag:
 
@@ -68,7 +73,7 @@ bunx cutver init cargo
 - **The number comes from the commits, and by default so does nothing else.**
   Every other tool in this space generates release notes by listing commit
   *subjects*. cutver opens the changelog heading and writes nothing under it.
-  [`changelog:`](reference/config.md) opts into compiling them from commit
+  [`changelog:`](reference/config.md#changelog-keys) opts into compiling them from commit
   *bodies* instead — a different trade, since a body that explains what a fix
   cost is release-note prose already.
 - **Measured from the last *stable* tag.** Not the last tag — measuring from
@@ -125,5 +130,5 @@ rather than guessed at.
   whose name promises less than it needs.
 - [Configuration](reference/config.md) — put `develop` in the beta channel,
   or add a channel of your own by adding a key.
-- [Troubleshooting](reference/troubleshooting.md) — every error cutver prints,
-  and what it actually means.
+- [Troubleshooting](reference/troubleshooting.md) — what cutver means by the
+  refusals it prints, and what to do about each.

@@ -32,6 +32,7 @@
  */
 import { branchTriggers, distTagArms } from './init'
 import { producesArtifacts, type Config } from './config/schema'
+import { parseYaml, readText } from './runtime'
 
 const DOCS = 'https://cutver.okyle.dev'
 
@@ -322,7 +323,7 @@ function hasSummarizer(publish: string): boolean {
  */
 export function triggerBranches(yaml: string): string[] | null {
   try {
-    const doc = Bun.YAML.parse(yaml) as Record<string, any>
+    const doc = parseYaml(yaml) as Record<string, any>
     // `on` is the YAML 1.1 boolean `true`, which is why it can arrive under
     // either key depending on the parser. Both are checked rather than assumed.
     const on = doc?.on ?? doc?.true
@@ -336,9 +337,7 @@ export function triggerBranches(yaml: string): string[] | null {
 /** Read both workflows. Absent is `null`, and never an error. */
 export async function readWorkflows(root: string): Promise<Workflows> {
   const read = (name: string) =>
-    Bun.file(`${root}/.github/workflows/${name}`)
-      .text()
-      .catch(() => null)
+    readText(`${root}/.github/workflows/${name}`).catch(() => null)
 
   const [version, publish] = await Promise.all([
     read('version.yml'),

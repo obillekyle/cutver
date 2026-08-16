@@ -17,6 +17,7 @@ import {
   type Bump,
   type Commit,
 } from './version-from-commits'
+import { semverOrder } from './runtime'
 
 /**
  * The prerelease counter, for channel names the ported one cannot read.
@@ -361,7 +362,7 @@ export async function plan({
     // release. Where none has ever been published there is nobody to protect,
     // the comparison is against a number nothing ever shipped, and the branch
     // name is the only real evidence in the room.
-    if (tagged && Bun.semver.order(implied, declared.base) > 0) {
+    if (tagged && semverOrder(implied, declared.base) > 0) {
       throw new PlanRefusal(
         `branch '${branch}' declares ${declared.base}, but the commits since ` +
           `${since} imply ${implied} (${bump}).\n` +

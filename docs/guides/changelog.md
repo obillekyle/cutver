@@ -179,17 +179,21 @@ ones in the repository, rather than a second telling that drifts from it.
 
 ```yaml
 changelog:
-  summarize: true
-
-summarizer:
-  connector: gemini
-  model: gemini-3.5-flash
+  summarizer:
+    connector: gemini
+    model: gemini-3.5-flash
 ```
 
-**`changelog.summarize` is the intent; `summarizer` is the wiring.** The first
-says this repository wants a summarised release body — reviewable, and true
-whoever cuts the release. The second says where to send it, and a fork changing
-it means nothing.
+**Writing this is the switch.** There is no separate `summarize: true` — that
+spelling existed alongside a top-level `summarizer:` block, two keys for one
+decision where setting either alone did nothing. Both still parse and say what
+they became; they go in 3.0.
+
+It lives in the tracked config rather than in the environment because it is a
+statement about the repository — this project wants a summarised release body,
+whoever cuts the release. Where the notes are *sent* is the same decision, which
+is why it sits in the same block: a fork that edits it is a fork editing a file
+you review.
 
 **There is no key in there, and that is deliberate.** `cutver.yml` is tracked,
 pushed, and shipped inside the npm tarball, so a key written in it is a key
@@ -249,8 +253,11 @@ name, a rate limit, a timeout, an empty answer. That is the invariant the whole
 feature rests on, and it is why turning this on is safe.
 
 ```yaml
-summarizer:
-  retry: true      # or a number of minutes, 1–10
+changelog:
+  summarizer:
+    connector: gemini
+    model: gemini-3.5-flash
+    retry: true          # or a number of minutes, 1–10
 ```
 
 `retry` waits and asks once more, **only for a failure waiting can fix** — a

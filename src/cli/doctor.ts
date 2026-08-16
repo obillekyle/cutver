@@ -31,6 +31,7 @@ import { checkRegistry, detectOidc } from '../registry'
 import { keyFor } from '../summarize/connectors'
 import { COMMAND_ENV } from '../summarize'
 import { parse, preScan, resolveAdapter, resolveRoot } from './args'
+import { env } from '../runtime'
 
 /** How each line is marked. `✗` is the only one that changes the exit code. */
 type Level = 'ok' | 'note' | 'bad'
@@ -275,7 +276,7 @@ export async function runDoctor(argv: string[]): Promise<void> {
     }
   }
 
-  found.push(summariser(config, Bun.env))
+  found.push(summariser(config, env))
 
   // **The config's own deprecations.** `parseConfig` has collected these since
   // `publish` became a boolean, and nothing printed them — so this command,

@@ -2,6 +2,7 @@ import { cargoAdapter } from './cargo'
 import { jsAdapter } from './js'
 import type { Ecosystem } from '../config/schema'
 import { ADAPTER_IDS, type Adapter, type AdapterId } from './types'
+import { exists } from '../runtime'
 
 export * from './types'
 export { cargoAdapter } from './cargo'
@@ -39,8 +40,7 @@ export const ADAPTER_FOR: Record<Ecosystem, AdapterId> = {
 export async function applicableAdapters(root: string): Promise<AdapterId[]> {
   const found: AdapterId[] = []
   for (const id of ADAPTER_IDS) {
-    if (await Bun.file(`${root}/${ADAPTERS[id].manifest}`).exists())
-      found.push(id)
+    if (await exists(`${root}/${ADAPTERS[id].manifest}`)) found.push(id)
   }
   return found
 }

@@ -21,6 +21,7 @@
  */
 import { hooksDir } from './git'
 import { run } from './run'
+import { readText, remove, write } from './runtime'
 
 export const HOOK_NAME = 'pre-push'
 
@@ -203,9 +204,7 @@ export async function installHook(
   }: InstallOptions = {},
 ): Promise<HookResult> {
   const path = await hookPath(root)
-  const existing = await Bun.file(path)
-    .text()
-    .catch(() => null)
+  const existing = await readText(path).catch(() => null)
 
   // Ours is replaceable without ceremony — it is generated, and an old copy is
   // worth nothing. Somebody else's is a file they wrote, and silently
@@ -222,7 +221,7 @@ export async function installHook(
   }
 
   if (!dryRun) {
-    await Bun.write(path, hookScript({ runner: explicit, version }))
+    await write(path, hookScript({ runner: explicit, version }))
     // Bun.write does not set a mode, and git skips a hook it cannot execute —
     // silently, which would make this look installed and do nothing. Windows
     // has no execute bit and git for Windows does not check for one.
@@ -241,9 +240,7 @@ export async function uninstallHook(
   { dryRun = false } = {},
 ): Promise<HookResult> {
   const path = await hookPath(root)
-  const existing = await Bun.file(path)
-    .text()
-    .catch(() => null)
+  const existing = await readText(path).catch(() => null)
 
   if (existing === null) {
     return { path: HOOK_NAME, state: 'skipped', detail: 'not installed' }
@@ -256,6 +253,6 @@ export async function uninstallHook(
     }
   }
 
-  if (!dryRun) await Bun.file(path).delete()
+  if (!dryRun) await remove(path)
   return { path: HOOK_NAME, state: 'written', detail: 'removed' }
 }

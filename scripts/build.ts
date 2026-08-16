@@ -76,8 +76,43 @@ async function compile(out: string, target?: string): Promise<void> {
   await $`bun build ${flags} ./src/cli/index.ts --outfile dist/${out}`.quiet()
 }
 
+/**
+ * The JavaScript the npm package runs, for hosts that are not Bun.
+ *
+ * **This is what `bin` points at, and it is why the package works under Node.**
+ * The source is TypeScript and Node cannot execute it; bundling to one
+ * `.mjs` resolves that, inlines `prompt.md` and the YAML parser, and leaves an
+ * installed cutver with no dependencies of its own.
+ *
+ * Bun runs it too — everything under `src/runtime` is written against `node:*`,
+ * which Bun implements — so there is one artefact rather than one per runtime.
+ *
+ * Not minified. It is the file someone reads when cutver misbehaves inside
+ * their release pipeline, and 300 KB against 150 KB buys nothing that matters
+ * to a command run once a release.
+ */
+async function bundle(): Promise<void> {
+  await $`bun build ./src/cli/index.ts --target=node --outfile dist/cutver.mjs --define CUTVER_VERSION="${version}"`.quiet()
+
+  // **Replaced, not added.** The bundler carries the entry's shebang through,
+  // and the entry says `#!/usr/bin/env bun` because that is how it is run from
+  // a checkout. Left alone, the published bundle would demand the runtime it
+  // exists to avoid — installing fine everywhere and running only where Bun
+  // already was, which is the whole bug. npm's bin shim executes this file
+  // directly on Unix, so the line has to name node.
+  const path = 'dist/cutver.mjs'
+  const built = await Bun.file(path).text()
+  const body = built.startsWith('#!')
+    ? built.slice(built.indexOf('\n') + 1)
+    : built
+  await Bun.write(path, `#!/usr/bin/env node\n${body}`)
+  console.log('  dist/cutver.mjs  (node)')
+}
+
 const all = process.argv.includes('--all')
 console.log(`cutver ${version} -> dist/`)
+
+await bundle()
 
 if (all) {
   for (const { target, out } of TARGETS) await compile(out, target)

@@ -1,7 +1,7 @@
 # CLI
 
 ```
-cutver                            help, like a bare `bun`
+cutver                              help, like a bare `bun`
 cutver stage [<channel>|<version>]  work out the next version and write it
 cutver notes <tag> | <from> <to>    the release body on stdout
 cutver changelog                    rebuild CHANGELOG.md from the tags
@@ -9,10 +9,11 @@ cutver check                        may this branch release what it implies
 cutver doctor                       one read-only report of everything
 cutver explain                      which rule claims this branch
 cutver config                       the effective configuration
-cutver init [<ecosystem>]           write version.yml + publish.yml
+cutver init [<ecosystem>]           set this repository up to release
 cutver hook install|uninstall       the pre-push guard
 cutver completions <bash|zsh|fish>  a completion script
 cutver help [command]               this, or one command in full
+cutver version                      the version of cutver itself
 ```
 
 `cutver help <command>` prints the long form for any of them, generated from
@@ -35,9 +36,11 @@ the same table this page is checked against.
 | `doctor` | Everything `check` deliberately will not say, in one report: the config as resolved, the plan for this branch, commits that are not conventional, drift between the config and the generated workflows, whether the summariser holds a key, and whether the registry has heard of each package. Exits 1 on anything that would affect a release. |
 | `explain` | Which rule claims this branch, and every rule that was tried and did not fire. Read-only, offline, always exits 0. See [Configuration](config.md). |
 | `config` | The configuration as cutver resolved it, with every default merged in and every channel normalised — so a key ignored because it was misspelt is visible by its absence. JSON on stdout, which is a format cutver also reads. |
-| `init` | Write `version.yml`, `publish.yml` and a `CHANGELOG.md` stub. The ecosystem is detected when omitted. See [Set up CI](../getting-started/ci.md). |
+| `init` | Set the repository up to release: both workflows, a `CHANGELOG.md` stub, a commented `cutver.yml`, cutver pinned as a devDependency, and the pre-push guard. The ecosystem is detected when omitted. Two of those change behaviour — see [Set up CI](../getting-started/ci.md#what-that-changed-besides-the-workflows). |
 | `hook` | Install or remove a `pre-push` hook that runs `check`. |
 | `completions` | A completion script for bash, zsh or fish, on stdout. Nothing is installed for you. |
+| `help` | The list above, or the long form for one command — the same text `cutver` bare prints. |
+| `version` | The version of cutver itself, and nothing else. `--version` anywhere does the same. |
 
 ## Arguments
 
@@ -56,9 +59,9 @@ of `rc`, and the version written is the canonical `-rc.N`.
 | | |
 | --- | --- |
 | `--dry-run` | (`stage`, `changelog`, `init`, `hook`) Compute and report, write nothing. Runs nothing either — no `cargo update`, no file writes — and still reports every change the real run would make. |
-| `--adapter js\|cargo` | Force the manifest adapter. Only needed when a repository has both manifests. |
-| `--cwd <path>` | Repository root. Defaults to the working directory. |
-| `--branch <name>` | Branch name, for CI on a detached HEAD where git answers the literal string `HEAD`. |
+| `--adapter js\|cargo` | (`stage`) Force the manifest adapter. Only needed when a repository has both manifests. |
+| `--cwd <path>` | (every command) Repository root. Defaults to the working directory. |
+| `--branch <name>` | (`stage`, `check`, `doctor`, `explain`) Branch name, for CI on a detached HEAD where git answers the literal string `HEAD`. |
 | `--if-needed` | (`stage`) Exit 0 rather than 1 when no release is warranted. What CI wants. |
 | `--offline` | (`stage`, `doctor`) Skip the registry lookups entirely. |
 | `--allow-first-publish` | (`stage`) Proceed even though a package is not on the registry yet. |
@@ -67,12 +70,17 @@ of `rc`, and the version written is the canonical `-rc.N`.
 | `--runner <cmd>` | (`hook`) Pin how the hook invokes cutver, instead of detecting it at run time. |
 | `--no-hook` | (`init`) Do not install the pre-push guard. Everything else is written as usual. |
 | `--overwrite` | (`changelog`) Also update GitHub release bodies from the compiled sections. **Only replaces a body nobody wrote** — empty, the version repeated, or GitHub’s own generated notes; anything else is reported and left alone. Summarised when a [summariser](config.md#the-summariser) is configured, so a page filled in afterwards reads the same as one written at release time. Needs `GH_TOKEN` or `GITHUB_TOKEN`. |
-| `--config <path>` | Read this config instead of looking for one. Given and missing is an error, never a silent fallback to the defaults. |
+| `--config <path>` | (every command) Read this config instead of looking for one. Given and missing is an error, never a silent fallback to the defaults. |
 | `-h`, `--help` | Usage. |
 | `-v`, `--version` | The version of cutver itself. |
 
 `--adapter js` and `--adapter=js` both work, as does every other option that
 takes a value.
+
+**A flag outside its command is refused, not ignored.** `cutver check
+--dry-run` exits 1 naming the flag rather than proceeding as though it had been
+understood — the failure it replaces is a CI step that passes while doing
+something other than what its arguments say.
 
 ### `changelog --overwrite --force`
 
@@ -207,11 +215,21 @@ pointless.
 
 ## Environment
 
-cutver reads no environment variables of its own — its configuration is
-[`cutver.json` / `cutver.yml`](config.md), and that is optional. It does read
-the two GitHub Actions sets when reporting OIDC status:
+**Nothing here configures behaviour** — that is what
+[`cutver.json` / `cutver.yml`](config.md) is for, and it is optional. What the
+environment holds is credentials, which must never be written into a tracked
+file, plus what CI tells cutver about itself.
 
 | | |
 | --- | --- |
+| `CUTVER_SUMMARIZE_KEY` | The summariser's API key. Tried first, so CI sets one name whatever the connector is. |
+| `ANTHROPIC_API_KEY` `OPENAI_API_KEY` `GEMINI_API_KEY` `GOOGLE_API_KEY` | The provider's own convention, tried after it, so a laptop that already exports one needs no extra setup. Which is read depends on `connector`. |
+| `CUTVER_SUMMARIZE` | Any command that reads markdown on stdin and writes markdown on stdout, used instead of a connector. Wins when both are set — it is the more specific instruction, and it is what overrides a repository's default without editing a tracked file. |
+| `GH_TOKEN` `GITHUB_TOKEN` | For `changelog --overwrite`, which writes release bodies. `GH_TOKEN` first, since it is what `gh auth` exports locally; `GITHUB_TOKEN` is present in every Actions run without being asked for. |
 | `GITHUB_ACTIONS` | Whether this is a GitHub Actions runner at all. |
 | `ACTIONS_ID_TOKEN_REQUEST_URL` `ACTIONS_ID_TOKEN_REQUEST_TOKEN` | Both present means an OIDC token can be minted. In Actions without them means the job is missing `permissions: id-token: write` — which is worth catching, because it otherwise fails at publish time with an error about credentials. |
+
+A `.env` or `.env.local` supplies these locally, including to the standalone
+executables. It is read **from the directory cutver was launched in, not from
+`--cwd`** — the load happens at process startup, before a flag has been looked
+at. The symptom is `no key is set` naming variables you are sure you exported.

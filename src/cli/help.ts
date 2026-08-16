@@ -232,11 +232,20 @@ export const COMMANDS: readonly Command[] = [
   {
     name: 'init',
     args: '[<ecosystem>]',
-    summary: 'write version.yml + publish.yml for this repository',
+    summary: 'set this repository up to release: workflows, config and hook',
     detail: [
       `The ecosystem is detected when omitted, and only has to be given when ` +
         `a repository has more than one manifest. One of ` +
         `${ADAPTER_IDS.length ? 'cargo, node, bun' : ''}.`,
+      'Writes two workflows, a CHANGELOG.md stub and a commented cutver.yml, ' +
+        'pins cutver as a devDependency where there is a package.json, and ' +
+        'installs the pre-push guard unless --no-hook.',
+      'Two of those change behaviour rather than just adding a file. The ' +
+        'scaffolded cutver.yml declares `release: [main]`, where the default ' +
+        'was every branch — so a repository whose trunk is named something ' +
+        'else needs that line edited. And the new devDependency is not in ' +
+        'your lockfile yet, while the generated workflow installs with ' +
+        '--frozen-lockfile, so run your install before pushing.',
       'Deliberately does not require a git repository: scaffolding the ' +
         'workflows is the one thing here that makes sense in a tree that has ' +
         'not been initialised yet.',

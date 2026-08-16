@@ -17,9 +17,9 @@
  * Windows will give a directory. `cargoVersion` is tested against a CRLF
  * fixture with that specific assertion.
  */
-import { Glob } from 'bun'
 import { run } from '../run'
 import { AdapterError, type Adapter, type Change } from './types'
+import { exists, glob, readText, write } from '../runtime'
 
 /** A `[section]` header on its own line. `[[array.of.tables]]` deliberately does not match. */
 const HEADER = /^[ \t]*\[([^[\]\r\n]+)\][ \t]*\r?$/gm
@@ -129,18 +129,13 @@ async function scanMembers(root: string, toml: string): Promise<Member[]> {
   const out: Member[] = []
 
   for (const pattern of members(toml)) {
-    const glob = new Glob(`${pattern.replace(/\/+$/, '')}/Cargo.toml`)
-    for await (const hit of glob.scan({
-      cwd: root,
-      onlyFiles: true,
-      followSymlinks: false,
-    })) {
-      const rel = hit.replaceAll('\\', '/')
+    const found = await glob(`${pattern.replace(/\/+$/, '')}/Cargo.toml`, root)
+    for (const rel of found) {
       // `target/` holds unpacked copies of dependencies' sources, each with a
       // real Cargo.toml. None of them are this workspace's to version.
       if (rel.split('/').includes('target')) continue
 
-      const text = await Bun.file(`${root}/${rel}`).text()
+      const text = await readText(`${root}/${rel}`)
       const body = sectionBody(text, 'package')
       if (!body) continue
       const section = text.slice(body.start, body.end)
@@ -168,8 +163,8 @@ async function scanMembers(root: string, toml: string): Promise<Member[]> {
  * precisely what a version bump invalidated.
  */
 async function syncLock(root: string, dryRun: boolean): Promise<Change> {
-  const exists = await Bun.file(`${root}/Cargo.lock`).exists()
-  if (!exists) {
+  const present = await exists(`${root}/Cargo.lock`)
+  if (!present) {
     return {
       file: 'Cargo.lock',
       state: 'absent',
@@ -205,7 +200,7 @@ export const cargoAdapter: Adapter = {
   manifest: 'Cargo.toml',
 
   async readVersion(root) {
-    const toml = await Bun.file(`${root}/Cargo.toml`).text()
+    const toml = await readText(`${root}/Cargo.toml`)
     const at = cargoVersion(toml)
     if (!at) {
       throw new AdapterError(
@@ -218,7 +213,7 @@ export const cargoAdapter: Adapter = {
   },
 
   async publishTargets(root) {
-    const toml = await Bun.file(`${root}/Cargo.toml`).text()
+    const toml = await readText(`${root}/Cargo.toml`)
     const found = await scanMembers(root, toml)
 
     // A member usually inherits `repository.workspace = true`, so the
@@ -253,7 +248,7 @@ export const cargoAdapter: Adapter = {
 
   async setVersion({ root, version, dryRun }) {
     const path = `${root}/Cargo.toml`
-    const toml = await Bun.file(path).text()
+    const toml = await readText(path)
     const at = cargoVersion(toml)
     if (!at) throw new AdapterError('Cargo.toml declares no version to replace')
 
@@ -266,7 +261,7 @@ export const cargoAdapter: Adapter = {
         detail: `already ${version}`,
       })
     } else {
-      if (!dryRun) await Bun.write(path, replaceCargoVersion(toml, at, version))
+      if (!dryRun) await write(path, replaceCargoVersion(toml, at, version))
       changes.push({
         file: 'Cargo.toml',
         state: 'updated',

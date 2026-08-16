@@ -13,6 +13,7 @@
  */
 import { escapeRegex } from '../text'
 import { ConfigError, RELEASE, type Config } from './schema'
+import { globMatch } from '../runtime'
 
 export type MatchShape = 'declaring' | 'literal' | 'glob'
 
@@ -73,7 +74,7 @@ function tryEntry(entry: string, name: string): string | null | undefined {
       // Bun.Glob and GitHub Actions agree: `*` does not cross `/`, `**` does.
       // That is why config globs reach `on.push.branches` verbatim rather than
       // being translated — a translation is a second place to be wrong.
-      return new Bun.Glob(entry).match(name) ? null : undefined
+      return globMatch(entry, name) ? null : undefined
   }
 }
 

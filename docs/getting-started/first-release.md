@@ -174,4 +174,8 @@ For a package that has never been published, in order:
 5. Publish by hand — with `--tag` if it is a prerelease.
 6. Configure trusted publishing on the registry, naming your repo and
    `publish.yml`.
-7. `cutver init`, push, and never do steps 3–5 again.
+7. `cutver init` — which also writes `cutver.yml` and adds cutver to your
+   manifest, so **run your install and commit the lockfile** before pushing;
+   the generated workflow uses `--frozen-lockfile`. Check that
+   `cutver.yml`'s `release:` names your trunk.
+8. Push, and never do steps 3–5 again.

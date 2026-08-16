@@ -11,10 +11,56 @@ cutver: /repo (bun)
   ↑ .github/workflows/version.yml  created
   ↑ .github/workflows/publish.yml  created
   ↑ CHANGELOG.md                   created
+  ↑ cutver.yml                     created
+  ↑ package.json                   devDependency cutver@^2.0.0
+  ↑ pre-push (git hook)            created
+
+  first: run your package manager's install. devDependency cutver@^2.0.0 is in
+         package.json and not yet in the lockfile, and the generated
+         workflow installs with --frozen-lockfile.
 ```
 
 Nothing is overwritten without `--force`, and `CHANGELOG.md` not even then — it
 holds prose someone wrote.
+
+### What that changed besides the workflows
+
+Three of those six are easy to skim past, and each of them changes behaviour.
+
+- **`cutver.yml` now declares `release: [main]`.** Before `init`, the default is
+  every branch, because a tool that releases nothing until it is configured is a
+  tool that appears broken. Running `init` is choosing, so it writes the choice
+  down — and on a repository whose trunk is `master` or `trunk`, that is the
+  line to edit first. The file is commented throughout;
+  [Configuration](../reference/config.md) is the long form.
+- **`package.json` gained cutver as a devDependency**, pinned to the version
+  that generated the workflows, so CI and your laptop run the same one. Cargo
+  repositories get nothing here — the workflow downloads the executable instead.
+- **The `first:` line is load-bearing.** The generated workflow installs with
+  `--frozen-lockfile`, so a new devDependency and an untouched lockfile is a
+  first CI run that fails before it reaches cutver. Run your install and commit
+  the lockfile with the rest.
+
+The pre-push hook is installed too, unless `--no-hook`. It refuses a push whose
+branch name promises a lower version than its commits justify, and lets
+everything else through — [Hooks](../guides/hooks.md).
+
+### Starting from nothing is the normal case
+
+`init` is for a repository that has **never released anything**, and none of the
+things a release tool usually wants have to exist first:
+
+| | |
+| --- | --- |
+| **No tags** | The version is measured from the last stable tag *if there is one*. With none, the range is every commit in the repository and the base is whatever the manifest says. A brand-new project at `0.0.0` is the case this was written for. |
+| **No changelog** | `CHANGELOG.md` is created, with an `## [Unreleased]` heading and nothing under it. |
+| **No config** | `cutver.yml` is created. Until then every branch may release, which is the default so that a repository that has not been configured does not look broken. |
+| **No published package** | The preflight says so rather than guessing, and [Your first release](first-release.md#the-first-publish-is-manual) covers the one publish that has to be manual. |
+| **Not even a git repository** | Everything is written; only the hook is skipped, and it says which line it skipped and why. Scaffolding before `git init` is a reasonable order to work in. |
+
+What that means in practice: on a fresh project, `cutver init` then a first
+`feat:` commit is the whole setup. There is no import step, no history to
+backfill, and nothing to migrate from.
 
 ## Two workflows, never one
 

@@ -24,6 +24,7 @@
 import { detectEol, withEol } from '../text'
 import type { Change } from '../adapters/types'
 import { renderChangelog, type ReleaseSection } from './notes'
+import { readText, write } from '../runtime'
 
 const MARKER = '## [Unreleased]'
 
@@ -55,9 +56,7 @@ export async function rollChangelog({
   today,
 }: RollOptions): Promise<Change | null> {
   const path = `${root}/CHANGELOG.md`
-  const text = await Bun.file(path)
-    .text()
-    .catch(() => null)
+  const text = await readText(path).catch(() => null)
 
   if (text === null) return null
 
@@ -79,7 +78,7 @@ export async function rollChangelog({
     MARKER,
     withEol(`${MARKER}\n\n## [${version}] — ${today}`, eol),
   )
-  if (!dryRun) await Bun.write(path, rolled)
+  if (!dryRun) await write(path, rolled)
 
   return {
     file: 'CHANGELOG.md',
@@ -116,7 +115,7 @@ export async function writeChangelog({
     keep && keep > 0 ? Math.min(keep, releases.length) : releases.length
 
   if (!dryRun)
-    await Bun.write(`${root}/CHANGELOG.md`, renderChangelog(releases, keep))
+    await write(`${root}/CHANGELOG.md`, renderChangelog(releases, keep))
 
   return {
     file: 'CHANGELOG.md',

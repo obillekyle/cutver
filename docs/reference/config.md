@@ -86,7 +86,7 @@ changelog:
 | key | |
 | --- | --- |
 | `sections` | Which commit types get a heading, in reading order. |
-| `keep` | Release sections retained in the file; `false` keeps every one. Default 10. |
+| `keep` | Release sections retained in the file. Default 10; `false`, `0` and `null` all keep every one. |
 | `prereleases` | Whether a prerelease gets its own heading. **Off by default** — excluding them widens each stable release's span to the previous *stable* tag rather than dropping the commits. |
 | `summarizer` | Where the **GitHub release body** goes to be rewritten. `CHANGELOG.md` is never summarised. See [The summariser](#the-summariser). |
 | `prompt` | Replace the instruction sent ahead of the commits. Needs `summarizer`. |
@@ -103,7 +103,7 @@ artifacts: false     # attach nothing
 ```
 
 ```yaml
-artifacts: auto      # find the build output on the runner
+artifacts: auto      # find the build output on the runner — `true` says the same
 ```
 
 ```yaml
@@ -406,7 +406,7 @@ written. A wrong config should cost you a message, never a version number.
 | | |
 | --- | --- |
 | unknown key | named, with the nearest valid one suggested |
-| a channel with a digit or hyphen | refused, with the frozen-counter reason |
+| a channel name with a digit | refused, with the frozen-counter reason |
 | two keys that are the same channel after lowercasing | refused, naming both |
 | `rc` and `prerelease` both declared | refused |
 | one branch matching two channels | refused, naming both entries |

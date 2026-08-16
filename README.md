@@ -25,6 +25,11 @@ files (dry run — nothing is written)
   ↑ Cargo.lock  would run `cargo update -w`
 ```
 
+The preflight block is this repository asking about `publish: true`. A Cargo
+repository publishes nothing by default and prints `preflight: skipped` instead
+— [Configuration](docs/reference/config.md#what-a-tag-produces) covers what a
+tag produces.
+
 **It does not publish.** Publishing is the one irreversible step in a release —
 a registry never lets a version number be reused, by anyone, ever — so it gets
 its own trigger, its own credentials, and something that decided to run it. This
@@ -56,7 +61,7 @@ including pinning a version, in [Install](docs/getting-started/install.md).
 | | |
 | --- | --- |
 | [Your first release](docs/getting-started/first-release.md) | Start here. What to run, in order, and why the first publish is manual. |
-| [Set up CI](docs/getting-started/ci.md) | `cutver init` writes two workflows. This is what they do and which parts are yours to edit. |
+| [Set up CI](docs/getting-started/ci.md) | `cutver init` scaffolds the release setup. What each file does, which parts are yours to edit, and the two it changes rather than adds. |
 | [Writing the commits](docs/guides/commits.md) | The only input cutver reads. The subject decides the version; the body becomes the release note. |
 | [How the number is chosen](docs/guides/versions.md) | The ranges, the baseline, and what happens with no tags. |
 | [Alphas, betas and RCs](docs/guides/channels.md) | Prereleases, and branches that declare their own version. |
@@ -83,7 +88,7 @@ package.
 ## Development
 
 ```bash
-bun test ./src
+bun run test
 ```
 
 ```bash
