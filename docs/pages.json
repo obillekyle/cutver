@@ -1,0 +1,36 @@
+[
+  {
+    "title": "Getting started",
+    "items": [
+      ["getting-started/install", "Install"],
+      ["getting-started/first-release", "Your first release"],
+      ["getting-started/ci", "Set up CI"]
+    ]
+  },
+  {
+    "title": "Guides",
+    "items": [
+      ["guides/commits", "Writing the commits"],
+      ["guides/versions", "How the number is chosen"],
+      ["guides/channels", "Alphas, betas and RCs"],
+      ["guides/changelog", "Changelogs"],
+      ["guides/hooks", "The pre-push guard"],
+      ["guides/artifacts", "Binaries on a tag"]
+    ]
+  },
+  {
+    "title": "Adapters",
+    "items": [
+      ["adapters/js", "npm and Bun"],
+      ["adapters/cargo", "Cargo"]
+    ]
+  },
+  {
+    "title": "Reference",
+    "items": [
+      ["reference/cli", "CLI"],
+      ["reference/config", "Configuration"],
+      ["reference/troubleshooting", "Troubleshooting"]
+    ]
+  }
+]

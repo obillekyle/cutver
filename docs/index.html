@@ -95,15 +95,63 @@ body {
 .brand {
   display: flex; align-items: center; gap: 8px;
   font-weight: 700; color: var(--text-strong); text-decoration: none; font-size: 17px;
-  /* Takes the free space so everything after it sits against the right edge.
-     This replaced a dedicated `.nav-spacer` div, which did the same job with an
-     extra element and needed hiding separately in the mobile layout. */
-  margin-right: auto;
 }
 .badge {
   font: 600 11px/1 var(--mono); padding: 4px 6px; border-radius: 5px;
   background: color-mix(in srgb, var(--brand) 14%, transparent); color: var(--brand);
 }
+/* The version badge *is* the picker.
+ *
+ * `appearance: base-select` opts into the customizable select — the button and
+ * the popup become styleable elements rather than OS chrome. A browser that has
+ * not implemented it ignores the declaration and every `::picker()` rule with
+ * it, and is left with a working native select that reads the same list. So the
+ * fallback needs no query and no second code path: the control degrades to
+ * plain, never to broken. */
+.picker {
+  border: 0; cursor: pointer; font-family: var(--mono);
+  /* Takes the free space so everything after it sits against the right edge —
+     the job `.brand` used to do, moved one element along so the version sits
+     beside the title instead of being flung to the far side of the bar. Same
+     reason there is no `.nav-spacer`: an auto margin on a real element beats an
+     empty div that also has to be hidden in the mobile layout. */
+  margin-right: auto;
+  appearance: base-select;
+  display: inline-flex; align-items: center; gap: 4px;
+}
+.picker:hover { background: color-mix(in srgb, var(--brand) 22%, transparent); }
+.picker:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+
+.picker::picker-icon {
+  content: '▾'; font-size: 9px; transition: rotate .15s ease;
+}
+.picker:open::picker-icon { rotate: 180deg; }
+
+.picker::picker(select) {
+  appearance: base-select;
+  margin-top: 6px; padding: 4px; min-width: 148px; max-height: 340px;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
+  box-shadow: var(--shadow); overflow-y: auto;
+  /* Dropped rather than animated: a version list is read, not admired, and a
+     transition here delays the one interaction the control exists for. */
+}
+.picker option {
+  padding: 6px 9px; border-radius: 6px; font: 500 12px/1 var(--mono);
+  color: var(--text); cursor: pointer;
+}
+.picker option:hover, .picker option:focus { background: var(--bg-alt); color: var(--text-strong); }
+.picker option:checked { color: var(--brand); font-weight: 700; }
+/* The native checkmark is redundant beside the colour, and it indents every
+   label by a column that only one row uses. */
+.picker option::checkmark { display: none; }
+/* Reading an older version is a state worth noticing, so the banner sits above
+   the content rather than in the header where a badge is easy to skim past. */
+.oldver {
+  margin: 0 0 22px; padding: 10px 14px; border-radius: 8px; font-size: 13px;
+  background: color-mix(in srgb, var(--brand) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--brand) 30%, transparent);
+}
+.oldver a { font-weight: 600; }
 .search-wrap { position: relative; }
 #search {
   width: 200px; padding: 7px 10px 7px 30px; font-size: 13px; font-family: inherit;
@@ -289,6 +337,7 @@ main {
   body.search-open #search, body.search-open #search:focus { width: 100%; }
   body.search-open #menu-btn,
   body.search-open .brand,
+  body.search-open .picker,
   body.search-open #theme-btn,
   body.search-open .gh-link,
   body.search-open #search-toggle { display: none; }
@@ -303,7 +352,12 @@ main {
   <button type="button" class="icon-btn" id="menu-btn" aria-label="Open navigation" title="Menu">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
   </button>
-  <a class="brand" href="#/"><span>✂️</span> cutver <span class="badge" id="ver" hidden></span></a>
+  <a class="brand" href="#/"><span>✂️</span> cutver</a>
+  <!-- Beside the title, where the version badge used to be, but outside the
+       link: a `<select>` inside an `<a>` is interactive content nested in a
+       link, which no browser handles the way either element promises. The nav
+       is already a flex row, so being the next sibling is enough. -->
+  <select class="badge picker" id="verpick" aria-label="Documentation version" hidden></select>
   <div class="search-wrap">
     <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21"/></svg>
     <input id="search" type="search" placeholder="Search docs…" autocomplete="off" spellcheck="false" aria-label="Search documentation">
@@ -336,33 +390,28 @@ main {
 
 <script>
 /* ------------------------------------------------------------------ nav data
-   Explicit rather than derived from README.md: the sidebar order is an editorial
-   decision, and parsing it out of prose would make a heading rename silently
-   reshuffle the site. Adding a page means adding a line here.                */
-const NAV = [
-  { title: 'Getting started', items: [
-    ['getting-started/install', 'Install'],
-    ['getting-started/first-release', 'Your first release'],
-    ['getting-started/ci', 'Set up CI'],
-  ]},
-  { title: 'Guides', items: [
-    ['guides/versions', 'How the number is chosen'],
-    ['guides/channels', 'Alphas, betas and RCs'],
-    ['guides/changelog', 'Changelogs'],
-    ['guides/hooks', 'The pre-push guard'],
-    ['guides/artifacts', 'Binaries on a tag'],
-  ]},
-  { title: 'Adapters', items: [
-    ['adapters/js', 'npm and Bun'],
-    ['adapters/cargo', 'Cargo'],
-  ]},
-  { title: 'Reference', items: [
-    ['reference/cli', 'CLI'],
-    ['reference/config', 'Configuration'],
-    ['reference/troubleshooting', 'Troubleshooting'],
-  ]},
-]
-const FLAT = [['README', 'Introduction'], ...NAV.flatMap(g => g.items)]
+   `pages.json`, not a literal here: the sidebar has to be able to describe a
+   version other than the one this shell was served from.
+
+   It stays explicit rather than derived from the files on disk — the order is an
+   editorial decision, and deriving it would make a rename silently reshuffle the
+   site. Adding a page still means adding a line, just in a file that ships at
+   every ref instead of one that only exists at `main`.
+
+   Filled by `loadNav()` before the first route, so nothing reads it empty.    */
+let NAV = []
+let FLAT = []
+
+/**
+ * `README` is the root and is never in the sidebar, but it is the first stop in
+ * prev/next and has to be searched. Prepended rather than listed in
+ * `pages.json`, because a page every version has is not a page worth declaring.
+ */
+function setNav(groups) {
+  NAV = groups
+  FLAT = [['README', 'Introduction'], ...groups.flatMap(g => g.items)]
+}
+
 const REPO = 'https://github.com/obillekyle/cutver'
 document.getElementById('gh-link').href = REPO
 
@@ -556,15 +605,99 @@ function buildList(items, start, page) {
   return out + (ordered ? '</ol>' : '</ul>')
 }
 
+/* ------------------------------------------------------------- versioned docs
+ *
+ * `?v=` reads the docs at another point in the project's history — a version,
+ * a tag, or a branch:
+ *
+ *     ?v=1.1.0        the docs as they shipped with 1.1.0
+ *     ?v=v1.1.0       the same, said the way the tag is written
+ *     ?v=main         whatever is on a branch right now
+ *
+ * **Fetched from raw.githubusercontent at that ref, not built.** Publishing a
+ * copy of the site per release would multiply every page by the number of
+ * versions and still only cover the ones someone remembered to build. Every tag
+ * already contains its own `docs/`, so the content exists for free — including
+ * for branches, which no build could have anticipated.
+ *
+ * The query survives hash navigation on its own: changing `location.hash` never
+ * touches the search string, so every internal link stays inside the version
+ * being read without a single link needing to know about it.
+ */
+/** `owner/name`, derived from the repository link rather than written twice. */
+const RAW = `https://raw.githubusercontent.com/${REPO.replace(/^https?:\/\/github\.com\//, '')}`
+
+function requestedRef() {
+  const v = new URLSearchParams(location.search).get('v')
+  return v && v.trim() ? v.trim() : null
+}
+
+/**
+ * The git ref for what someone typed.
+ *
+ * A bare `1.2.0` means the tag `v1.2.0` — that is how versions are written in
+ * this project and how anyone would type one from a changelog heading. Anything
+ * else is passed through untouched, which is what makes a branch name work with
+ * no extra syntax.
+ */
+function refFor(v) {
+  return /^\d+\.\d+\.\d+/.test(v) ? `v${v}` : v
+}
+
+/**
+ * The sidebar for whatever version is being read.
+ *
+ * **The point of the file.** Before it, the sidebar was always this shell's —
+ * so reading `?v=0.1.0-beta.5` listed `reference/config`, which had not been
+ * written yet, and clicking it produced an apology. The list now comes from the
+ * ref itself, so a version's sidebar describes that version.
+ *
+ * A ref older than `pages.json` gets this shell's copy instead. That is the
+ * honest fallback: the alternative is no sidebar at all on every tag cut before
+ * today, and a navigable site listing one or two pages that are not there beats
+ * an unnavigable one. Those still land on the "not in this version" page, which
+ * is why it survives this change rather than being replaced by it.
+ *
+ * Any failure falls back the same way — 404, a network error, a `pages.json`
+ * that does not parse. A malformed file at some tag is not a reason to serve a
+ * broken site today.
+ */
+async function loadNav() {
+  const ref = requestedRef()
+
+  if (ref) {
+    try {
+      const res = await fetch(`${RAW}/${encodeURIComponent(refFor(ref))}/docs/pages.json`)
+      if (res.ok) return await res.json()
+    } catch {
+      // Fall through to this shell's copy.
+    }
+  }
+
+  try {
+    return await (await fetch('pages.json')).json()
+  } catch {
+    // Served from somewhere `pages.json` is missing. The site still routes and
+    // still searches nothing; an empty sidebar is better than a dead page.
+    return []
+  }
+}
+
 /* ------------------------------------------------------------------- routing */
 const cache = new Map()
 async function load(page) {
-  if (!cache.has(page)) {
-    const res = await fetch(`${page}.md`)
+  const ref = requestedRef()
+  const key = `${ref ?? ''}:${page}`
+
+  if (!cache.has(key)) {
+    const url = ref
+      ? `${RAW}/${encodeURIComponent(refFor(ref))}/docs/${page}.md`
+      : `${page}.md`
+    const res = await fetch(url)
     if (!res.ok) throw new Error(String(res.status))
-    cache.set(page, await res.text())
+    cache.set(key, await res.text())
   }
-  return cache.get(page)
+  return cache.get(key)
 }
 
 function currentRoute() {
@@ -580,14 +713,33 @@ async function route() {
   try {
     src = await load(page)
   } catch {
-    content.innerHTML = `<h1>Not found</h1><p>No page at <code>${esc(page)}.md</code>.</p><p><a href="#/">Back to the introduction</a></p>`
+    // Reachable in two ways, and both are ordinary. A ref that predates
+    // `pages.json` borrows this shell's sidebar, which lists pages it does not
+    // have; and a link typed or bookmarked from a newer version does not care
+    // what the sidebar says. Saying "no page" is true and useless — saying
+    // which version was asked is the answer.
+    const missing = requestedRef()
+    content.innerHTML = missing
+      ? `<h1>Not in ${esc(refFor(missing))}</h1>
+         <p>There is no <code>${esc(page)}.md</code> at <code>${esc(refFor(missing))}</code> — the
+            page may not have existed yet, or may have been named something else.</p>
+         <p><a href="${location.pathname}${location.hash}">Read it in the current release</a>.</p>`
+      : `<h1>Not found</h1><p>No page at <code>${esc(page)}.md</code>.</p><p><a href="#/">Back to the introduction</a></p>`
     document.getElementById('aside').innerHTML = ''
     document.getElementById('pager').innerHTML = ''
     return
   }
 
   const { html, toc } = render(src, page)
-  content.innerHTML = html
+  // Said on every page, not once on entry. Someone arriving from a search
+  // result lands mid-site, and a banner they never saw is a banner that did not
+  // work — this is the state where every instruction on screen may be wrong for
+  // the version they are actually running.
+  const ref = requestedRef()
+  content.innerHTML = ref
+    ? `<div class="oldver">Reading the docs at <code>${esc(refFor(ref))}</code>.
+         <a href="${location.pathname}${location.hash}">Switch to the current release</a>.</div>${html}`
+    : html
   document.title = `${content.querySelector('h1')?.textContent || 'cutver'} | cutver`
 
   // on-page contents
@@ -639,11 +791,13 @@ function syncAside() {
 }
 
 /* --------------------------------------------------------------------- boot */
-document.getElementById('sidebar').innerHTML = NAV.map(group =>
-  `<div class="sb-group"><div class="sb-title">${group.title}</div>` +
-  group.items.map(([p, label]) =>
-    `<a class="sb-link" data-page="${p}" href="#/${p}">${label}</a>`).join('') +
-  '</div>').join('')
+function renderSidebar() {
+  document.getElementById('sidebar').innerHTML = NAV.map(group =>
+    `<div class="sb-group"><div class="sb-title">${esc(group.title)}</div>` +
+    group.items.map(([p, label]) =>
+      `<a class="sb-link" data-page="${esc(p)}" href="#/${esc(p)}">${esc(label)}</a>`).join('') +
+    '</div>').join('')
+}
 
 const root = document.documentElement
 const stored = localStorage.getItem('cutver-theme')
@@ -827,19 +981,78 @@ addEventListener('keydown', e => {
    Failure hides the badge rather than showing a guess. Offline, blocked by a
    corporate proxy, or npm down are all states where "no version" is true and
    "v4" is a lie.                                                             */
-;(async () => {
-  const el = document.getElementById('ver')
-  const CACHE = 'cutver-docs-version'
+/**
+ * The version picker, and why it changes `location.search` rather than routing.
+ *
+ * Setting the query reloads the page, which is exactly what is wanted: the
+ * markdown cache is keyed by ref, the banner is rendered per page, and a reload
+ * makes both correct with no state to reconcile. A picker is used once or twice
+ * in a session — spending a reload to avoid a class of stale-state bug is a
+ * good trade.
+ */
+function fillPicker(latest, versions = []) {
+  const sel = document.getElementById('verpick')
+  if (!sel || !latest) return
 
-  const show = v => {
-    el.textContent = `v${v}`
-    el.hidden = false
+  const current = requestedRef()
+
+  // **The button's label is written, not mirrored.** `<selectedcontent>` is the
+  // spec's way to clone the selected option into the button, and it stayed
+  // empty here — injecting the whole control with `innerHTML` gives it nothing
+  // to react to — which collapsed the badge to a 24px stub showing only its
+  // arrow. This control re-renders on load and navigates on change, so it never
+  // needs to mirror anything live; the label is just set.
+  const label = current ? (versions.includes(current) ? `v${current}` : current) : `v${latest}`
+
+  // The empty value is the live docs, labelled with the version they are —
+  // "latest" as a word tells a reader nothing they can check, and this control
+  // is also the version badge. Selecting it clears `?v=` and goes home.
+  const options = [
+    `<button>${esc(label)}</button>`,
+    `<option value=""${current ? '' : ' selected'}>v${esc(latest)}</option>`,
+    ...versions
+      .filter(v => v !== latest)
+      .reverse()
+      .map(v => `<option value="${esc(v)}"${v === current ? ' selected' : ''}>v${esc(v)}</option>`),
+  ]
+
+  // A ref typed by hand — a branch, or a tag with no published package — keeps
+  // its own entry rather than silently resetting the control to the latest
+  // version, which would tell the reader they are somewhere they are not.
+  if (current && !versions.includes(current)) {
+    options.splice(2, 0, `<option value="${esc(current)}" selected>${esc(current)}</option>`)
   }
 
-  // Session-cached so moving between pages does not re-hit the registry. A
-  // stale-by-one-session number is not worth a request per navigation.
+  sel.innerHTML = options.join('')
+
+  // **Set explicitly, because a browser restores a select across a reload.**
+  // Form-state restoration puts back whatever index was chosen last time and
+  // wins over the `selected` attribute — so after picking 1.1.1 and coming
+  // back, the control claimed 1.1.1 while the page showed the latest docs. The
+  // query string is the only thing that decides what is being read; the control
+  // is told, not asked.
+  sel.value = current && [...sel.options].some(o => o.value === current) ? current : ''
+  sel.hidden = false
+
+  sel.onchange = () => {
+    // A whole URL rather than `location.search`, which leaves a bare `?` on the
+    // way back to the latest docs and reloads twice as a result.
+    const v = sel.value
+    location.assign(`${location.pathname}${v ? `?v=${encodeURIComponent(v)}` : ''}${location.hash}`)
+  }
+}
+
+;(async () => {
+  const CACHE = 'cutver-docs-version'
+  const LIST = 'cutver-docs-versions'
+
+  // Session-cached so moving between pages does not re-hit the registry, and
+  // so the control is not blank for a round trip on every navigation. A
+  // stale-by-one-session list is not worth a request per page.
   const cached = sessionStorage.getItem(CACHE)
-  if (cached) show(cached)
+  if (cached) {
+    fillPicker(cached, JSON.parse(sessionStorage.getItem(LIST) || '[]'))
+  }
 
   try {
     // The abbreviated packument: smaller than the full one, and it still
@@ -848,7 +1061,8 @@ addEventListener('keydown', e => {
       headers: { Accept: 'application/vnd.npm.install-v1+json' },
     })
     if (!res.ok) return
-    const tags = (await res.json())['dist-tags'] || {}
+    const doc = await res.json()
+    const tags = doc['dist-tags'] || {}
 
     // **`latest` is not always the newest thing published.** npm pins `latest`
     // on a package's very first publish whatever `--tag` said, so a project
@@ -860,16 +1074,37 @@ addEventListener('keydown', e => {
     // Guard the shape as well as the request: a registry error page that
     // happens to parse as JSON would otherwise put `vundefined` in the header.
     if (typeof version !== 'string' || !version) return
+
+    // **The list comes from the packument already in flight**, not from the
+    // GitHub tags API. That one allows 60 unauthenticated requests an hour per
+    // IP, which a docs site shares across every reader behind one corporate
+    // NAT; this response was being fetched for the version anyway, has no such
+    // limit, and every published version has a matching tag.
+    //
+    // `?v=` still accepts a branch or any tag typed by hand. The list is a
+    // convenience, not the set of things that work.
+    const versions = Object.keys(doc.versions || {})
     sessionStorage.setItem(CACHE, version)
-    show(version)
+    sessionStorage.setItem(LIST, JSON.stringify(versions))
+    fillPicker(version, versions)
   } catch {
-    // Offline or blocked. The badge stays hidden, or keeps the cached value.
+    // Offline or blocked. The control keeps the cached list, or stays hidden —
+    // no version at all is true, and a guessed one is a lie.
   }
 })()
 
 addEventListener('hashchange', route)
 addEventListener('scroll', syncAside, { passive: true })
-route()
+
+// **Awaited before the first route, not raced with it.** `route()` sets the
+// sidebar's active link and builds prev/next from `FLAT`; running it against an
+// empty nav renders a page with no highlight and no pager, and nothing would
+// come back to fix it. One fetch of a local file is not a delay worth a bug.
+;(async () => {
+  setNav(await loadNav())
+  renderSidebar()
+  route()
+})()
 </script>
 </body>
 </html>
