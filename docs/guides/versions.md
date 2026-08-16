@@ -1,6 +1,7 @@
 # How the number is chosen
 
-Conventional commits, since the last **stable** tag. The strongest bump in the
+Conventional commits — see [Writing the commits](commits.md) for the format —
+since the last **stable** tag. The strongest bump in the
 range wins.
 
 | Commit | Bump |

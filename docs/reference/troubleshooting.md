@@ -60,7 +60,7 @@ Publish release one by hand with a token, then automate. Or, if you have read
 that and meant it:
 
 ```bash
-cutver --allow-first-publish
+cutver stage --allow-first-publish
 ```
 
 ## `working tree is not clean`
@@ -97,7 +97,7 @@ Node wrapper. cutver asks rather than guesses, because guessing wrong means
 bumping the wrong manifest:
 
 ```bash
-cutver --adapter cargo
+cutver stage --adapter cargo
 ```
 
 ---

@@ -8,7 +8,7 @@ has rather than on preference.
 Nothing to install if the repository already has Bun:
 
 ```bash
-bunx cutver --dry-run
+bunx cutver stage --dry-run
 ```
 
 `bunx` fetches the package, runs it, and does not add it to your dependencies —
@@ -24,7 +24,7 @@ in TypeScript and run by Bun, so `npx` will fetch Bun's runtime as needed —
 if that bothers you, use the executable below.
 
 ```bash
-npx --yes cutver --dry-run
+npx --yes cutver stage --dry-run
 ```
 
 ## The executable
@@ -38,7 +38,7 @@ curl -L -o cutver https://github.com/obillekyle/cutver/releases/latest/download/
 ```
 
 ```bash
-./cutver --dry-run
+./cutver stage --dry-run
 ```
 
 Every release attaches five:

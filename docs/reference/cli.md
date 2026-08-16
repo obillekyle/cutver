@@ -1,35 +1,67 @@
 # CLI
 
 ```
-cutver [version] [options]
-cutver init <cargo|node|bun> [--force]
-cutver check [--branch <name>] [--rev <commit>]
-cutver hook install|uninstall
-cutver explain [--branch <name>]
+cutver                            help, like a bare `bun`
+cutver stage [<channel>|<version>]  work out the next version and write it
+cutver notes <tag> | <from> <to>    the release body on stdout
+cutver changelog                    rebuild CHANGELOG.md from the tags
+cutver check                        may this branch release what it implies
+cutver doctor                       one read-only report of everything
+cutver explain                      which rule claims this branch
+cutver config                       the effective configuration
+cutver init [<ecosystem>]           write version.yml + publish.yml
+cutver hook install|uninstall       the pre-push guard
+cutver completions <bash|zsh|fish>  a completion script
+cutver help [command]               this, or one command in full
 ```
+
+`cutver help <command>` prints the long form for any of them, generated from
+the same table this page is checked against.
+
+> **Releasing was the bare invocation before 2.0.** `cutver --if-needed` is now
+> a command-less run: it prints this list, and exits **1** when nothing is
+> attached to a terminal so a CI step fails loudly rather than going green
+> having released nothing. Every generated workflow says `cutver stage` from
+> 2.0 onward, and `cutver check` reports one that does not.
+
+## Commands
+
+| | |
+| --- | --- |
+| `stage` | Work out the next version from the commits and write it into every manifest. Then stop — no commit, no tag, no publish. Takes a channel (`beta`), a version (`1.4.0`), or `release` to force a stable one whatever the branch is configured to cut. With no argument the branch decides. |
+| `notes` | The release body for a tag, on stdout: the `CHANGELOG.md` section for that version, rewritten by the [summariser](config.md#the-summariser) if one is configured. A range compiles from the commits instead and never reads the changelog. Never fails over content: no changelog, no section, or a summariser that died each print why and exit 0. A missing or extra argument still exits 1. This is what the generated `publish.yml` calls. |
+| `changelog` | Rebuild `CHANGELOG.md` from the tags and release nothing. Needs `changelog:` set — without it cutver does not own the file and will not overwrite what you wrote. For adopting compilation on an existing project, or after changing `sections` or `keep`. |
+| `check` | Exit 1 only if this branch may not release what its commits imply. Read-only and offline. See [the pre-push guard](../guides/hooks.md). |
+| `doctor` | Everything `check` deliberately will not say, in one report: the config as resolved, the plan for this branch, commits that are not conventional, drift between the config and the generated workflows, whether the summariser holds a key, and whether the registry has heard of each package. Exits 1 on anything that would affect a release. |
+| `explain` | Which rule claims this branch, and every rule that was tried and did not fire. Read-only, offline, always exits 0. See [Configuration](config.md). |
+| `config` | The configuration as cutver resolved it, with every default merged in and every channel normalised — so a key ignored because it was misspelt is visible by its absence. JSON on stdout, which is a format cutver also reads. |
+| `init` | Write `version.yml`, `publish.yml` and a `CHANGELOG.md` stub. The ecosystem is detected when omitted. See [Set up CI](../getting-started/ci.md). |
+| `hook` | Install or remove a `pre-push` hook that runs `check`. |
+| `completions` | A completion script for bash, zsh or fish, on stdout. Nothing is installed for you. |
 
 ## Arguments
 
 | | |
 | --- | --- |
-| `version` | An explicit semver, overriding the computation. No leading `v` — the tag adds that, and `v1.1.0` is not a valid version string in any manifest. Prerelease and build metadata are allowed. |
-| `init` | Write `version.yml`, `publish.yml` and a `CHANGELOG.md` stub for that ecosystem. See [Set up CI](../getting-started/ci.md). |
-| `check` | Exit 1 only if this branch may not release what its commits imply. Read-only and offline. See [the pre-push guard](../guides/hooks.md). |
-| `hook` | Install or remove a `pre-push` hook that runs `check`. |
-| `explain` | Which rule claims this branch, and every rule that was tried and did not fire. Read-only, offline, always exits 0. See [Configuration](config.md). |
+| `<version>` | An explicit semver, overriding the computation. No leading `v` — the tag adds that, and `v1.1.0` is not a valid version string in any manifest. Prerelease and build metadata are allowed. |
+| `<channel>` | A channel declared in [`cutver.json` / `cutver.yml`](config.md), or `release` for a stable version. |
+
+**One positional serves for both, and they cannot collide.** Channel names are
+refused at load if they contain a digit, so anything that parses as semver is a
+version and anything else is a channel. `prerelease` is accepted as a spelling
+of `rc`, and the version written is the canonical `-rc.N`.
 
 ## Options
 
 | | |
 | --- | --- |
-| `--dry-run` | Compute and report, write nothing. Runs nothing either — no `cargo update`, no file writes — and still reports every change the real run would make. |
-| `--channel <name>` | Cut a prerelease in that channel: `alpha`, `beta`, `rc`, or any channel declared in [`cutver.json` / `cutver.yml`](config.md). Pass it once; twice is refused rather than resolved. `prerelease` is accepted as a spelling of `rc`, and the version written is the canonical `-rc.N`. A name the repository does not declare is an error that lists the ones it does. |
+| `--dry-run` | (`stage`, `changelog`, `init`, `hook`) Compute and report, write nothing. Runs nothing either — no `cargo update`, no file writes — and still reports every change the real run would make. |
 | `--adapter js\|cargo` | Force the manifest adapter. Only needed when a repository has both manifests. |
 | `--cwd <path>` | Repository root. Defaults to the working directory. |
 | `--branch <name>` | Branch name, for CI on a detached HEAD where git answers the literal string `HEAD`. |
-| `--if-needed` | Exit 0 rather than 1 when no release is warranted. What CI wants. |
-| `--offline` | Skip the registry preflight entirely. |
-| `--allow-first-publish` | Proceed even though a package is not on the registry yet. |
+| `--if-needed` | (`stage`) Exit 0 rather than 1 when no release is warranted. What CI wants. |
+| `--offline` | (`stage`, `doctor`) Skip the registry lookups entirely. |
+| `--allow-first-publish` | (`stage`) Proceed even though a package is not on the registry yet. |
 | `--force` | (`init`, `hook`) Replace files that are already there. Never replaces `CHANGELOG.md`, and never a `pre-push` hook cutver did not write. |
 | `--rev <commit>` | (`check`) The commit to judge, default `HEAD`. The hook passes the sha of the ref being pushed, which is not always the one checked out. |
 | `--runner <cmd>` | (`hook`) Pin how the hook invokes cutver, instead of detecting it at run time. |
@@ -41,19 +73,29 @@ cutver explain [--branch <name>]
 `--adapter js` and `--adapter=js` both work, as does every other option that
 takes a value.
 
+### Deprecated in 2.0
+
+Both still parse, and both say what they became. They are absent from the help
+and from completions, and they go in 3.0 — a rename is not worth breaking a
+workflow over.
+
+| | |
+| --- | --- |
+| `--channel <name>` | Now `cutver stage <name>`. |
+| `--regenerate-changelogs` | Now `cutver changelog`. |
+
 ## Exit codes
 
 | | |
 | --- | --- |
-| `0` | A release was cut, or nothing was warranted and `--if-needed` was passed. |
-| `1` | Anything else — nothing to release, a refused branch declaration, a dirty tree, a package that has never been published, a malformed version. |
+| `0` | A release was staged, or nothing was warranted and `--if-needed` was passed. |
+| `1` | Anything else — nothing to release, a refused branch declaration, a dirty tree, a package that has never been published, a malformed version. Also a bare `cutver` outside a terminal. |
 
 `cutver check` inverts the interesting half: it exits **0** when nothing is
 warranted and **1 only** for the branch-declared refusal, because it is meant
 to gate a push rather than report to a person. It exits 0 on its own failures
 too — a guard that fails closed on its own bug blocks every push in the
 repository.
-
 ## What it checks, in order
 
 1. **It is a git repository.** The version comes from commit messages; there is

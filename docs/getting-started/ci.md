@@ -120,7 +120,7 @@ reason: CI checks out a detached HEAD, where git answers the literal string
 `HEAD` and the real branch name only exists in the event payload.
 
 ```yaml
-      - run: bunx cutver --if-needed --branch '${{ github.ref_name }}'
+      - run: bunx cutver stage --if-needed --branch '${{ github.ref_name }}'
 ```
 
 ## Skipping the bump commit

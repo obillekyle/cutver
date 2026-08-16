@@ -7,7 +7,7 @@ the expensive moment. Read this once and the rest are automatic.
 ## Look first
 
 ```bash
-bunx cutver --dry-run
+bunx cutver stage --dry-run
 ```
 
 A dry run writes nothing, runs nothing, and still reports everything the real
@@ -87,7 +87,7 @@ cutver: 1 package(s) have never been published:
 So, for release one:
 
 ```bash
-bunx cutver --allow-first-publish
+bunx cutver stage --allow-first-publish
 ```
 
 ```bash
@@ -169,8 +169,8 @@ For a package that has never been published, in order:
 
 1. Set the manifest to `0.0.0` if its current version was never released.
 2. Add `repository` to the manifest.
-3. `cutver --dry-run` and read it.
-4. `cutver --allow-first-publish`, commit, tag.
+3. `cutver stage --dry-run` and read it.
+4. `cutver stage --allow-first-publish`, commit, tag.
 5. Publish by hand — with `--tag` if it is a prerelease.
 6. Configure trusted publishing on the registry, naming your repo and
    `publish.yml`.

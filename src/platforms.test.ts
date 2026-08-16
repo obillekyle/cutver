@@ -14,7 +14,11 @@ import { platformAdvice, systemDeps, SEARCHERS } from './platforms'
  * field**, which is why the obvious detector does not work.
  */
 
-function pkg(name: string, buildDeps: string[] = [], normalDeps: string[] = []) {
+function pkg(
+  name: string,
+  buildDeps: string[] = [],
+  normalDeps: string[] = [],
+) {
   return {
     name,
     links: null,
@@ -28,9 +32,14 @@ function pkg(name: string, buildDeps: string[] = [], normalDeps: string[] = []) 
 describe('systemDeps', () => {
   test('finds a crate that searches for a preinstalled library', () => {
     const deps = systemDeps({
-      packages: [pkg('alloyfs-cli', [], ['fuser']), pkg('fuser', ['pkg-config'])],
+      packages: [
+        pkg('alloyfs-cli', [], ['fuser']),
+        pkg('fuser', ['pkg-config']),
+      ],
     })
-    expect(deps).toEqual([{ crate: 'fuser', why: SEARCHERS['pkg-config'] as string }])
+    expect(deps).toEqual([
+      { crate: 'fuser', why: SEARCHERS['pkg-config'] as string },
+    ])
   })
 
   test('ignores `cc`, which is everywhere and usually vendors', () => {
@@ -41,7 +50,9 @@ describe('systemDeps', () => {
 
   test('ignores a normal dependency that merely shares a name', () => {
     // `kind: null` is a regular dependency. Only build-time searching counts.
-    expect(systemDeps({ packages: [pkg('thing', [], ['pkg-config'])] })).toEqual([])
+    expect(
+      systemDeps({ packages: [pkg('thing', [], ['pkg-config'])] }),
+    ).toEqual([])
   })
 
   test('names every crate, not every searcher', () => {
@@ -64,7 +75,13 @@ describe('systemDeps', () => {
   test('survives a document that is not the shape it expects', () => {
     // cargo's output is trusted only as far as it parses; a probe that threw
     // would take down the `init` it is decorating.
-    for (const junk of [null, undefined, {}, { packages: 'nope' }, { packages: [{}] }]) {
+    for (const junk of [
+      null,
+      undefined,
+      {},
+      { packages: 'nope' },
+      { packages: [{}] },
+    ]) {
       expect(() => systemDeps(junk)).not.toThrow()
     }
   })
@@ -77,7 +94,10 @@ describe('platformAdvice', () => {
 
   test('names the target and the crate together', () => {
     const lines = platformAdvice([
-      { target: 'aarch64-apple-darwin', deps: [{ crate: 'fuser', why: 'searches for x' }] },
+      {
+        target: 'aarch64-apple-darwin',
+        deps: [{ crate: 'fuser', why: 'searches for x' }],
+      },
     ]).join('\n')
 
     expect(lines).toContain('aarch64-apple-darwin')

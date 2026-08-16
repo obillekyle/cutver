@@ -6,23 +6,23 @@ Three channels, in semver precedence order — which is also alphabetical, so
 mean the obvious thing works.
 
 ```bash
-cutver --channel beta
+cutver stage beta
 ```
 
 The base is computed exactly as a stable release would be, then the channel and
 a counter are attached.
 
-| Last stable | Commits imply | Current | `--channel alpha` gives |
+| Last stable | Commits imply | Current | `stage alpha` gives |
 | --- | --- | --- | --- |
 | 1.2.3 | minor | 1.2.3 | 1.3.0-alpha.0 |
 | 1.2.3 | minor | 1.3.0-alpha.0 | 1.3.0-alpha.1 |
 | 1.2.3 | minor | 1.3.0-alpha.9 | 1.3.0-alpha.10 |
 
-Pass it once. `--channel alpha --channel beta` is refused rather than resolved.
+Pass it once. `cutver stage alpha beta` is refused rather than resolved.
 
 `alpha`, `beta` and `rc` are the three every repository has. A
 [`cutver.json` or `cutver.yml`](../reference/config.md) can declare others —
-`canary`, `nightly`, `next` — and `--channel` accepts whatever that file names.
+`canary`, `nightly`, `next` — and `stage` accepts whatever that file names.
 A channel the repository has not declared is an error listing the ones it has,
 rather than a version string in a channel nobody publishes.
 
@@ -35,7 +35,7 @@ version sorting below one already published.
 A channel change restarts it:
 
 ```
-1.3.0-alpha.7  --channel beta  ->  1.3.0-beta.0
+1.3.0-alpha.7  stage beta  ->  1.3.0-beta.0
 ```
 
 Not `beta.8`. It would sort correctly by luck — `beta.8` is above `alpha.7` —
@@ -44,7 +44,7 @@ and then break the first time someone opened a channel out of order.
 A base change restarts it too:
 
 ```
-1.3.0-alpha.3  + a feat!  --channel alpha  ->  2.0.0-alpha.0
+1.3.0-alpha.3  + a feat!  stage alpha  ->  2.0.0-alpha.0
 ```
 
 Not `2.0.0-alpha.4`, which would imply three earlier `2.0.0` alphas that never
@@ -84,13 +84,13 @@ prereleases off a feature branch.
 
 It reads as a category rather than a channel, and plenty of projects name the
 branch that. cutver accepts it — as a branch name, in either shape, and as
-`--channel prerelease` on the command line:
+`stage prerelease` on the command line:
 
 | You write | You get |
 | --- | --- |
 | branch `prerelease` | `1.2.1-rc.0` |
 | branch `1.3.0-prerelease` | `1.3.0-rc.0` |
-| `cutver --channel prerelease` | `1.2.1-rc.0` |
+| `cutver stage prerelease` | `1.2.1-rc.0` |
 
 **The version string is always the canonical `-rc.N`**, never
 `-prerelease.N`. The dist-tag is derived from the version, and a fourth
@@ -101,7 +101,7 @@ workflow refuses an unrecognised prerelease rather than defaulting it to
 The alias is anchored the same way the channel names are: `prereleases` and
 `prerelease/x` are ordinary branches.
 
-An explicit `--channel rc` still wins over the branch — the flag was typed just
+An explicit `stage rc` still wins over the branch — the flag was typed just
 now, the branch was named months ago.
 
 > **`*-beta` does not match `beta`.** If you are writing the workflow triggers
@@ -113,7 +113,7 @@ now, the branch was named months ago.
 
 A branch named `1.2.0-beta` declares its own base *and* channel: *this branch is
 building towards 1.2.0, publishing betas along the way.* cutver reads it, so
-you do not pass `--channel beta` on every cut.
+you do not pass `stage beta` on every cut.
 
 ```
 cutver: 1.2.0-beta.2 -> 1.2.0-beta.3 (declared by branch '1.2.0-beta')

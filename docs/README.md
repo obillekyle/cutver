@@ -24,7 +24,7 @@ It never publishes. That is the whole design, not a missing feature — see
 Look before you leap. `--dry-run` writes nothing, ever:
 
 ```bash
-bunx cutver --dry-run
+bunx cutver stage --dry-run
 ```
 
 ```
@@ -48,7 +48,7 @@ files (dry run — nothing is written)
 Happy with it? Drop the flag:
 
 ```bash
-bunx cutver
+bunx cutver stage
 ```
 
 Now review the diff, commit, and tag. Or better, let CI do all three —
@@ -58,12 +58,19 @@ Now review the diff, commit, and tag. Or better, let CI do all three —
 bunx cutver init cargo
 ```
 
+> **Reading an older version?** Add `?v=` — a version, a tag, or a branch.
+> [`?v=1.1.0`](?v=1.1.0#/), [`?v=v1.0.0`](?v=v1.0.0#/), `?v=main`. The picker in
+> the header lists published versions; the query accepts anything git resolves,
+> and every link you follow stays inside it.
+
 ## Key concepts
 
-- **The number comes from the commits, the notes come from you.** Every other
-  tool in this space generates release notes by listing commit subjects. cutver
-  opens the changelog heading and writes nothing under it. The version is
-  mechanical; the prose is the work.
+- **The number comes from the commits, and by default so does nothing else.**
+  Every other tool in this space generates release notes by listing commit
+  *subjects*. cutver opens the changelog heading and writes nothing under it.
+  [`changelog:`](reference/config.md) opts into compiling them from commit
+  *bodies* instead — a different trade, since a body that explains what a fix
+  cost is release-note prose already.
 - **Measured from the last *stable* tag.** Not the last tag — measuring from
   `v1.3.0-beta.2` is how a breaking change that lands mid-beta ships as a minor.
   Not the current version either — that graduates `1.2.0-rc.1` to `1.2.1` and
