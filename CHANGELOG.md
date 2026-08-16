@@ -8,9 +8,19 @@ is only ever as good as the commits — which is the point.
 explanation in the commit body, where it is also visible in `git log`, in a
 pull request, and on the release page.
 
+## [2.0.1] — 2026-08-16
+
+diff: [9a2fd30...8c27864](https://github.com/obillekyle/cutver/compare/9a2fd30...8c27864)
+
+### Fixes
+
+- **npm:** run on Node, and bring the docs to the 2.0 CLI ([8c27864](https://github.com/obillekyle/cutver/commit/8c27864))
+
+    `bin` pointed at a TypeScript entry behind a `#!/usr/bin/env bun` shebang, so the package installed everywhere and ran only where Bun was on PATH. The `node` workflow `init` generates hit the same wall.
+
 ## [2.0.0] — 2026-08-16
 
-diff: [5fc74d2...4fffc29](https://github.com/obillekyle/cutver/compare/5fc74d2...4fffc29)
+diff: [5fc74d2...9a2fd30](https://github.com/obillekyle/cutver/compare/5fc74d2...9a2fd30)
 
 ### Breaking Changes
 
