@@ -1,6 +1,11 @@
 import { describe, expect, test } from 'bun:test'
 import { withStage } from '../plan'
-import { CHANNELS, versionFromBranch, withChannel, type Channel } from '../version-from-commits'
+import {
+  CHANNELS,
+  versionFromBranch,
+  withChannel,
+  type Channel,
+} from '../version-from-commits'
 import { matchBranch } from './match'
 import { DEFAULT_CONFIG } from './schema'
 
@@ -20,7 +25,8 @@ function canonicalBranch(branch: string): string {
   const name = branch.trim()
   for (const [alias, channel] of Object.entries(ALIASES)) {
     const re = new RegExp(`(^|[/-])${alias}$`)
-    if (re.test(name)) return name.replace(re, (_, sep: string) => `${sep}${channel}`)
+    if (re.test(name))
+      return name.replace(re, (_, sep: string) => `${sep}${channel}`)
   }
   return name
 }
@@ -83,7 +89,10 @@ const NAMES = [
 ]
 
 /** What the hard-coded rules say today, in the shape `matchBranch` returns. */
-function today(branch: string): { channel: string | null; declared: string | null } {
+function today(branch: string): {
+  channel: string | null
+  declared: string | null
+} {
   const declared = versionFromBranch(canonicalBranch(branch))
   if (declared) return { channel: declared.channel, declared: declared.base }
   return { channel: channelFromBranch(branch), declared: null }
@@ -114,7 +123,11 @@ describe('DEFAULT_CONFIG reproduces the hard-coded rules', () => {
     // The two independent alias tables are what this replaces: one entry in
     // the rc channel now covers the branch name, the `release/` form, and the
     // versioned form.
-    for (const name of ['prerelease', 'release/prerelease', '1.2.1-prerelease']) {
+    for (const name of [
+      'prerelease',
+      'release/prerelease',
+      '1.2.1-prerelease',
+    ]) {
       const m = matchBranch(name, DEFAULT_CONFIG)
       expect(m.kind, name).toBe('channel')
       if (m.kind === 'channel') expect(m.channel, name).toBe('rc')
@@ -127,7 +140,10 @@ describe('DEFAULT_CONFIG reproduces the hard-coded rules', () => {
     // the "branch declares a lower version" refusal would silently stop firing.
     const config = {
       ...DEFAULT_CONFIG,
-      channels: { ...DEFAULT_CONFIG.channels, beta: ['*-beta', '{version}-beta'] },
+      channels: {
+        ...DEFAULT_CONFIG.channels,
+        beta: ['*-beta', '{version}-beta'],
+      },
     }
     const m = matchBranch('1.3.0-beta', config)
 
@@ -187,8 +203,12 @@ describe('withStage reproduces the ported counter', () => {
     // The reason the copy exists. `PRERELEASE` reads `[a-z]+`, so it never
     // matches `my-prefix` and restarts at .0 forever — which then equals the
     // current version and reports "nothing to release" for good.
-    expect(withChannel('1.3.0', 'my-prefix' as never, '1.3.0-my-prefix.3')).toBe('1.3.0-my-prefix.0')
-    expect(withStage('1.3.0', 'my-prefix', '1.3.0-my-prefix.3')).toBe('1.3.0-my-prefix.4')
+    expect(
+      withChannel('1.3.0', 'my-prefix' as never, '1.3.0-my-prefix.3'),
+    ).toBe('1.3.0-my-prefix.0')
+    expect(withStage('1.3.0', 'my-prefix', '1.3.0-my-prefix.3')).toBe(
+      '1.3.0-my-prefix.4',
+    )
   })
 
   test('the counter keeps its own dot, so .9 sorts below .10', () => {
@@ -200,7 +220,11 @@ describe('withStage reproduces the ported counter', () => {
   })
 
   test('a base or channel change restarts it, exactly as before', () => {
-    expect(withStage('2.0.0', 'my-prefix', '1.3.0-my-prefix.7')).toBe('2.0.0-my-prefix.0')
-    expect(withStage('1.3.0', 'other-name', '1.3.0-my-prefix.7')).toBe('1.3.0-other-name.0')
+    expect(withStage('2.0.0', 'my-prefix', '1.3.0-my-prefix.7')).toBe(
+      '2.0.0-my-prefix.0',
+    )
+    expect(withStage('1.3.0', 'other-name', '1.3.0-my-prefix.7')).toBe(
+      '1.3.0-other-name.0',
+    )
   })
 })

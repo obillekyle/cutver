@@ -1,0 +1,58 @@
+# cutver, releasing itself.
+# Docs: https://cutver.okyle.dev/#/reference/config
+schema: 1
+
+target: bun
+
+# Both, and this repository is why they are two keys rather than one: `cutver`
+# is on npm *and* every tag carries five standalone executables, because a
+# repository with no JavaScript runtime still needs a way to run a version bump.
+# One key naming a category could not say that without saying it twice.
+publish: true
+
+# And the executables, named rather than guessed at: `bun run build --all`
+# writes five of them into dist/, one per platform.
+artifacts:
+  files: [dist/cutver-*]
+
+# **The changelog is compiled from the commit bodies.**
+#
+# This file argued the other way for fourteen releases, and the argument still
+# holds where it was aimed: at *subject lines*. `fix: stuff` under a heading
+# tells a reader nothing `git log` would not. What changed the calculation is
+# that the bodies here are written as release notes already — the reasoning,
+# the measurement, what was reversed and why — so extracting them is carrying
+# prose across rather than inventing it.
+#
+# Which makes the commit message the artifact. A thin body now reads exactly as
+# thin as it is, in public, which is the incentive pointing the right way.
+changelog:
+  keep: 10
+
+  # **The GitHub release body only.** `CHANGELOG.md` stays exactly as compiled —
+  # it is the record, and a record that reads differently depending on which
+  # model was up that day is not one. The release page is the other audience:
+  # someone deciding whether this version is worth their afternoon, who wants
+  # the three things that changed rather than every commit that changed them.
+  #
+  # Every failure here publishes the compiled notes instead. No key, wrong
+  # model, rate limit, timeout, empty answer — all of them fall back, because
+  # the notes were already correct and already publishable before this ran.
+  #
+  # There is no key in this block and no property to put one in: this file is
+  # committed, pushed, and shipped inside the npm tarball. cutver reads
+  # `CUTVER_SUMMARIZE_KEY` from the environment, or failing that the provider's
+  # own variable. In CI it comes from the repository secret of the same name.
+  summarizer:
+    connector: gemini
+    model: gemini-3.5-flash-lite
+
+    # One retry, a minute later, and only for a failure that waiting can fix —
+    # a free tier meters tokens per *minute*, so a release that lands while
+    # something else is spending the same key fails on a window that refills on
+    # its own. A 400 naming a model that does not exist waits for nothing.
+    retry: true
+
+# No `channels:` on purpose. The defaults are what this repository already uses
+# — `main` for stable, plus the bare and `{version}-` shapes for alpha, beta and
+# rc — and writing them out would only create a second place to keep in step.

@@ -7,13 +7,15 @@ import { DEFAULT_CONFIG } from './schema'
 const made: string[] = []
 
 afterEach(async () => {
-  while (made.length) await rm(made.pop() as string, { recursive: true, force: true })
+  while (made.length)
+    await rm(made.pop() as string, { recursive: true, force: true })
 })
 
 async function fixture(files: Record<string, string> = {}): Promise<string> {
   const dir = (await mkdtemp(`${tmpdir()}/cutver-cfg-`)).replaceAll('\\', '/')
   made.push(dir)
-  for (const [rel, body] of Object.entries(files)) await Bun.write(`${dir}/${rel}`, body)
+  for (const [rel, body] of Object.entries(files))
+    await Bun.write(`${dir}/${rel}`, body)
   return dir
 }
 
@@ -28,7 +30,8 @@ describe('discovery', () => {
 
   test('json and yaml produce the same config', async () => {
     const json = await fixture({
-      'cutver.json': '{"schema":1,"target":"bun","channels":{"beta":["develop"]}}',
+      'cutver.json':
+        '{"schema":1,"target":"bun","channels":{"beta":["develop"]}}',
     })
     const yaml = await fixture({
       'cutver.yml': 'schema: 1\ntarget: bun\nchannels:\n  beta: [develop]\n',
@@ -41,20 +44,29 @@ describe('discovery', () => {
   })
 
   test('two config files is refused rather than resolved', async () => {
-    // Picking a winner means the file you edited might not be the file that ran.
-    const root = await fixture({ 'cutver.json': '{}', 'cutver.yml': 'schema: 1\n' })
+    // Picking a winner means the file you edited might not be the file that
+    // ran.
+    const root = await fixture({
+      'cutver.json': '{}',
+      'cutver.yml': 'schema: 1\n',
+    })
     await expect(loadConfig(root)).rejects.toThrow(/both exist/)
   })
 
   test('--config pointing at nothing dies rather than falling back', async () => {
     const root = await fixture()
-    await expect(loadConfig(root, `${root}/nope.json`)).rejects.toThrow(/no such file/)
+    await expect(loadConfig(root, `${root}/nope.json`)).rejects.toThrow(
+      /no such file/,
+    )
   })
 
   test('an empty file is the default, not a crash', async () => {
     // A comment-only YAML file parses to null; an empty JSON file is not
     // valid JSON at all, so it is special-cased.
-    const cases: Record<string, string>[] = [{ 'cutver.yml': '# nothing here\n' }, { 'cutver.json': '' }]
+    const cases: Record<string, string>[] = [
+      { 'cutver.yml': '# nothing here\n' },
+      { 'cutver.json': '' },
+    ]
     for (const files of cases) {
       const { config } = await loadConfig(await fixture(files))
       expect(config.channels).toEqual(DEFAULT_CONFIG.channels)
@@ -69,21 +81,27 @@ describe('discovery', () => {
     })
     await expect(loadConfig(json)).rejects.toThrow(/declared more than once/)
 
-    const yaml = await fixture({ 'cutver.yml': 'channels:\n  beta: [a]\n  beta: [b]\n' })
+    const yaml = await fixture({
+      'cutver.yml': 'channels:\n  beta: [a]\n  beta: [b]\n',
+    })
     await expect(loadConfig(yaml)).rejects.toThrow(/declared more than once/)
   })
 })
 
 describe('validation', () => {
   test('an unknown key names its nearest neighbour', () => {
-    expect(() => at({ channel: {} })).toThrow(/unknown key `channel` — did you mean `channels`/)
+    expect(() => at({ channel: {} })).toThrow(
+      /unknown key `channel` — did you mean `channels`/,
+    )
     expect(() => at({ targets: 'bun' })).toThrow(/unknown key `targets`/)
   })
 
   test('a newer schema refuses rather than guesses', () => {
     // An unknown schema may give a key this build already knows a different
     // meaning, and the failure mode of guessing is an irreversible publish.
-    expect(() => at({ schema: 2 })).toThrow(/declares schema 2; this cutver understands 1/)
+    expect(() => at({ schema: 2 })).toThrow(
+      /declares schema 2; this cutver understands 1/,
+    )
     expect(() => at({ schema: 0 })).toThrow(/positive integer/)
     expect(() => at({ schema: 1.5 })).toThrow(/positive integer/)
   })
@@ -94,7 +112,9 @@ describe('validation', () => {
 
   test('target must name an ecosystem', () => {
     expect(at({ target: 'cargo' }).target).toBe('cargo')
-    expect(() => at({ target: 'js' })).toThrow(/must be one of cargo, node, bun/)
+    expect(() => at({ target: 'js' })).toThrow(
+      /must be one of cargo, node, bun/,
+    )
   })
 
   test('channel keys are normalised to kebab-case rather than refused', () => {
@@ -102,7 +122,12 @@ describe('validation', () => {
     // reading the file, so they resolve to the same channel instead of two of
     // the three being errors.
     const c = at({
-      channels: { Beta: ['w'], myPrefix: ['x'], my_snake: ['y'], 'pre release': ['z'] },
+      channels: {
+        Beta: ['w'],
+        myPrefix: ['x'],
+        my_snake: ['y'],
+        'pre release': ['z'],
+      },
     })
     expect(c.channels.beta).toEqual(['w'])
     expect(c.channels['my-prefix']).toEqual(['x'])
@@ -112,7 +137,9 @@ describe('validation', () => {
 
   test('a run of capitals breaks where a reader would break it', () => {
     // `HTTPServer` is `http-server`, not `h-t-t-p-server`.
-    expect(Object.keys(at({ channels: { HTTPServer: ['x'] } }).channels)).toContain('http-server')
+    expect(
+      Object.keys(at({ channels: { HTTPServer: ['x'] } }).channels),
+    ).toContain('http-server')
   })
 
   test('two keys colliding after normalising is refused, naming both', () => {
@@ -141,8 +168,12 @@ describe('validation', () => {
 
   test('a digit is still refused, and says so', () => {
     for (const name of ['rc2', 'v2-latest']) {
-      expect(() => at({ channels: { [name]: ['x'] } }), name).toThrow(/not a usable channel name/)
-      expect(() => at({ channels: { [name]: ['x'] } }), name).toThrow(/digits are not accepted/)
+      expect(() => at({ channels: { [name]: ['x'] } }), name).toThrow(
+        /not a usable channel name/,
+      )
+      expect(() => at({ channels: { [name]: ['x'] } }), name).toThrow(
+        /digits are not accepted/,
+      )
     }
   })
 
@@ -154,12 +185,20 @@ describe('validation', () => {
   })
 
   test('branch patterns must be non-empty strings', () => {
-    expect(() => at({ channels: { beta: 'develop' } })).toThrow(/list of non-empty branch/)
-    expect(() => at({ channels: { beta: ['', 'x'] } })).toThrow(/list of non-empty branch/)
-    expect(() => at({ channels: { beta: [1] } })).toThrow(/list of non-empty branch/)
+    expect(() => at({ channels: { beta: 'develop' } })).toThrow(
+      /list of non-empty branch/,
+    )
+    expect(() => at({ channels: { beta: ['', 'x'] } })).toThrow(
+      /list of non-empty branch/,
+    )
+    expect(() => at({ channels: { beta: [1] } })).toThrow(
+      /list of non-empty branch/,
+    )
   })
 
   test('`$schema` is allowed and ignored', () => {
-    expect(() => at({ $schema: 'https://example.invalid/s.json', schema: 1 })).not.toThrow()
+    expect(() =>
+      at({ $schema: 'https://example.invalid/s.json', schema: 1 }),
+    ).not.toThrow()
   })
 })

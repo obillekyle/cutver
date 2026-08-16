@@ -20,7 +20,12 @@ describe('shapeOf', () => {
 describe('matching', () => {
   test('a literal puts an arbitrary branch in a channel — the actual ask', () => {
     const m = matchBranch('develop', config({ beta: ['beta', 'develop'] }))
-    expect(m).toMatchObject({ kind: 'channel', channel: 'beta', via: 'develop', declared: null })
+    expect(m).toMatchObject({
+      kind: 'channel',
+      channel: 'beta',
+      via: 'develop',
+      declared: null,
+    })
   })
 
   test('globs match whole branch names, and `*` does not cross a slash', () => {
@@ -33,8 +38,13 @@ describe('matching', () => {
 
   test('`release/` is stripped once, for every shape', () => {
     const c = config({ beta: ['develop', '{version}-beta'] })
-    expect(matchBranch('release/develop', c)).toMatchObject({ kind: 'channel', channel: 'beta' })
-    expect(matchBranch('release/1.3.0-beta', c)).toMatchObject({ declared: '1.3.0' })
+    expect(matchBranch('release/develop', c)).toMatchObject({
+      kind: 'channel',
+      channel: 'beta',
+    })
+    expect(matchBranch('release/1.3.0-beta', c)).toMatchObject({
+      declared: '1.3.0',
+    })
   })
 
   test('a leading `v` is stripped for declaring patterns only', () => {
@@ -58,14 +68,19 @@ describe('matching', () => {
     // something the repository did not.
     const c = config({ beta: ['develop'], canary: ['dev*'] })
     expect(() => matchBranch('develop', c)).toThrow(ConfigError)
-    expect(() => matchBranch('develop', c)).toThrow(/`beta` via "develop" and `canary` via "dev\*"/)
+    expect(() => matchBranch('develop', c)).toThrow(
+      /`beta` via "develop" and `canary` via "dev\*"/,
+    )
   })
 
   test('channels are evaluated before release', () => {
     // The default `release: ['**']` matches everything, so without this order
     // every channel on every repository would be shadowed.
     const c = config({ beta: ['develop'] })
-    expect(matchBranch('develop', c)).toMatchObject({ kind: 'channel', channel: 'beta' })
+    expect(matchBranch('develop', c)).toMatchObject({
+      kind: 'channel',
+      channel: 'beta',
+    })
     expect(matchBranch('main', c).kind).toBe('release')
   })
 
@@ -73,13 +88,19 @@ describe('matching', () => {
     // Load-bearing: `none` becomes a Plan variant, never a refusal. A refusal
     // here would make the pre-push hook block every feature branch push.
     const c = config({ beta: ['beta'] })
-    const strict: Config = { ...c, channels: { ...c.channels, release: ['main'] } }
+    const strict: Config = {
+      ...c,
+      channels: { ...c.channels, release: ['main'] },
+    }
 
     expect(matchBranch('feat/login', strict)).toEqual({ kind: 'none' })
   })
 
   test('a custom channel is just another key', () => {
     const c = config({ canary: ['canary'] })
-    expect(matchBranch('canary', c)).toMatchObject({ kind: 'channel', channel: 'canary' })
+    expect(matchBranch('canary', c)).toMatchObject({
+      kind: 'channel',
+      channel: 'canary',
+    })
   })
 })

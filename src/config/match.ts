@@ -96,7 +96,8 @@ function bestIn(entries: string[], name: string): Hit | null {
     const shape = shapeOf(entry)
     // Declaring must win over a glob, or `*-beta` matching `1.3.0-beta` would
     // quietly disable the branch-declares-a-lower-version refusal.
-    if (!best || RANK[shape] > RANK[best.shape]) best = { via: entry, shape, declared }
+    if (!best || RANK[shape] > RANK[best.shape])
+      best = { via: entry, shape, declared }
   }
   return best
 }
@@ -104,9 +105,9 @@ function bestIn(entries: string[], name: string): Hit | null {
 /**
  * Which rule claims this branch.
  *
- * Channels are evaluated before `release`, because the default `release: ['**']`
- * matches everything and would otherwise collide with every channel on every
- * repository.
+ * Channels are evaluated before `release`, because the default `release:
+ * ['**']` matches everything and would otherwise collide with every channel on
+ * every repository.
  *
  * **Two channels matching one branch is refused, never resolved.** The
  * difference between them is which prerelease identifier gets published — and
@@ -126,7 +127,9 @@ export function matchBranch(branch: string, config: Config): Match {
   }
 
   if (hits.length > 1) {
-    const named = hits.map(h => `\`${h.channel}\` via "${h.hit.via}"`).join(' and ')
+    const named = hits
+      .map(h => `\`${h.channel}\` via "${h.hit.via}"`)
+      .join(' and ')
     throw new ConfigError(
       `branch '${branch}' matches two channels — ${named}.\n` +
         '        A branch can only be in one channel; remove it from one of them.',
@@ -149,4 +152,3 @@ export function matchBranch(branch: string, config: Config): Match {
 
   return { kind: 'none' }
 }
-

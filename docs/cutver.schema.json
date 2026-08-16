@@ -18,16 +18,126 @@
       "description": "The config schema version — not the project's. A value above the one this cutver understands is refused rather than guessed at, because a newer schema may give a key a different meaning and the failure mode of guessing is an irreversible publish."
     },
     "target": {
-      "enum": ["cargo", "node", "bun"],
+      "enum": [
+        "cargo",
+        "node",
+        "bun"
+      ],
       "description": "Which ecosystem this repository releases. Only needed when a repository has both a package.json and a Cargo.toml, where detection would otherwise have to guess. --adapter on the command line wins over this."
     },
     "publish": {
-      "type": "array",
-      "uniqueItems": true,
-      "items": {
-        "enum": ["registry", "artifacts"]
-      },
-      "description": "What a tag produces. A list, because these are not alternatives — cutver itself publishes to npm and attaches five executables to every release. `registry` publishes to npm or crates.io; `artifacts` builds executables and attaches them to the GitHub release. An empty list is a real answer: tag and stop. Omitted means the default for the ecosystem — `[registry]` for node and bun, `[artifacts]` for cargo, because publishing to crates.io reserves every workspace member's name permanently and a Rust workspace is more often an application than a library."
+      "oneOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "registry",
+              "artifacts"
+            ]
+          }
+        }
+      ],
+      "description": "Whether a tag publishes to the registry (npm, crates.io). What a tag *attaches* is `artifacts`. Omitted means the ecosystem default — true for node and bun, false for cargo, because publishing to crates.io reserves every workspace member name permanently and a Rust workspace is more often an application than a library. The pre-2.0 list form still parses and warns; it goes in 3.0."
+    },
+    "changelog": {
+      "description": "Compile CHANGELOG.md from the commits. **cutver then owns the file and rewrites it whole on every release** — edits do not survive, and there is no `## [Unreleased]`. Each entry is a commit subject plus the first paragraph of its body. Omitted or `false` keeps the default: roll the `## [Unreleased]` heading and write no notes, because the version is mechanical and the prose is the work.",
+      "oneOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "$ref": "#/$defs/sections"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "sections": {
+              "$ref": "#/$defs/sections"
+            },
+            "keep": {
+              "description": "Release sections kept in the file, newest first. `false` keeps every one. Defaults to 10 — a changelog that grows for the life of a project is the reason nobody scrolls to the bottom of one.",
+              "oneOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "const": false
+                }
+              ]
+            },
+            "prompt": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The instruction sent ahead of the notes, replacing the shipped one. Unlike the command, this belongs in the config: a prompt is data on a model’s stdin rather than something executed, and it is the part that needs tuning against a particular model. Only used when changelog.summarizer is on."
+            },
+            "prereleases": {
+              "type": "boolean",
+              "default": false,
+              "description": "Whether prereleases get their own heading. Off by default: a prerelease is a step toward a release rather than one, `latest` never pointed at it, and everything in it ships again under the stable version that follows. Excluding them widens the ranges rather than dropping the commits — a stable release measures from the previous stable tag, absorbing every prerelease between."
+            },
+            "summarizer": {
+              "oneOf": [
+                {
+                  "const": true
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "connector",
+                    "model"
+                  ],
+                  "properties": {
+                    "connector": {
+                      "enum": [
+                        "anthropic",
+                        "openai-compatible",
+                        "gemini"
+                      ],
+                      "description": "Which request shape to use. `openai-compatible` covers OpenAI, OpenRouter, Groq, Together, vLLM, LM Studio, llama.cpp and Ollama through `base_url`."
+                    },
+                    "model": {
+                      "type": "string",
+                      "minLength": 1,
+                      "description": "Passed through verbatim. cutver keeps no list of model names — it would be stale within the month."
+                    },
+                    "base_url": {
+                      "type": "string",
+                      "minLength": 1,
+                      "description": "Required for `openai-compatible`, where it is what names the provider; optional elsewhere. No default for the compatible connector on purpose — defaulting would send a repository’s notes somewhere it never named."
+                    },
+                    "retry": {
+                      "description": "Wait and try once more, for failures waiting can fix — a 429, a 5xx, a timeout. `true` waits one minute, the window rate limits are measured over; a number says how many minutes, up to 10. A wrong model name or a rejected key is never retried. Off by default.",
+                      "oneOf": [
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 10
+                        }
+                      ]
+                    },
+                    "with_body": {
+                      "type": "boolean",
+                      "default": true,
+                      "description": "Send whole commit bodies rather than the first paragraph of each. On by default — it is what lets one commit become several bullets."
+                    }
+                  }
+                }
+              ],
+              "description": "Where the GitHub release body goes to be rewritten. Writing it is the opt-in — there is no separate switch. `true` means the command in CUTVER_SUMMARIZE; a mapping names a provider. CHANGELOG.md is never summarised. There is deliberately no key for an API key: it is read from the environment, because this file is committed and published."
+            }
+          }
+        }
+      ]
     },
     "channels": {
       "type": "object",
@@ -45,6 +155,93 @@
           "description": "Branches that cut a prerelease under this identifier. The key is the channel: it is the prerelease identifier in the version string and the dist-tag the release publishes under, so there is no separate tag field to drift out of step with it. camelCase, snake_case and spaces are normalised to kebab-case; digits are not accepted, because a counter that never matches its own pattern restarts at .0 on every run and the channel then reports 'nothing to release' forever."
         }
       }
+    },
+    "artifacts": {
+      "oneOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "const": "auto"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "folders": {
+              "oneOf": [
+                {
+                  "const": "auto"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              ],
+              "description": "Directory globs. Each match is archived to <name>.tar.gz and attached as one asset. Relative to the repository root."
+            },
+            "files": {
+              "oneOf": [
+                {
+                  "const": "auto"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              ],
+              "description": "File globs. Each match is attached as its own asset, under its own name. Relative to the repository root."
+            }
+          }
+        }
+      ],
+      "description": "What a tag attaches to its release. `false` attaches nothing, `auto` finds the build output, or name the paths."
+    },
+    "summarizer": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "**Pre-2.0.** The summariser goes under `changelog.summarizer:` now. This still parses and warns; it goes away in 3.0.",
+      "required": [
+        "connector",
+        "model"
+      ],
+      "properties": {
+        "connector": {
+          "enum": [
+            "anthropic",
+            "openai-compatible",
+            "gemini"
+          ],
+          "description": "Which request shape to use. `openai-compatible` covers OpenAI, OpenRouter, Groq, Together, vLLM, LM Studio, llama.cpp and Ollama through `base_url`."
+        },
+        "model": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Passed through verbatim. cutver keeps no list of model names — it would be stale within the month."
+        },
+        "base_url": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Required for `openai-compatible`, where it is what names the provider; optional elsewhere. No default for the compatible connector on purpose — defaulting would send a repository’s notes somewhere it never named."
+        },
+        "retry": {
+          "description": "Wait and try once more, for failures waiting can fix — a 429, a 5xx, a timeout. `true` waits one minute, the window rate limits are measured over; a number says how many minutes, up to 10. A wrong model name or a rejected key is never retried. Off by default.",
+          "oneOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 10
+            }
+          ]
+        }
+      }
     }
   },
   "$defs": {
@@ -55,6 +252,27 @@
         "minLength": 1
       },
       "description": "Literal names (`develop`), globs (`nightly/*`), or `{version}-<channel>` for a branch that declares its own base. A leading `release/` is stripped before matching."
+    },
+    "sections": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "breaking",
+          "feat",
+          "fix",
+          "perf",
+          "refactor",
+          "docs",
+          "build",
+          "ci",
+          "test",
+          "style",
+          "chore",
+          "revert"
+        ]
+      },
+      "description": "Section keys, in reading order. `breaking` collects the `!` and BREAKING CHANGE commits from every type and is listed first by default."
     }
   }
 }

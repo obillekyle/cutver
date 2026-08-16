@@ -27,24 +27,41 @@ schema: 1
 # a package.json and a Cargo.toml both exist.
 target: ${eco}
 
-# What a tag produces. Both are allowed — cutver's own release publishes to npm
-# *and* attaches an executable per platform.
+# Whether a tag publishes to ${eco === 'cargo' ? 'crates.io' : 'npm'}. \`false\` is a real answer: tag and stop.
 #
-#   registry   publish to ${eco === 'cargo' ? 'crates.io' : 'npm'}
-#   artifacts  build executables, attach them to the GitHub release
-#
-# \`[]\` is a real answer: tag and stop.
+# What a tag *attaches* is a separate question — see \`artifacts:\` in the docs.
 ${
   eco === 'cargo'
     ? `#
-# Defaulted to artifacts here, and left commented so the choice stays visible.
-# **\`cargo publish\` reserves the crate name permanently**, for every member of
-# the workspace — that is not something a generated workflow should do as a side
-# effect of wanting version numbers. Uncomment to publish as well.
+# Left off here, and commented so the choice stays visible. **\`cargo publish\`
+# reserves the crate name permanently**, for every member of the workspace —
+# that is not something a generated workflow should do as a side effect of
+# wanting version numbers. Uncomment to publish as well.
 #
-# publish: [artifacts, registry]`
-    : `publish: [registry]`
+# publish: true`
+    : `publish: true`
 }
+
+# Compile changelog sections from the commits in each release. Off by default:
+# the version is mechanical, the prose is the work, and a list of subject lines
+# is a worse copy of \`git log\`.
+#
+# What makes it worth turning on is the commit *body* — each entry is the
+# subject plus the first paragraph of its body.
+#
+# **Turning this on hands cutver the file.** It is rewritten whole on every
+# release, there is no \`## [Unreleased]\`, and edits do not survive. That is what
+# lets it never parse the file, so a mangled changelog cannot break a release.
+#
+# changelog: true
+# changelog:
+#   sections: [breaking, feat, fix, perf, refactor, docs]
+#   keep: 10
+#
+# A summariser can rewrite the GitHub release body — see the docs. It is not
+# scaffolded here on purpose: it needs a key and a model that are yours to
+# choose, and a commented-out block naming neither is an invitation to paste a
+# key into a tracked file.
 
 # Keyed by what the branch produces; the key is the prerelease identifier and
 # the registry dist-tag. A branch matching nothing here releases nothing —
