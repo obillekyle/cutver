@@ -139,6 +139,11 @@ export const COMMANDS: readonly Command[] = [
         takes: null,
         summary: 'report what would change, write nothing',
       },
+      {
+        name: '--overwrite',
+        takes: null,
+        summary: 'also update GitHub release bodies that nobody wrote',
+      },
     ],
   },
   {

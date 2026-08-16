@@ -76,6 +76,8 @@ export interface Options {
   noHook: boolean
   /** Rebuild `CHANGELOG.md` from the tags and release nothing. */
   regenerateChangelogs: boolean
+  /** `changelog`: also push each section onto its GitHub release page. */
+  overwrite: boolean
   /** Force the manifest adapter, rather than detecting it. */
   adapter?: AdapterId
   /** `check`: the commit to judge. Defaults to `HEAD`. */
@@ -129,6 +131,7 @@ export function parse(
     force: false,
     noHook: false,
     regenerateChangelogs: false,
+    overwrite: false,
     channel: null,
     positional: [],
     deprecated: [],
@@ -186,6 +189,9 @@ export function parse(
         opts.deprecated.push(
           '`--regenerate-changelogs` is now `cutver changelog`',
         )
+        break
+      case '--overwrite':
+        opts.overwrite = true
         break
       case '--no-hook':
         opts.noHook = true

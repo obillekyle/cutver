@@ -16,6 +16,7 @@ import {
   sectionOrCompile,
 } from '../changelog/compile'
 import { writeChangelog } from '../changelog'
+import { githubRepo, tokenFor, updateRelease } from '../changelog/releases'
 import { loadConfig } from '../config/load'
 import { channelNames, producesArtifacts, type Config } from '../config/schema'
 import { explainReport } from '../explain'
@@ -491,6 +492,58 @@ export async function runChangelog(argv: string[]): Promise<void> {
     `cutver: ${root}${opts.dryRun ? ' (dry run — nothing is written)' : ''}`,
   )
   console.log(`  ${opts.dryRun ? '=' : '↑'} CHANGELOG.md  ${change.detail}`)
+
+  if (opts.overwrite) await overwriteReleases(root, releases, opts.dryRun)
+}
+
+/**
+ * `--overwrite` — carry the compiled sections onto the release pages too.
+ *
+ * **The file and the release pages drift apart the moment `changelog:` is
+ * adopted.** Rewriting the file fixes every past release in the repository and
+ * none of the twenty pages people actually land on from a link.
+ *
+ * Nothing authored is replaced — see `isUnauthored`. A body a person wrote is
+ * published prose that GitHub keeps no history of, so the rule is not "replace
+ * unless it looks important", it is "replace only when it provably is not".
+ * Every other outcome is a line in the report rather than a silence.
+ */
+async function overwriteReleases(
+  root: string,
+  releases: { version: string; notes: string }[],
+  dryRun: boolean,
+): Promise<void> {
+  const repo = await githubRepo(root)
+  if (!repo) {
+    console.error(
+      'cutver: --overwrite needs a github.com remote — the changelog was still written',
+    )
+    return
+  }
+
+  const token = tokenFor(Bun.env)
+  if (!token) {
+    console.error(
+      'cutver: --overwrite needs a token, and there is none — the changelog was\n' +
+        '        still written. Set GH_TOKEN, or GITHUB_TOKEN, which every\n' +
+        '        Actions run already has.',
+    )
+    return
+  }
+
+  console.log(`\nrelease pages on ${repo}`)
+  const width = Math.max(...releases.map(r => r.version.length + 1), 4)
+
+  // Sequential on purpose: GitHub rate-limits by the hour, and a repository
+  // with two hundred tags firing two hundred concurrent requests is how a
+  // command that was meant to tidy up gets an account throttled.
+  for (const release of releases) {
+    const tag = `v${release.version}`
+    const result = await updateRelease(repo, token, tag, release.notes, dryRun)
+    const mark =
+      result.state === 'updated' ? '↑' : result.state === 'skipped' ? '·' : '='
+    console.log(`  ${mark} ${tag.padEnd(width)}  ${result.detail}`)
+  }
 }
 
 /**

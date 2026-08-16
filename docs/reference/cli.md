@@ -30,7 +30,7 @@ the same table this page is checked against.
 | --- | --- |
 | `stage` | Work out the next version from the commits and write it into every manifest. Then stop — no commit, no tag, no publish. Takes a channel (`beta`), a version (`1.4.0`), or `release` to force a stable one whatever the branch is configured to cut. With no argument the branch decides. |
 | `notes` | The release body for a tag, on stdout: the `CHANGELOG.md` section for that version, rewritten by the [summariser](config.md#the-summariser) if one is configured. A range compiles from the commits instead and never reads the changelog. Never fails over content: no changelog, no section, or a summariser that died each print why and exit 0. A missing or extra argument still exits 1. This is what the generated `publish.yml` calls. |
-| `changelog` | Rebuild `CHANGELOG.md` from the tags and release nothing. Needs `changelog:` set — without it cutver does not own the file and will not overwrite what you wrote. For adopting compilation on an existing project, or after changing `sections` or `keep`. |
+| `changelog` | Rebuild `CHANGELOG.md` from the tags and release nothing. `--overwrite` carries the sections onto the GitHub release pages too. Needs `changelog:` set — without it cutver does not own the file and will not overwrite what you wrote. For adopting compilation on an existing project, or after changing `sections` or `keep`. |
 | `check` | Exit 1 only if this branch may not release what its commits imply. Read-only and offline. See [the pre-push guard](../guides/hooks.md). |
 | `doctor` | Everything `check` deliberately will not say, in one report: the config as resolved, the plan for this branch, commits that are not conventional, drift between the config and the generated workflows, whether the summariser holds a key, and whether the registry has heard of each package. Exits 1 on anything that would affect a release. |
 | `explain` | Which rule claims this branch, and every rule that was tried and did not fire. Read-only, offline, always exits 0. See [Configuration](config.md). |
@@ -66,6 +66,7 @@ of `rc`, and the version written is the canonical `-rc.N`.
 | `--rev <commit>` | (`check`) The commit to judge, default `HEAD`. The hook passes the sha of the ref being pushed, which is not always the one checked out. |
 | `--runner <cmd>` | (`hook`) Pin how the hook invokes cutver, instead of detecting it at run time. |
 | `--no-hook` | (`init`) Do not install the pre-push guard. Everything else is written as usual. |
+| `--overwrite` | (`changelog`) Also update GitHub release bodies from the compiled sections. **Only replaces a body nobody wrote** — empty, the version repeated, or GitHub’s own generated notes; anything else is reported and left alone. Needs `GH_TOKEN` or `GITHUB_TOKEN`. |
 | `--config <path>` | Read this config instead of looking for one. Given and missing is an error, never a silent fallback to the defaults. |
 | `-h`, `--help` | Usage. |
 | `-v`, `--version` | The version of cutver itself. |
