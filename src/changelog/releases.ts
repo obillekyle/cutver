@@ -15,6 +15,7 @@
  * generated list. Everything else is reported and left alone.
  */
 import { remoteUrl } from '../git'
+import { runCommand } from '../runtime'
 import { normaliseRepo } from '../registry'
 
 /** What happened to one release, for the report. */
@@ -86,7 +87,7 @@ export async function githubRepo(root: string): Promise<string | null> {
 }
 
 /**
- * The token, from the environment only.
+ * The token, from the environment.
  *
  * The same argument as the summariser's key: a token in a tracked file is a
  * token published. `GITHUB_TOKEN` is present in every Actions run without being
@@ -96,6 +97,39 @@ export function tokenFor(
   env: Record<string, string | undefined>,
 ): string | null {
   return env.GH_TOKEN?.trim() || env.GITHUB_TOKEN?.trim() || null
+}
+
+/**
+ * The same, falling back to whatever `gh` is already signed in as.
+ *
+ * **Because the environment is empty on the machine most likely to run this.**
+ * `--overwrite` is a maintenance command — adopt `changelog:`, rewrite twenty
+ * release pages once — and that is done from a laptop, where nobody exports
+ * `GH_TOKEN` and `gh` has been authenticated for months. Refusing there sent
+ * people to mint a personal access token for a capability they already had.
+ *
+ * The environment still wins. It is the more specific instruction, it is what
+ * CI sets, and a shell that exports a scoped token meant that token.
+ *
+ * `gh` not being installed, not being signed in, or not being on PATH all come
+ * back as no token, which is the same answer as before this existed. Nothing
+ * here can fail a command.
+ */
+export async function resolveToken(
+  env: Record<string, string | undefined>,
+  root: string,
+): Promise<{ token: string | null; from: 'env' | 'gh' | null }> {
+  const fromEnv = tokenFor(env)
+  if (fromEnv) return { token: fromEnv, from: 'env' }
+
+  const { ok, out } = await runCommand(['gh', 'auth', 'token'], root)
+  const token = ok ? out.trim() : ''
+
+  // Guarded rather than trusted: `gh` prints advice on stdout in some states,
+  // and sending a sentence to the API as a bearer token would report a 401
+  // about credentials rather than about `gh` not being signed in.
+  if (!token || /\s/.test(token)) return { token: null, from: null }
+  return { token, from: 'gh' }
 }
 
 interface Release {

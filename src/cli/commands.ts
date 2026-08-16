@@ -16,7 +16,7 @@ import {
   sectionOrCompile,
 } from '../changelog/compile'
 import { writeChangelog } from '../changelog'
-import { githubRepo, tokenFor, updateRelease } from '../changelog/releases'
+import { githubRepo, resolveToken, updateRelease } from '../changelog/releases'
 import { loadConfig } from '../config/load'
 import { channelNames, producesArtifacts, type Config } from '../config/schema'
 import { explainReport } from '../explain'
@@ -526,15 +526,20 @@ async function overwriteReleases(
     return
   }
 
-  const token = tokenFor(env)
+  const { token, from } = await resolveToken(env, root)
   if (!token) {
     console.error(
       'cutver: --overwrite needs a token, and there is none — the changelog was\n' +
-        '        still written. Set GH_TOKEN, or GITHUB_TOKEN, which every\n' +
-        '        Actions run already has.',
+        '        still written. Any one of these is enough:\n' +
+        '          gh auth login          (cutver reads `gh auth token`)\n' +
+        '          export GH_TOKEN=…\n' +
+        '        GITHUB_TOKEN is already set in every Actions run.',
     )
     return
   }
+  // Said out loud, because it is a credential nobody typed. Somebody running
+  // this against the wrong account would otherwise find out from the audit log.
+  if (from === 'gh') console.log('cutver: using the token from `gh auth token`')
 
   // **`--force` destroys published prose, so it asks.** Everything else in this
   // command is safe by construction — a body is replaced only when nobody wrote

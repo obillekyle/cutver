@@ -181,6 +181,28 @@ export async function status(root: string): Promise<string> {
 }
 
 /**
+ * Whether a tag of this name exists — anywhere, not just on this branch.
+ *
+ * **Deliberately not `--merged`.** Everything else here asks what is reachable,
+ * because that is what a version is computed from. This asks what `git tag`
+ * would collide with, and git's namespace is the whole repository: a tag on an
+ * abandoned branch still refuses a second tag of the same name.
+ *
+ * That gap is exactly how the case this guards against arises. A release
+ * workflow commits the bump, pushes it, tags, pushes the tag — and if the
+ * branch is later rewritten, the commit leaves and the tag stays. The next run
+ * recomputes the same version, because the version comes from reachable
+ * history, and then fails at `git tag` with the bump already pushed.
+ */
+export async function tagExists(root: string, tag: string): Promise<boolean> {
+  const { ok } = await run(
+    ['git', 'rev-parse', '-q', '--verify', `refs/tags/${tag}`],
+    root,
+  )
+  return ok
+}
+
+/**
  * The `origin` remote's URL, or `null` when there is none.
  *
  * Used to check that a manifest names the repository it is being built from —

@@ -256,13 +256,30 @@ export function inspect(
     ['publish.yml', files.publish],
   ] as const) {
     if (text && /cutver\s+--(?!version\b|help\b)/.test(text)) {
+      // **Frozen and broken are different findings.** A workflow that fetches
+      // a pinned `releases/download/v1.*/cutver-…` and then calls the bare
+      // invocation is internally consistent: that cutver releases, and this
+      // one is reporting on a version it is not running. Worth saying, not
+      // worth failing. Anything else resolves whatever is current — `bunx
+      // cutver`, `npx cutver`, a pin at 2 or above — and the bare invocation
+      // there is a step that cannot release at all.
+      const pin = /releases\/download\/v(\d+)\.\d+\.\d+[^/]*\/cutver-/.exec(
+        text,
+      )
+      const frozen = pin !== undefined && pin !== null && Number(pin[1]) < 2
+
       found.push({
-        level: 'warn',
-        message:
-          `${name} runs cutver with no command, which is the pre-2.0 shape.\n` +
-          '        Releasing is `cutver stage` now, so that step releases nothing.\n' +
-          '        Change the line to `cutver stage --if-needed …`, or re-run\n' +
-          '          cutver init --force',
+        level: frozen ? 'warn' : 'refuse',
+        message: frozen
+          ? `${name} pins cutver ${pin?.[1]}.x and calls it the pre-2.0 way, which is\n` +
+            '        consistent — but the pin is what is holding it together.\n' +
+            '        Move both together: bump the URL, and make the line\n' +
+            '        `cutver stage --if-needed …`.'
+          : `${name} runs cutver with no command, which is the pre-2.0 shape.\n` +
+            '        Releasing is `cutver stage` now, and nothing here pins an\n' +
+            '        older cutver — so that step releases nothing.\n' +
+            '        Change the line to `cutver stage --if-needed …`, or re-run\n' +
+            '          cutver init --force',
         docs: `${DOCS}/#/getting-started/ci`,
       })
     }

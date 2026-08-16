@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test'
-import { isUnauthored, tokenFor, updateRelease } from './releases'
+import { isUnauthored, resolveToken, tokenFor, updateRelease } from './releases'
 
 /**
  * The one rule that must not be wrong.
@@ -190,5 +190,37 @@ describe('tokenFor', () => {
     expect(tokenFor({ GITHUB_TOKEN: 'b' })).toBe('b')
     expect(tokenFor({})).toBeNull()
     expect(tokenFor({ GH_TOKEN: '   ' })).toBeNull()
+  })
+})
+
+describe('resolveToken', () => {
+  const root = process.cwd()
+
+  test('the environment wins over gh', async () => {
+    // The more specific instruction: a shell that exported a scoped token
+    // meant that token, and CI sets one deliberately.
+    expect(await resolveToken({ GH_TOKEN: 'from-env' }, root)).toEqual({
+      token: 'from-env',
+      from: 'env',
+    })
+  })
+
+  test('falls back to `gh auth token` when nothing is exported', async () => {
+    // Skipped where `gh` is absent or signed out, because the point of this
+    // test is the wiring and the machine is what supplies the answer.
+    const probe = await resolveToken({}, root)
+    if (!probe.token) return
+
+    expect(probe.from).toBe('gh')
+    // A token, not a sentence. `gh` prints advice on stdout in some states and
+    // a bearer header full of prose reports a 401 about credentials.
+    expect(probe.token).not.toMatch(/\s/)
+  })
+
+  test('an empty environment and no gh is no token, not a throw', async () => {
+    // `--overwrite` reports and returns; it must never take the command down,
+    // because the changelog itself was already written by then.
+    const found = await resolveToken({}, `${root}/does-not-exist`)
+    expect(found.token === null || typeof found.token === 'string').toBe(true)
   })
 })

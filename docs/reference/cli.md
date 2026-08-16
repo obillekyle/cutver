@@ -69,7 +69,7 @@ of `rc`, and the version written is the canonical `-rc.N`.
 | `--rev <commit>` | (`check`) The commit to judge, default `HEAD`. The hook passes the sha of the ref being pushed, which is not always the one checked out. |
 | `--runner <cmd>` | (`hook`) Pin how the hook invokes cutver, instead of detecting it at run time. |
 | `--no-hook` | (`init`) Do not install the pre-push guard. Everything else is written as usual. |
-| `--overwrite` | (`changelog`) Also update GitHub release bodies from the compiled sections. **Only replaces a body nobody wrote** — empty, the version repeated, or GitHub’s own generated notes; anything else is reported and left alone. Summarised when a [summariser](config.md#the-summariser) is configured, so a page filled in afterwards reads the same as one written at release time. Needs `GH_TOKEN` or `GITHUB_TOKEN`. |
+| `--overwrite` | (`changelog`) Also update GitHub release bodies from the compiled sections. **Only replaces a body nobody wrote** — empty, the version repeated, or GitHub’s own generated notes; anything else is reported and left alone. Summarised when a [summariser](config.md#the-summariser) is configured, so a page filled in afterwards reads the same as one written at release time. Needs a token: `GH_TOKEN`, `GITHUB_TOKEN`, or a signed-in `gh`. |
 | `--config <path>` | (every command) Read this config instead of looking for one. Given and missing is an error, never a silent fallback to the defaults. |
 | `-h`, `--help` | Usage. |
 | `-v`, `--version` | The version of cutver itself. |
@@ -225,7 +225,7 @@ file, plus what CI tells cutver about itself.
 | `CUTVER_SUMMARIZE_KEY` | The summariser's API key. Tried first, so CI sets one name whatever the connector is. |
 | `ANTHROPIC_API_KEY` `OPENAI_API_KEY` `GEMINI_API_KEY` `GOOGLE_API_KEY` | The provider's own convention, tried after it, so a laptop that already exports one needs no extra setup. Which is read depends on `connector`. |
 | `CUTVER_SUMMARIZE` | Any command that reads markdown on stdin and writes markdown on stdout, used instead of a connector. Wins when both are set — it is the more specific instruction, and it is what overrides a repository's default without editing a tracked file. |
-| `GH_TOKEN` `GITHUB_TOKEN` | For `changelog --overwrite`, which writes release bodies. `GH_TOKEN` first, since it is what `gh auth` exports locally; `GITHUB_TOKEN` is present in every Actions run without being asked for. |
+| `GH_TOKEN` `GITHUB_TOKEN` | For `changelog --overwrite`, which writes release bodies. `GH_TOKEN` first; `GITHUB_TOKEN` is present in every Actions run without being asked for. With neither set, cutver runs **`gh auth token`** and uses that, saying so when it does — `--overwrite` is usually run once from a laptop where `gh` has been signed in for months, and minting a personal access token for a capability you already have is busywork. The environment still wins. |
 | `GITHUB_ACTIONS` | Whether this is a GitHub Actions runner at all. |
 | `ACTIONS_ID_TOKEN_REQUEST_URL` `ACTIONS_ID_TOKEN_REQUEST_TOKEN` | Both present means an OIDC token can be minted. In Actions without them means the job is missing `permissions: id-token: write` — which is worth catching, because it otherwise fails at publish time with an error about credentials. |
 

@@ -1,4 +1,6 @@
 import { expect, test, describe } from 'bun:test'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import manifest from '../../package.json' with { type: 'json' }
 
 /**
@@ -114,5 +116,80 @@ describe('the version it reports', () => {
     // string reaching them at all.
     const { out } = await cutver('--version')
     expect(out.trim()).toMatch(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/)
+  })
+})
+
+/**
+ * The tag that already exists.
+ *
+ * **The version comes from reachable history; the tag namespace is the whole
+ * repository.** When a release commit leaves a branch — force-pushed, rebased,
+ * never merged — its tag stays behind, and the next run recomputes exactly the
+ * version that tag holds. Nothing downstream notices until `git tag`, by which
+ * point the generated workflow has already committed and pushed the bump.
+ *
+ * Found in two real repositories on the same day, both one push from it. Driven
+ * end to end rather than unit-tested because the point is that `stage` stops
+ * before writing, and "wrote nothing" is only meaningful against a real tree.
+ */
+describe('cutver stage, against an orphaned tag', () => {
+  async function repo(): Promise<string> {
+    const dir = mkdtempSync(`${tmpdir()}/cutver-orphan-`).replaceAll('\\', '/')
+    const git = (...args: string[]) =>
+      Bun.spawn(['git', ...args], { cwd: dir, stdout: 'pipe', stderr: 'pipe' })
+        .exited
+
+    await git('init', '-q')
+    await git('config', 'user.email', 'a@b.c')
+    await git('config', 'user.name', 't')
+    await Bun.write(`${dir}/package.json`, '{"name":"p","version":"1.0.0"}')
+    await git('add', '-A')
+    await git('commit', '-qm', 'feat: base')
+    await git('tag', 'v1.0.0')
+
+    // A release that was tagged and then lost its commit.
+    await Bun.write(`${dir}/f.txt`, 'x')
+    await git('add', '-A')
+    await git('commit', '-qm', 'fix: released, then rewritten away')
+    await git('tag', 'v1.0.1')
+    await git('reset', '--hard', '-q', 'HEAD~1')
+
+    // Work since, which recomputes the same 1.0.1.
+    await Bun.write(`${dir}/g.txt`, 'y')
+    await git('add', '-A')
+    await git('commit', '-qm', 'fix: something else')
+    return dir
+  }
+
+  test('refuses, names the repair, and writes nothing', async () => {
+    const dir = await repo()
+    const { out, code } = await cutver('stage', '--offline', '--cwd', dir)
+
+    expect(code).toBe(1)
+    expect(out).toContain('v1.0.1 already exists as a tag')
+    expect(out).toContain('git merge --no-ff v1.0.1')
+
+    // The half that matters. A refusal after the manifest is written is the
+    // failure this replaces, not an improvement on it.
+    const manifest = await Bun.file(`${dir}/package.json`).json()
+    expect(manifest.version).toBe('1.0.0')
+
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  test('--if-needed does not soften it', async () => {
+    // That flag means "no release was warranted". This is the opposite: one is
+    // warranted and cannot be cut, so going green would hide it.
+    const dir = await repo()
+    const { code } = await cutver(
+      'stage',
+      '--offline',
+      '--if-needed',
+      '--cwd',
+      dir,
+    )
+
+    expect(code).toBe(1)
+    rmSync(dir, { recursive: true, force: true })
   })
 })

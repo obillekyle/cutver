@@ -276,3 +276,75 @@ describe('inspect', () => {
     expect(found.some(d => d.message.includes('does not trigger'))).toBe(true)
   })
 })
+
+/**
+ * The pre-2.0 invocation, and why one of these is not like the other.
+ *
+ * Both shapes appear in real repositories, and only one of them is broken.
+ * Reporting them at the same level made `cutver doctor` say "nothing wrong
+ * here" about a release workflow that could not release — measured against two
+ * projects, both one push away from it.
+ */
+describe('a workflow that calls cutver the pre-2.0 way', () => {
+  const withVersion = (yml: string): Workflows => ({
+    version: yml,
+    publish: null,
+  })
+
+  test('refuses when nothing pins an older cutver', () => {
+    // `bunx cutver` resolves whatever is current, so the bare invocation there
+    // is a step that exits 1 having released nothing.
+    const found = inspect(
+      withVersion('- run: bunx cutver --if-needed --branch main\n'),
+      DEFAULT_CONFIG,
+      '1.3.0',
+    )
+    const hit = found.find(d => d.message.includes('pre-2.0 shape'))
+
+    expect(hit?.level).toBe('refuse')
+  })
+
+  test('only warns when the workflow pins cutver 1.x', () => {
+    // Fetching a pinned v1 executable and calling it the v1 way is internally
+    // consistent. It is frozen, not broken, and failing a release over it
+    // would be this tool complaining about a version it is not running.
+    const found = inspect(
+      withVersion(
+        'curl -fsSL -o /usr/local/bin/cutver \\n' +
+          '  https://github.com/o/r/releases/download/v1.1.0/cutver-linux-x64\n' +
+          '- run: cutver --if-needed --branch main\n',
+      ),
+      DEFAULT_CONFIG,
+      '1.3.0',
+    )
+    const hit = found.find(d => d.message.includes('pins cutver 1.x'))
+
+    expect(hit?.level).toBe('warn')
+    expect(found.some(d => d.level === 'refuse')).toBe(false)
+  })
+
+  test('refuses when the pin is 2.x, where the shape is simply wrong', () => {
+    const found = inspect(
+      withVersion(
+        'curl -o cutver https://github.com/o/r/releases/download/v2.0.2/cutver-linux-x64\n' +
+          '- run: cutver --if-needed\n',
+      ),
+      DEFAULT_CONFIG,
+      '1.3.0',
+    )
+
+    expect(found.find(d => d.message.includes('pre-2.0 shape'))?.level).toBe(
+      'refuse',
+    )
+  })
+
+  test('says nothing about a workflow that already uses `stage`', () => {
+    const found = inspect(
+      withVersion("- run: bunx cutver stage --if-needed --branch 'main'\n"),
+      DEFAULT_CONFIG,
+      '1.3.0',
+    )
+
+    expect(found.some(d => d.message.includes('pre-2.0'))).toBe(false)
+  })
+})

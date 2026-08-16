@@ -25,7 +25,7 @@ import {
   type Config,
 } from '../config/schema'
 import { inspect, readWorkflows } from '../drift'
-import { currentBranch, isGitRepo, remoteUrl, status } from '../git'
+import { currentBranch, isGitRepo, remoteUrl, status, tagExists } from '../git'
 import { plan, SEMVER, type Survey } from '../plan'
 import {
   checkRegistry,
@@ -383,6 +383,32 @@ export async function runStage(argv: string[]): Promise<void> {
   // `v1.1.0` is not a valid version string in any manifest.
   if (!SEMVER.test(version)) {
     die(`'${version}' is not a semver version (no leading 'v')`)
+  }
+
+  // **Refused before anything is written, because the failure lands after.**
+  // The version is computed from reachable history and the tag namespace is the
+  // whole repository, so the two can disagree: a release whose bump commit left
+  // the branch — rewritten, force-pushed, never merged — leaves its tag behind,
+  // and the next run recomputes exactly that version.
+  //
+  // Nothing here notices. The manifests are written, the workflow commits and
+  // pushes them, and `git tag` is what finally fails — with the bump already
+  // public and the branch carrying a release that does not exist. Measured on
+  // two repositories, both left one push from it.
+  //
+  // Not softened by `--if-needed`. That flag means "no release was warranted",
+  // and this is the opposite: one is warranted and cannot be cut.
+  if (await tagExists(root, `v${version}`)) {
+    die(
+      `v${version} already exists as a tag, so this release cannot be cut.\n` +
+        '        The version comes from the commits that are reachable; the tag\n' +
+        '        is not among them, which happens when a release commit leaves\n' +
+        '        the branch and its tag stays.\n\n' +
+        '        Bring the tag back into the history it belongs to:\n' +
+        `          git merge --no-ff v${version}\n` +
+        '        or, if that release shipped nothing and the number is free:\n' +
+        `          git tag -d v${version} && git push origin :refs/tags/v${version}`,
+    )
   }
 
   // **Config against the workflows it generated, before the tag exists.**
