@@ -66,9 +66,17 @@ function runners(
       // `releases/latest/download` follows GitHub's idea of latest, which skips
       // prereleases — so against a project that has only ever shipped betas,
       // that URL is a 404.
+      //
+      // **`--retry`, because this is the one step with no second chance.**
+      // Every other download in a release job is a package manager that retries
+      // on its own. This is a bare curl, and it failed a real release on
+      // `curl: (35) Recv failure: Connection reset by peer` — the asset
+      // answered 200 thirty seconds later. A blip reaching GitHub is not a
+      // reason to leave a repository unreleased.
       setup: `      - name: Fetch cutver
         run: |
-          curl -fsSL -o /usr/local/bin/cutver \\
+          curl -fsSL --retry 3 --retry-connrefused --retry-delay 2 \\
+            -o /usr/local/bin/cutver \\
             ${downloadBase(version)}/cutver-linux-x64
           chmod +x /usr/local/bin/cutver
           cutver --version`,

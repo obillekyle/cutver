@@ -393,8 +393,17 @@ export async function runStage(argv: string[]): Promise<void> {
   //
   // Nothing here notices. The manifests are written, the workflow commits and
   // pushes them, and `git tag` is what finally fails — with the bump already
-  // public and the branch carrying a release that does not exist. Measured on
-  // two repositories, both left one push from it.
+  // public and the branch carrying a release that does not exist.
+  //
+  // **The case that produced this guard was a local one, and that is the more
+  // useful lesson.** Two repositories looked orphaned — tag present, its commit
+  // not an ancestor — and both were simply clones that had diverged from a
+  // release commit already sitting on origin. A fetch would have shown it. But
+  // `stage` runs against whatever history it is given, and against that stale
+  // tree it computed a version whose tag existed and would have written every
+  // manifest before anything complained. Reachable history and the tag
+  // namespace disagree either way; where the disagreement came from does not
+  // change what this has to do about it.
   //
   // Not softened by `--if-needed`. That flag means "no release was warranted",
   // and this is the opposite: one is warranted and cannot be cut.
