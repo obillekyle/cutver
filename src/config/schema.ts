@@ -146,6 +146,22 @@ export const DEFAULT_KEEP = 10
 export interface ChangelogConfig {
   /** Section keys, in reading order. */
   sections: string[]
+  /**
+   * Whether cutver writes `CHANGELOG.md` at all. `true` by default.
+   *
+   * **`false` splits the two halves of this feature, which have no reason to
+   * be one decision.** Turning `changelog:` on means cutver owns the file: it
+   * is rewritten whole on every release and edits do not survive. That is the
+   * right trade for a project happy to have its notes compiled, and a
+   * non-starter for one whose changelog is prose somebody wrote — which is
+   * most projects that have kept one for a year.
+   *
+   * With `file: false` nothing in the tree is touched and everything else
+   * still works: sections are compiled for the GitHub release body, `notes`
+   * answers from the commit range, and `--overwrite` fills the pages. The
+   * hand-written changelog stays hand-written.
+   */
+  file: boolean
   /** Release sections retained in the file. `null` keeps every one. */
   keep: number | null
   /**

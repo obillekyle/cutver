@@ -484,18 +484,25 @@ export async function runStage(argv: string[]): Promise<void> {
   // default this tool has always had — open the heading, write nothing — is a
   // position rather than an omission, and upgrading cutver must not start
   // writing into anyone's changelog on its own.
-  const changelog = config.changelog
-    ? await writeChangelog({
-        root,
-        dryRun: opts.dryRun,
-        keep: config.changelog.keep,
-        releases: await compileReleases(
+  const changelog = !config.changelog
+    ? await rollChangelog({ root, version, dryRun: opts.dryRun, today })
+    : !config.changelog.file
+      ? // `file: false` — compiled sections exist for the release body and
+        // nothing in the tree is touched. Not even the `## [Unreleased]` roll,
+        // which is the other mode's job and would edit a file this config has
+        // said to leave alone.
+        null
+      : await writeChangelog({
           root,
-          { version, date: today },
-          config.changelog.sections,
-        ),
-      })
-    : await rollChangelog({ root, version, dryRun: opts.dryRun, today })
+          dryRun: opts.dryRun,
+          keep: config.changelog.keep,
+          releases: await compileReleases(
+            root,
+            { version, date: today },
+            config.changelog.sections,
+            config.changelog.prereleases,
+          ),
+        })
 
   const all = changelog ? [...changes, changelog] : changes
   report(all)

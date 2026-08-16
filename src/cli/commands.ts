@@ -465,6 +465,35 @@ export async function runChangelog(argv: string[]): Promise<void> {
   const rest = argv.filter(a => a !== 'changelog')
   const opts = parse(rest, undefined, 'changelog')
   const root = resolveRoot(opts.cwd)
+
+  // **Two targets, because they are two jobs.** `--overwrite` read as a
+  // modifier and was a second command wearing a flag's clothes: the file is a
+  // narrative with a length, a release page is one per tag, and the day
+  // `changelog.file: false` arrived they stopped even sharing a subject.
+  //
+  // `regenerate` is not a word here on purpose. A noun-verb grammar earns its
+  // keep when a noun has more than one verb; this one has exactly one, so the
+  // verb would be ceremony on every invocation.
+  const [target, selector] = opts.positional
+  if (target !== undefined && target !== 'file' && target !== 'pages') {
+    die(
+      `\`cutver changelog ${target}\` is not a target — it is \`file\` or \`pages\`.\n` +
+        '          cutver changelog file            rebuild CHANGELOG.md\n' +
+        '          cutver changelog pages           the tags the file lists\n' +
+        '          cutver changelog pages all       every tag, prereleases too\n' +
+        '          cutver changelog pages 5         the newest five\n' +
+        '          cutver changelog pages v1.2.0    just that one',
+    )
+  }
+  if (target !== 'pages' && selector !== undefined) {
+    die(`\`${selector}\` is a selector, and only \`pages\` takes one`)
+  }
+
+  // `--overwrite` did both halves, so the alias keeps doing both. Anyone
+  // following the warning to `pages` gets the pages alone, which is the point
+  // of naming them separately.
+  const wantsFile = target !== 'pages'
+  const wantsPages = target === 'pages' || opts.overwrite
   const { config } = await loadConfig(root, opts.config).catch((e: Error) =>
     die(e.message),
   )
@@ -487,21 +516,95 @@ export async function runChangelog(argv: string[]): Promise<void> {
     die('no `v*` tags — there are no releases to compile a changelog from')
   }
 
-  const change = await writeChangelog({
-    root,
-    dryRun: opts.dryRun,
-    keep: config.changelog.keep,
-    releases,
-  })
+  // **`file: false` means the pages are the whole job.** Asking to rebuild a
+  // file this config says cutver does not own is a request with no honest
+  // answer, so it is refused rather than quietly doing half of it.
+  if (wantsFile && !config.changelog.file) {
+    die(
+      'nothing to rebuild — `changelog.file` is false, so cutver does not write\n' +
+        '        CHANGELOG.md. The pages are the job here:\n' +
+        '          cutver changelog pages',
+    )
+  }
 
   console.log(
     `cutver: ${root}${opts.dryRun ? ' (dry run — nothing is written)' : ''}`,
   )
-  console.log(`  ${opts.dryRun ? '=' : '↑'} CHANGELOG.md  ${change.detail}`)
 
-  if (opts.overwrite) {
-    await overwriteReleases(root, config, releases, opts.dryRun, opts.force)
+  if (wantsFile) {
+    const change = await writeChangelog({
+      root,
+      dryRun: opts.dryRun,
+      keep: config.changelog.keep,
+      releases,
+    })
+    console.log(`  ${opts.dryRun ? '=' : '↑'} CHANGELOG.md  ${change.detail}`)
   }
+
+  if (wantsPages) {
+    await overwriteReleases(
+      root,
+      config,
+      await pagesFor(root, config, releases, selector),
+      opts.dryRun,
+      opts.force,
+    )
+  }
+}
+
+/**
+ * Which release pages a selector names.
+ *
+ * **`keep` and `prereleases` describe the file, not these.** The file is a
+ * narrative with a length; a page is one per tag. With `prereleases: false` an
+ * alpha's commits fold into the stable release that ships them — right for the
+ * file, and it leaves the alpha itself with no page, though it is a version
+ * somebody installed through a dist-tag and can land on from a link.
+ *
+ * So the default stays what `--overwrite` always did — the tags the file lists
+ * — and every wider answer is asked for by name. A tag the changelog does not
+ * list gets its body compiled from its own range, which is exactly what `notes`
+ * does when asked for one.
+ */
+async function pagesFor(
+  root: string,
+  config: Config,
+  listed: { version: string; notes: string }[],
+  selector: string | undefined,
+): Promise<{ version: string; notes: string }[]> {
+  if (selector === undefined) return listed
+
+  const every =
+    config.changelog?.prereleases === true
+      ? listed
+      : await compileReleases(
+          root,
+          null,
+          config.changelog?.sections ?? [],
+          true,
+        )
+
+  if (selector === 'all') return every
+
+  if (/^\d+$/.test(selector)) {
+    const count = Number(selector)
+    if (count < 1) die('a count has to be at least 1')
+    return every.slice(0, count)
+  }
+
+  // A version, with or without the `v` the tag carries.
+  const wanted = selector.replace(/^v/, '')
+  const one = every.find(r => r.version === wanted)
+  if (!one) {
+    die(
+      `no tag for \`${selector}\`.\n` +
+        `        Tags cutver can write a page for: ${every
+          .slice(0, 5)
+          .map(r => `v${r.version}`)
+          .join(', ')}${every.length > 5 ? ', …' : ''}`,
+    )
+  }
+  return [one]
 }
 
 /**

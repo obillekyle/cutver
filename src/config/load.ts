@@ -230,6 +230,7 @@ function parseChangelog(
   const bare = {
     keep: DEFAULT_KEEP,
     prereleases: false,
+    file: true,
     summarizer: null,
     prompt: null,
   }
@@ -253,6 +254,7 @@ function parseChangelog(
         'sections',
         'keep',
         'prereleases',
+        'file',
         'summarizer',
         'summarize',
         'prompt',
@@ -365,8 +367,16 @@ function parseChangelog(
   }
   const prereleases = doc.prereleases === true
 
+  // On by default, because owning the file is what `changelog:` has always
+  // meant. `false` keeps every other half — compiled release bodies, `notes`,
+  // `--overwrite` — and leaves a hand-written CHANGELOG.md alone.
+  if (doc.file !== undefined && typeof doc.file !== 'boolean') {
+    throw new ConfigError(`${where}: \`changelog.file\` is true or false`)
+  }
+  const file = doc.file !== false
+
   return sections.length
-    ? { sections, keep, prereleases, summarizer, prompt }
+    ? { sections, keep, prereleases, file, summarizer, prompt }
     : null
 }
 

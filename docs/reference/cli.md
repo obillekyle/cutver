@@ -1,19 +1,19 @@
 # CLI
 
 ```
-cutver                              help, like a bare `bun`
-cutver stage [<channel>|<version>]  work out the next version and write it
-cutver notes <tag> | <from> <to>    the release body on stdout
-cutver changelog                    rebuild CHANGELOG.md from the tags
-cutver check                        may this branch release what it implies
-cutver doctor                       one read-only report of everything
-cutver explain                      which rule claims this branch
-cutver config                       the effective configuration
-cutver init [<ecosystem>]           set this repository up to release
-cutver hook install|uninstall       the pre-push guard
-cutver completions <bash|zsh|fish>  a completion script
-cutver help [command]               this, or one command in full
-cutver version                      the version of cutver itself
+cutver                                          help, like a bare `bun`
+cutver stage [<channel>|<version>]              work out the next version and write it
+cutver notes <tag> | <from> <to>                the release body on stdout
+cutver changelog [file | pages [<selector>]]    rebuild the file, or the release pages
+cutver check                                    may this branch release what it implies
+cutver doctor                                   one read-only report of everything
+cutver explain                                  which rule claims this branch
+cutver config                                   the effective configuration
+cutver init [<ecosystem>]                       write version.yml + publish.yml
+cutver hook install|uninstall                   the pre-push guard
+cutver completions <bash|zsh|fish>              a completion script
+cutver help [command]                           this, or one command in full
+cutver version                                  the version of cutver itself
 ```
 
 `cutver help <command>` prints the long form for any of them, generated from
@@ -31,7 +31,7 @@ the same table this page is checked against.
 | --- | --- |
 | `stage` | Work out the next version from the commits and write it into every manifest. Then stop — no commit, no tag, no publish. Takes a channel (`beta`), a version (`1.4.0`), or `release` to force a stable one whatever the branch is configured to cut. With no argument the branch decides. |
 | `notes` | The release body for a tag, on stdout: the `CHANGELOG.md` section for that version, rewritten by the [summariser](config.md#the-summariser) if one is configured. A range compiles from the commits instead and never reads the changelog. Never fails over content: no changelog, no section, or a summariser that died each print why and exit 0. A missing or extra argument still exits 1. This is what the generated `publish.yml` calls. |
-| `changelog` | Rebuild `CHANGELOG.md` from the tags and release nothing. `--overwrite` carries the sections onto the GitHub release pages too. Needs `changelog:` set — without it cutver does not own the file and will not overwrite what you wrote. For adopting compilation on an existing project, or after changing `sections` or `keep`. |
+| `changelog` | Two targets, because they are two jobs. `file` — the default — rebuilds `CHANGELOG.md` from the tags. `pages` writes the compiled sections onto the GitHub releases, **creating one where a tag has none**. Releases nothing either way: no manifest, no tag, no version. Needs `changelog:` set. See [the selectors](#changelog-pages). |
 | `check` | Exit 1 only if this branch may not release what its commits imply. Read-only and offline. See [the pre-push guard](../guides/hooks.md). |
 | `doctor` | Everything `check` deliberately will not say, in one report: the config as resolved, the plan for this branch, commits that are not conventional, drift between the config and the generated workflows, whether the summariser holds a key, and whether the registry has heard of each package. Exits 1 on anything that would affect a release. |
 | `explain` | Which rule claims this branch, and every rule that was tried and did not fire. Read-only, offline, always exits 0. See [Configuration](config.md). |
@@ -69,7 +69,7 @@ of `rc`, and the version written is the canonical `-rc.N`.
 | `--rev <commit>` | (`check`) The commit to judge, default `HEAD`. The hook passes the sha of the ref being pushed, which is not always the one checked out. |
 | `--runner <cmd>` | (`hook`) Pin how the hook invokes cutver, instead of detecting it at run time. |
 | `--no-hook` | (`init`) Do not install the pre-push guard. Everything else is written as usual. |
-| `--overwrite` | (`changelog`) Also update GitHub release bodies from the compiled sections. **Creates the page when a tag has none**, which is the case a project adopting `changelog:` after a year of tagging is in. **Only replaces a body nobody wrote** — empty, the version repeated, or GitHub’s own generated notes; anything else is reported and left alone. Summarised when a [summariser](config.md#the-summariser) is configured, so a page filled in afterwards reads the same as one written at release time. Needs a token: `GH_TOKEN`, `GITHUB_TOKEN`, or a signed-in `gh`. |
+| `--overwrite` | (`changelog`) **Deprecated — now `cutver changelog pages`.** Still works: rebuilds the file *and* updates the release pages. **Creates the page when a tag has none**, which is the case a project adopting `changelog:` after a year of tagging is in. **Only replaces a body nobody wrote** — empty, the version repeated, or GitHub’s own generated notes; anything else is reported and left alone. Summarised when a [summariser](config.md#the-summariser) is configured, so a page filled in afterwards reads the same as one written at release time. Needs a token: `GH_TOKEN`, `GITHUB_TOKEN`, or a signed-in `gh`. |
 | `--config <path>` | (every command) Read this config instead of looking for one. Given and missing is an error, never a silent fallback to the defaults. |
 | `-h`, `--help` | Usage. |
 | `-v`, `--version` | The version of cutver itself. |
@@ -81,6 +81,30 @@ takes a value.
 --dry-run` exits 1 naming the flag rather than proceeding as though it had been
 understood — the failure it replaces is a CI step that passes while doing
 something other than what its arguments say.
+
+### `changelog pages`
+
+```bash
+cutver changelog pages v1.2.0
+```
+
+| selector | |
+| --- | --- |
+| *(none)* | The tags the file lists — what `--overwrite` always did. |
+| `all` | Every tag, prereleases included. |
+| `5` | The newest five. |
+| `v1.2.0` | That one. The `v` is optional. |
+
+**`keep` and `prereleases` describe the file, not these.** The file is a
+narrative with a length; a release page is one per tag. So with
+`prereleases: false` an alpha's commits fold into the stable release that ships
+them — right for the file — while the alpha itself is a version somebody
+installed through a dist-tag and can land on from a link. `all` gives it a page,
+with its body compiled from its own range, exactly as `notes` does when asked
+for a tag the changelog does not list.
+
+`keep` never limited the pages: it is applied when the file is rendered, not
+when the sections are compiled.
 
 ### `changelog --overwrite --force`
 

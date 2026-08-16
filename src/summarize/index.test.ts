@@ -13,6 +13,7 @@ const config = (over: Partial<ChangelogConfig> = {}): ChangelogConfig => ({
   sections: ['feat'],
   keep: 10,
   prereleases: false,
+  file: true,
   summarizer: null,
   prompt: null,
   ...over,

@@ -123,16 +123,26 @@ export const COMMANDS: readonly Command[] = [
   },
   {
     name: 'changelog',
-    args: '',
-    summary: 'rebuild CHANGELOG.md from the tags, releasing nothing',
+    args: '[file | pages [<all|count|version>]]',
+    summary: 'rebuild CHANGELOG.md, or the GitHub release pages, from the tags',
     detail: [
       'The changelog is otherwise only written when a version is cut, which ' +
         'leaves no way to adopt `changelog:` on an existing project, change ' +
         '`keep` or `sections`, or pick up a better rendering — short of ' +
         'cutting a release you did not want.',
-      'Nothing but CHANGELOG.md is touched: no manifest, no tag, no version.',
-      'This was `--regenerate-changelogs`, which still works and warns.',
+      'Two targets, because they are two jobs. `file` rebuilds CHANGELOG.md ' +
+        'and is what a bare `cutver changelog` does. `pages` writes the ' +
+        'compiled sections onto the GitHub releases, creating one where a tag ' +
+        'has none.',
+      '`pages` alone covers the tags the file lists. `pages all` covers every ' +
+        'tag, prereleases included — `keep` and `prereleases` describe the ' +
+        'file, and a release page is one per tag. `pages 5` takes the newest ' +
+        'five; `pages v1.2.0` takes that one.',
+      'No manifest, no tag, no version is touched by any of it. This was ' +
+        '`--regenerate-changelogs`, and `--overwrite` for the pages half; both ' +
+        'still work and warn.',
     ],
+    values: ['file', 'pages'],
     flags: [
       {
         name: '--dry-run',
