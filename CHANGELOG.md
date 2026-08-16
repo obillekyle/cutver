@@ -8,9 +8,19 @@ is only ever as good as the commits — which is the point.
 explanation in the commit body, where it is also visible in `git log`, in a
 pull request, and on the release page.
 
+## [2.0.2] — 2026-08-16
+
+diff: [627f047...52b1b16](https://github.com/obillekyle/cutver/compare/627f047...52b1b16)
+
+### Fixes
+
+- **release:** attach the Node bundle alongside the executables ([52b1b16](https://github.com/obillekyle/cutver/commit/52b1b16))
+
+    `artifacts:` named only `dist/cutver-*`, so the bundle went to npm and never onto the release page. A machine with Node and no package manager was left fetching 90 MB of embedded Bun runtime to bump a version number.
+
 ## [2.0.1] — 2026-08-16
 
-diff: [9a2fd30...8c27864](https://github.com/obillekyle/cutver/compare/9a2fd30...8c27864)
+diff: [9a2fd30...627f047](https://github.com/obillekyle/cutver/compare/9a2fd30...627f047)
 
 ### Fixes
 
