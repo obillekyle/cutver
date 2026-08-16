@@ -2,3 +2,14 @@ node_modules/
 *.tgz
 .DS_Store
 dist/
+
+# Local agent/editor scratch — launch configs, session state.
+/.claude/
+
+# Every shape of them, because Bun loads more than the two literal names that
+# were here: `.env`, then `.env.{NODE_ENV}`, then `.env.local`. So a key left in
+# `.env.production` was both read by cutver and committable, which is the pair
+# of properties a secret must never have at once. An example file stays
+# committable.
+.env*
+!.env.example

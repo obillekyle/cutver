@@ -1,0 +1,16 @@
+# **A verbatim port, and it stays verbatim.** `version-from-commits.ts` and its
+# test came across from the `bakery` monorepo unchanged, and the comments cite a
+# release history that is only checkable against the original. Reformatting them
+# would make that diff unreadable for the one property that matters about them.
+src/version-from-commits.ts
+src/version-from-commits.test.ts
+
+# Prose, wrapped by hand at 80 already. `proseWrap: preserve` would leave it
+# alone, but a table or a fenced block reflowed is a diff nobody asked for.
+*.md
+docs/
+
+# Generated or vendored.
+dist/
+node_modules/
+CHANGELOG.md
