@@ -39,7 +39,8 @@ export const ADAPTER_FOR: Record<Ecosystem, AdapterId> = {
 export async function applicableAdapters(root: string): Promise<AdapterId[]> {
   const found: AdapterId[] = []
   for (const id of ADAPTER_IDS) {
-    if (await Bun.file(`${root}/${ADAPTERS[id].manifest}`).exists()) found.push(id)
+    if (await Bun.file(`${root}/${ADAPTERS[id].manifest}`).exists())
+      found.push(id)
   }
   return found
 }

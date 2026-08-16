@@ -38,7 +38,10 @@ export interface Located {
 }
 
 /** Byte range of a named table's body: after its header line, up to the next header. */
-function sectionBody(toml: string, name: string): { start: number; end: number } | null {
+function sectionBody(
+  toml: string,
+  name: string,
+): { start: number; end: number } | null {
   HEADER.lastIndex = 0
   let start: number | null = null
 
@@ -76,7 +79,11 @@ export function cargoVersion(toml: string): Located | null {
 }
 
 /** Replace the version in place, touching nothing else in the document. */
-export function replaceCargoVersion(toml: string, at: Located, version: string): string {
+export function replaceCargoVersion(
+  toml: string,
+  at: Located,
+  version: string,
+): string {
   return toml.slice(0, at.start) + version + toml.slice(at.end)
 }
 
@@ -123,7 +130,11 @@ async function scanMembers(root: string, toml: string): Promise<Member[]> {
 
   for (const pattern of members(toml)) {
     const glob = new Glob(`${pattern.replace(/\/+$/, '')}/Cargo.toml`)
-    for await (const hit of glob.scan({ cwd: root, onlyFiles: true, followSymlinks: false })) {
+    for await (const hit of glob.scan({
+      cwd: root,
+      onlyFiles: true,
+      followSymlinks: false,
+    })) {
       const rel = hit.replaceAll('\\', '/')
       // `target/` holds unpacked copies of dependencies' sources, each with a
       // real Cargo.toml. None of them are this workspace's to version.
@@ -159,10 +170,18 @@ async function scanMembers(root: string, toml: string): Promise<Member[]> {
 async function syncLock(root: string, dryRun: boolean): Promise<Change> {
   const exists = await Bun.file(`${root}/Cargo.lock`).exists()
   if (!exists) {
-    return { file: 'Cargo.lock', state: 'absent', detail: 'no lockfile, nothing to reconcile' }
+    return {
+      file: 'Cargo.lock',
+      state: 'absent',
+      detail: 'no lockfile, nothing to reconcile',
+    }
   }
   if (dryRun) {
-    return { file: 'Cargo.lock', state: 'updated', detail: 'would run `cargo update -w`' }
+    return {
+      file: 'Cargo.lock',
+      state: 'updated',
+      detail: 'would run `cargo update -w`',
+    }
   }
 
   const { ok, err } = await run(['cargo', 'update', '-w'], root)
@@ -205,7 +224,9 @@ export const cargoAdapter: Adapter = {
     // A member usually inherits `repository.workspace = true`, so the
     // workspace table is the one that answers for all of them.
     const wsBody = sectionBody(toml, 'workspace.package')
-    const workspaceRepo = wsBody ? (REPOSITORY.exec(toml.slice(wsBody.start, wsBody.end))?.[1] ?? null) : null
+    const workspaceRepo = wsBody
+      ? (REPOSITORY.exec(toml.slice(wsBody.start, wsBody.end))?.[1] ?? null)
+      : null
 
     // No `[workspace] members` at all: a single-crate repository, whose root
     // `[package]` is the thing that gets published.
@@ -239,7 +260,11 @@ export const cargoAdapter: Adapter = {
     const changes: Change[] = []
 
     if (at.value === version) {
-      changes.push({ file: 'Cargo.toml', state: 'unchanged', detail: `already ${version}` })
+      changes.push({
+        file: 'Cargo.toml',
+        state: 'unchanged',
+        detail: `already ${version}`,
+      })
     } else {
       if (!dryRun) await Bun.write(path, replaceCargoVersion(toml, at, version))
       changes.push({

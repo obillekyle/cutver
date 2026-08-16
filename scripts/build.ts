@@ -73,7 +73,7 @@ async function compile(out: string, target?: string): Promise<void> {
   ]
 
   console.log(`  ${out}${target ? `  (${target})` : ''}`)
-  await $`bun build ${flags} ./src/cli.ts --outfile dist/${out}`.quiet()
+  await $`bun build ${flags} ./src/cli/index.ts --outfile dist/${out}`.quiet()
 }
 
 const all = process.argv.includes('--all')

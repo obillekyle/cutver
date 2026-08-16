@@ -24,7 +24,9 @@ function repositoryOf(json: Manifest): string | null {
   return repo?.url ?? null
 }
 
-async function readManifest(path: string): Promise<{ json: Manifest; text: string }> {
+async function readManifest(
+  path: string,
+): Promise<{ json: Manifest; text: string }> {
   const text = await Bun.file(path).text()
   try {
     return { json: JSON.parse(text) as Manifest, text }
@@ -41,7 +43,11 @@ async function readManifest(path: string): Promise<{ json: Manifest; text: strin
  * else's tab-indented, CRLF `package.json` it produces a version bump whose
  * diff is the entire file.
  */
-async function writeManifest(path: string, json: Manifest, original: string): Promise<void> {
+async function writeManifest(
+  path: string,
+  json: Manifest,
+  original: string,
+): Promise<void> {
   const body = JSON.stringify(json, null, detectIndent(original))
   const trailing = /\n$/.test(original) ? '\n' : ''
   await Bun.write(path, withEol(body + trailing, detectEol(original)))
@@ -70,12 +76,18 @@ export async function addDevDependency(
   const { json, text } = await readManifest(path)
   const manifest = json as Manifest & Record<string, unknown>
 
-  for (const block of ['dependencies', 'devDependencies', 'peerDependencies'] as const) {
+  for (const block of [
+    'dependencies',
+    'devDependencies',
+    'peerDependencies',
+  ] as const) {
     const deps = manifest[block] as Record<string, string> | undefined
     if (deps && name in deps) return 'present'
   }
 
-  const devDependencies = { ...((manifest.devDependencies as Record<string, string>) ?? {}) }
+  const devDependencies = {
+    ...((manifest.devDependencies as Record<string, string>) ?? {}),
+  }
   devDependencies[name] = range
   // Sorted, because that is what every package manager rewrites it to anyway,
   // and an unsorted insert shows up as a spurious diff on the next install.
@@ -106,7 +118,11 @@ export async function workspaceDirs(root: string): Promise<string[]> {
 
   for (const pattern of patterns(json)) {
     const glob = new Glob(`${pattern.replace(/\/+$/, '')}/package.json`)
-    for await (const hit of glob.scan({ cwd: root, onlyFiles: true, followSymlinks: false })) {
+    for await (const hit of glob.scan({
+      cwd: root,
+      onlyFiles: true,
+      followSymlinks: false,
+    })) {
       const rel = hit.replaceAll('\\', '/')
       // A `**` pattern will happily walk into an installed dependency, and a
       // vendored copy of some package is not this repository's to version.
@@ -155,7 +171,11 @@ async function syncLock(
   if (!lock) {
     // A checkout that has never installed. Nothing to keep in sync, and the
     // next install writes the current versions anyway.
-    return { file: 'bun.lock', state: 'absent', detail: 'no lockfile, nothing to sync' }
+    return {
+      file: 'bun.lock',
+      state: 'absent',
+      detail: 'no lockfile, nothing to sync',
+    }
   }
 
   let patched = lock
@@ -169,14 +189,19 @@ async function syncLock(
       `("${dir}":\\s*\\{\\s*"name":\\s*"[^"]+",\\s*"version":\\s*")([^"]+)(")`,
     )
     const found = patched.match(re)
-    if (!found) throw new AdapterError(`bun.lock has no workspace entry for ${dir}`)
+    if (!found)
+      throw new AdapterError(`bun.lock has no workspace entry for ${dir}`)
     if (found[2] === version) continue
     stale.push(dir)
     patched = patched.replace(re, `$1${version}$3`)
   }
 
   if (!stale.length) {
-    return { file: 'bun.lock', state: 'unchanged', detail: `already at ${version}` }
+    return {
+      file: 'bun.lock',
+      state: 'unchanged',
+      detail: `already at ${version}`,
+    }
   }
 
   if (!dryRun) await Bun.write(path, patched)
@@ -258,24 +283,40 @@ export const jsAdapter: Adapter = {
       // published, nobody resolves a range against them, and dragging them
       // along makes the diff of a release larger than the release.
       if (json.private) {
-        changes.push({ file: rel, state: 'unchanged', detail: 'private — left alone' })
+        changes.push({
+          file: rel,
+          state: 'unchanged',
+          detail: 'private — left alone',
+        })
         continue
       }
       if (typeof json.version !== 'string') {
-        changes.push({ file: rel, state: 'unchanged', detail: 'no version field' })
+        changes.push({
+          file: rel,
+          state: 'unchanged',
+          detail: 'no version field',
+        })
         continue
       }
 
       bumped.push(dir)
       if (json.version === version) {
-        changes.push({ file: rel, state: 'unchanged', detail: `already ${version}` })
+        changes.push({
+          file: rel,
+          state: 'unchanged',
+          detail: `already ${version}`,
+        })
         continue
       }
 
       const from = json.version
       json.version = version
       if (!dryRun) await writeManifest(`${root}/${rel}`, json, text)
-      changes.push({ file: rel, state: 'updated', detail: `${from} -> ${version}` })
+      changes.push({
+        file: rel,
+        state: 'updated',
+        detail: `${from} -> ${version}`,
+      })
     }
 
     // The root last, and even when it is private: it is the version of record,
@@ -285,18 +326,27 @@ export const jsAdapter: Adapter = {
       const { json, text } = await readManifest(`${root}/package.json`)
       const from = json.version
       if (from === version) {
-        changes.push({ file: 'package.json', state: 'unchanged', detail: `already ${version}` })
+        changes.push({
+          file: 'package.json',
+          state: 'unchanged',
+          detail: `already ${version}`,
+        })
       } else {
         json.version = version
         if (!dryRun) await writeManifest(`${root}/package.json`, json, text)
-        changes.push({ file: 'package.json', state: 'updated', detail: `${from} -> ${version}` })
+        changes.push({
+          file: 'package.json',
+          state: 'updated',
+          detail: `${from} -> ${version}`,
+        })
       }
     }
 
     // Every workspace package gets its lock entry checked, not only the ones
     // whose manifest moved. The failure this guards against is precisely a
     // manifest that was already right and a lock that was not.
-    if (bumped.length) changes.push(await syncLock(root, bumped, version, dryRun))
+    if (bumped.length)
+      changes.push(await syncLock(root, bumped, version, dryRun))
     changes.push(...(await foreignLocks(root)))
 
     return changes

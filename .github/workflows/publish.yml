@@ -155,15 +155,50 @@ jobs:
       # Same idempotency, for the same reason: a re-run must not die on a
       # release that already exists. Binaries are uploaded either way, so a
       # partial run can be finished by running it again.
+      # The body comes from CHANGELOG.md, through cutver's own `notes`, rather
+      # than from `--generate-notes`. GitHub's version is a list of commit
+      # subjects and merged pull requests — the thing this project spends its
+      # changelog arguing is a downgrade — so using it here was cutver not
+      # eating its own cooking. `|| true`: notes are never worth failing a
+      # release that is already tagged and built.
+      # `summarizer:` in cutver.yml names the provider; the key is deliberately
+      # not in that file, so it arrives here. An unset secret is not a failure —
+      # cutver says so on stderr and publishes the compiled notes.
+      #
+      # **The checkout, not `bunx cutver`, and only in this repository.** A
+      # generated workflow is right to call the published tool: it picks up
+      # improvements without anyone regenerating a file. Here that is backwards.
+      # cutver's own config is always one release ahead of the published cutver,
+      # so `bunx cutver` reads a `cutver.yml` written for a version that does not
+      # exist yet and dies on an unknown key — measured, with cutver@1.2.0
+      # answering `unknown key changelog` against the config in this tree.
+      #
+      # A stable release scrapes past it, because this step runs after the npm
+      # publish and `latest` has just become the version being released. A
+      # prerelease does not: it publishes under its own dist-tag, so `latest`
+      # stays behind and the step fails into `|| true` and an empty notes.md.
+      # The release body then silently becomes "_No release notes._".
+      #
+      # Notes for version X belong to version X's code, and it is already
+      # checked out and installed.
+      - name: Release notes
+        timeout-minutes: 15
+        continue-on-error: true
+        env:
+          CUTVER_SUMMARIZE_KEY: ${{ secrets.CUTVER_SUMMARIZE_KEY }}
+        run: bun run cutver notes "$TAG" > notes.md || true
+
       - name: Attach the executables to the release
         env:
           GH_TOKEN: ${{ github.token }}
           PRERELEASE: ${{ steps.disttag.outputs.value == 'latest' && ' ' || '--prerelease' }}
         run: |
+          [ -s notes.md ] || echo "_No release notes._" > notes.md
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" dist/cutver-* --clobber
+            gh release edit "$TAG" --notes-file notes.md
           else
-            gh release create "$TAG" dist/cutver-* --title "$TAG" --generate-notes $PRERELEASE
+            gh release create "$TAG" dist/cutver-* --title "$TAG" --notes-file notes.md $PRERELEASE
           fi
 
       - name: Summary
@@ -177,9 +212,9 @@ jobs:
             echo
             echo '```'
             if [ "$DIST_TAG" = latest ]; then
-              echo 'bunx cutver --dry-run'
+              echo 'bunx cutver stage --dry-run'
             else
-              echo "bunx cutver@$DIST_TAG --dry-run"
+              echo "bunx cutver@$DIST_TAG stage --dry-run"
             fi
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"

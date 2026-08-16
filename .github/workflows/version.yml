@@ -81,7 +81,7 @@ jobs:
       # `git rev-parse --abbrev-ref HEAD` answers the literal string 'HEAD' and
       # the real branch exists only in the event payload.
       - name: Compute the version and bump the manifest
-        run: bun run src/cli.ts --if-needed --branch '${{ github.ref_name }}'
+        run: bun run cutver stage --if-needed --branch '${{ github.ref_name }}'
 
       # **Whether the version moved is the signal — not whether the tree is
       # dirty.** `git status` is the obvious check and it is wrong twice over:

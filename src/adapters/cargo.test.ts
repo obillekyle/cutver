@@ -22,7 +22,10 @@ const crlf = lf.replace(/\n/g, '\r\n')
 
 describe('cargoVersion', () => {
   test('reads the workspace version', () => {
-    expect(cargoVersion(lf)).toMatchObject({ value: '0.1.0', section: 'workspace.package' })
+    expect(cargoVersion(lf)).toMatchObject({
+      value: '0.1.0',
+      section: 'workspace.package',
+    })
   })
 
   test('a CRLF file yields the same version, with no carriage return on it', () => {
@@ -56,7 +59,10 @@ name = "solo"
 version = "2.3.4"
 edition = "2021"
 `
-    expect(cargoVersion(single)).toMatchObject({ value: '2.3.4', section: 'package' })
+    expect(cargoVersion(single)).toMatchObject({
+      value: '2.3.4',
+      section: 'package',
+    })
   })
 
   test('prefers [workspace.package] over a root [package]', () => {
@@ -72,7 +78,9 @@ version = "0.4.0"
   })
 
   test('null when nothing declares a literal version', () => {
-    expect(cargoVersion('[package]\nname = "x"\nversion.workspace = true\n')).toBeNull()
+    expect(
+      cargoVersion('[package]\nname = "x"\nversion.workspace = true\n'),
+    ).toBeNull()
     expect(cargoVersion('')).toBeNull()
   })
 })
@@ -113,7 +121,10 @@ describe('replaceCargoVersion', () => {
 describe('members', () => {
   test('reads the member list, LF or CRLF', () => {
     expect(members(lf)).toEqual(['crates/alloyfs-proto', 'crates/alloyfs-cli'])
-    expect(members(crlf)).toEqual(['crates/alloyfs-proto', 'crates/alloyfs-cli'])
+    expect(members(crlf)).toEqual([
+      'crates/alloyfs-proto',
+      'crates/alloyfs-cli',
+    ])
   })
 
   test('empty for a repository with no workspace table', () => {

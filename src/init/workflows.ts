@@ -1,116 +1,33 @@
 /**
- * `cutver init <cargo|node|bun>` — write the release workflows into a
- * repository that does not have them.
+ * The two workflow files themselves, as templates.
  *
- * **The split is the thing being scaffolded, not the convenience.** Two
- * workflows, always: one that computes a version and pushes a tag, one that
- * publishes and only ever fires on a tag. Handing someone a single
- * "release.yml" that does both would be easier to generate and would throw
- * away the one property that matters — publishing is irreversible, so it gets
- * its own trigger and its own credentials.
+ * **Every comment in the generated YAML is load-bearing and deliberate.** These
+ * files are handed to someone who did not write them and will edit them for
+ * years, so the reasons travel with the lines they explain — a tag pushed with
+ * the default `GITHUB_TOKEN` starting no workflow, the version-moved signal,
+ * the blank gate blocks that are the reader's to fill in. Folklore that lives
+ * only in a docs page is folklore that gets deleted by the first person tidying
+ * up.
  *
- * Both files carry the two gotchas that cost real releases to learn, as
- * comments rather than as folklore:
- *
- *   - A tag pushed with the default `GITHUB_TOKEN` cannot start another
- *     workflow. GitHub blocks it to prevent recursion, so the tagging job has
- *     to dispatch the publishing one explicitly.
- *   - The signal for "a release happened" is whether the version moved, never
- *     whether the tree is dirty.
- *
- * Nothing here is overwritten without `--force`. An `init` that clobbers a
- * workflow someone has been editing for a year is not a helper.
+ * Kept apart from `index.ts` because they are text, not logic: nearly six
+ * hundred lines of YAML in template literals, next to eighty lines that decide
+ * which of them to write and where.
  */
-
-import { addDevDependency } from './adapters/js'
-import { downloadBase, HOOK_NAME, installHook } from './hook'
-import { shapeOf } from './config/match'
+import { ADAPTER_FOR } from '../adapters'
 import {
-  DEFAULT_CONFIG,
-  ECOSYSTEMS,
-  RELEASE,
-  publishTo,
+  AUTO,
+  AUTO_DIRS,
+  producesArtifacts,
+  publishesToRegistry,
   type Config,
   type Ecosystem,
-  type PublishTarget,
-} from './config/schema'
-import { ADAPTER_FOR } from './adapters'
-import { parseConfig } from './config/load'
-import { configTemplate } from './config/template'
-
-// Declared once, in `config/schema.ts`, because `target:` in the config names
-// the same set. Two copies type-checked only because the unions happened to be
-// identical — the day one gained an entry the other did not, the error would
-// have surfaced somewhere unrelated to either.
-export { ECOSYSTEMS, type Ecosystem }
-
-export interface InitFile {
-  /** Repo-relative path. */
-  path: string
-  contents: string
-  /** Only written when absent — a changelog with real notes in it is not ours. */
-  onlyIfAbsent?: boolean
-}
-
-/**
- * The workflow's `on.push.branches` list, derived from the config.
- *
- * Nine hard-coded literals used to live here, which meant adding a channel took
- * a code change *and* a workflow regeneration. Now the config is the one place.
- *
- * **cutver globs reach GitHub verbatim**, because the two agree: `*` does not
- * cross a `/` in either, and `**` does in both. A translation layer here would
- * be a second place to be wrong about the same thing.
- *
- * A catch-all is dropped **only when there is no config file**, and the
- * distinction is provenance rather than the text. `release: ['**']` is the
- * built-in default meaning "no branch gating configured"; turning that into a
- * trigger would wake CI on every branch in the repository, so `main` stands in.
- * But a repository that *wrote* `['**']` down meant it, and overruling a written
- * rule with a branch that may not even exist is the opposite of what this
- * function is for. Testing the literal text conflated the two, and it silently
- * dropped a `canary: ['**']` as well.
- */
-export function branchTriggers(config: Config): string[] {
-  const globs = new Set<string>()
-  const literals = new Set<string>()
-  const stable: string[] = []
-  const configured = config.source !== null
-
-  for (const [channel, entries] of Object.entries(config.channels)) {
-    for (const entry of entries) {
-      // A branch that declares its own version triggers on the shape, since
-      // the version part is different every time.
-      const value = shapeOf(entry) === 'declaring' ? entry.replace('{version}', '*') : entry
-      if (!configured && (value === '**' || value === '*')) continue
-
-      if (channel === RELEASE) stable.push(value)
-      else if (/[*?]/.test(value)) globs.add(value)
-      else literals.add(value)
-    }
-  }
-
-  const release = stable.length ? stable : ['main']
-  return [...release, ...[...globs].sort(), ...[...literals].sort()]
-}
+} from '../config/schema'
+import { downloadBase } from '../hook'
+import { branchTriggers, distTagArms } from './triggers'
 
 /** YAML needs a quote around anything starting with `*`, which is an alias there. */
 function yamlBranch(name: string): string {
   return /^[*?]/.test(name) ? `'${name}'` : name
-}
-
-/**
- * The publish workflow's dist-tag `case`, derived from the same config.
- *
- * Hard-coded arms are what make a configured channel fail *after* its tag and
- * bump commit are already public — the run gets all the way to the last step
- * and hits the catch-all. The catch-all itself stays: refusing an unrecognised
- * prerelease is better than defaulting it to `latest`.
- */
-export function distTagArms(config: Config): string[] {
-  return Object.keys(config.channels)
-    .filter(c => c !== RELEASE)
-    .map(c => `            *-${c}.*)${' '.repeat(Math.max(1, 10 - c.length))}tag=${c} ;;`)
 }
 
 /**
@@ -121,7 +38,9 @@ export function distTagArms(config: Config): string[] {
  * workspace should not need a package manager from another ecosystem to cut a
  * release.
  */
-function runners(version?: string): Record<Ecosystem, { setup: string; cutver: string }> {
+function runners(
+  version?: string,
+): Record<Ecosystem, { setup: string; cutver: string }> {
   return {
     bun: {
       setup: `      - uses: oven-sh/setup-bun@v2
@@ -143,9 +62,10 @@ function runners(version?: string): Record<Ecosystem, { setup: string; cutver: s
       // The executable, not a JavaScript runtime. A Rust workspace should not
       // need another ecosystem's package manager to cut a version.
       //
-      // **Pinned to a tag when the version is known.** `releases/latest/download`
-      // follows GitHub's idea of latest, which skips prereleases — so against a
-      // project that has only ever shipped betas, that URL is a 404.
+      // **Pinned to a tag when the version is known.**
+      // `releases/latest/download` follows GitHub's idea of latest, which skips
+      // prereleases — so against a project that has only ever shipped betas,
+      // that URL is a 404.
       setup: `      - name: Fetch cutver
         run: |
           curl -fsSL -o /usr/local/bin/cutver \\
@@ -191,7 +111,11 @@ const READ_VERSION: Record<Ecosystem, string> = {
   cargo: `sed -n 's/^version *= *"\\(.*\\)"/\\1/p' Cargo.toml | head -1`,
 }
 
-function versionWorkflow(eco: Ecosystem, config: Config, version?: string): string {
+export function versionWorkflow(
+  eco: Ecosystem,
+  config: Config,
+  version?: string,
+): string {
   const RUN = runners(version)
   return `name: Version
 
@@ -254,7 +178,7 @@ ${GATES[eco]}
       # \`--branch\` because CI checks out a detached HEAD, where git answers
       # the literal string 'HEAD' and the real branch is only in the payload.
       - name: Compute the version and bump ${MANIFEST[eco]}
-        run: ${RUN[eco].cutver} --if-needed --branch '\${{ github.ref_name }}'
+        run: ${RUN[eco].cutver} stage --if-needed --branch '\${{ github.ref_name }}'
 
       # **Whether the version moved is the signal — not whether the tree is
       # dirty.** \`git status\` reports an unrelated formatter edit as "a
@@ -291,8 +215,9 @@ ${GATES[eco]}
           git push origin "v$VERSION"
 
 ${
-    publishTo(ADAPTER_FOR[eco], config).length
-      ? `
+  publishesToRegistry(ADAPTER_FOR[eco], config) ||
+  producesArtifacts(ADAPTER_FOR[eco], config)
+    ? `
       # The tag is pushed above, but a tag pushed by GITHUB_TOKEN does not
       # trigger \`push: tags\` anywhere. \`workflow_dispatch\` is one of the two
       # documented exemptions, so publish.yml is asked directly.
@@ -303,11 +228,11 @@ ${
           VERSION: \${{ steps.check.outputs.value }}
         run: gh workflow run publish.yml -f tag="v$VERSION"
 `
-      : `
+    : `
       # No handoff: \`publish\` in cutver.yml names nothing a tag produces, so
       # there is no publish.yml to dispatch. The tag above is the release.
 `
-  }`
+}`
 }
 
 /**
@@ -347,6 +272,81 @@ export const CARGO_RUNNERS: readonly { os: string; target: string }[] = [
  * are for the caller to add or to delete the row, the same way the gates are:
  * a generated file that guessed would ship a binary nobody tested.
  */
+/**
+ * Where the collect-and-upload step is spliced into the JavaScript jobs.
+ *
+ * The two of them differ only in their runner setup, so the part that reads the
+ * config is written once and substituted rather than repeated — the previous
+ * pair of hard-coded `path: dist/*` blocks is exactly how they came to differ
+ * from each other in the first place.
+ */
+const UPLOAD_PLACEHOLDER = '@@UPLOAD@@'
+
+/**
+ * The collect step, from `artifacts:` in the config.
+ *
+ * **Folders are archived and files are not, which is the whole reason both keys
+ * exist.** A release page carrying two hundred loose assets out of one `dist/`
+ * helps nobody, so a folder becomes one `.tar.gz` named after it; a file is
+ * attached as itself, under its own name.
+ *
+ * With no `artifacts:` block this is the behaviour that was hard-coded before
+ * it existed — build into `dist/`, upload what is there — so a repository that
+ * says nothing keeps exactly the release it had.
+ */
+function collectStep(config: Config): string {
+  const artifacts = config.artifacts
+
+  // **`auto` is resolved here, into a shell loop, rather than at `init` time.**
+  // Nothing has been built when the workflow is written, so a generated file
+  // cannot know whether this project emits `dist/` or `out/`. The loop probes
+  // for them after the build has run, which is the one moment the answer exists
+  // — and a directory that is not there is skipped rather than failing.
+  const spec = artifacts === false ? null : artifacts
+  const folders =
+    spec?.folders === AUTO ? [...AUTO_DIRS] : (spec?.folders ?? [])
+  const files =
+    spec?.files === AUTO
+      ? AUTO_DIRS.map(d => `${d}/*`)
+      : (spec?.files ?? (spec ? [] : ['dist/*']))
+
+  const lines: string[] = []
+  if (folders.length) {
+    lines.push(
+      '          # One archive per matching directory, named after it. `-C` so the',
+      '          # tar holds the folder rather than the path to it.',
+      '          for dir in ' + folders.join(' ') + '; do',
+      '            [ -d "$dir" ] || continue',
+      'tar -czf "staged/$(basename "$dir").tar.gz" -C "$(dirname "$dir")" ' +
+        '"$(basename "$dir")"',
+      '          done',
+    )
+  }
+  if (files.length) {
+    lines.push(
+      '          # `if` rather than `[ -f … ] && cp`, which returns 1 when the',
+      '          # file is absent — and GitHub runs this under `bash -e`, so a',
+      '          # missing last entry would fail the step rather than skip it.',
+      '          for file in ' + files.join(' ') + '; do',
+      '            if [ -f "$file" ]; then cp "$file" staged/; fi',
+      '          done',
+    )
+  }
+
+  return `      # Everything named by \`artifacts:\` in cutver.json / cutver.yml, gathered
+      # into one directory so the release job has a single thing to download.
+      - name: Collect what goes on the release
+        run: |
+          mkdir -p staged
+${lines.join('\n')}
+          ls -la staged
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: staged/*`
+}
+
 const ARTIFACT_JOB: Record<Ecosystem, string> = {
   cargo: `  artifacts:
     name: \${{ matrix.target }}
@@ -406,14 +406,12 @@ ${CARGO_RUNNERS.map(r => `          - { os: ${`${r.os},`.padEnd(15)} target: ${r
 
       # **Yours to write, like the gates.** cutver knows a Rust workspace's
       # binaries from cargo; it cannot know what a JavaScript project considers
-      # a build artifact. Put whatever belongs on the release into dist/ —
-      # \`bun build --compile\` executables, a tarball, a zip.
+      # a build artifact. Produce whatever belongs on the release here — a
+      # \`bun build --compile\` executable, a tarball, a folder of assets — and
+      # name it under \`artifacts:\` in your config.
       - run: bun run build
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: dist
-          path: dist/*`,
+${UPLOAD_PLACEHOLDER}`,
   node: `  artifacts:
     runs-on: ubuntu-latest
 
@@ -426,14 +424,11 @@ ${CARGO_RUNNERS.map(r => `          - { os: ${`${r.os},`.padEnd(15)} target: ${r
           node-version: 22
       - run: npm ci
 
-      # **Yours to write, like the gates.** Put whatever belongs on the release
-      # into dist/.
+      # **Yours to write, like the gates.** Produce whatever belongs on the
+      # release here, and name it under \`artifacts:\` in your config.
       - run: npm run build
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: dist
-          path: dist/*`,
+${UPLOAD_PLACEHOLDER}`,
 }
 
 /**
@@ -445,19 +440,98 @@ ${CARGO_RUNNERS.map(r => `          - { os: ${`${r.os},`.padEnd(15)} target: ${r
  * project that has only published prereleases gets a 404 from that URL rather
  * than an empty result. Both were measured against this project.
  */
-const RELEASE_JOB = `  release:
-    needs: artifacts
+/**
+ * The GitHub release, which every tag gets — with or without binaries to hang
+ * on it.
+ *
+ * **It used to be written only for `artifacts`, and that was the wrong seam.**
+ * A package publishing to npm and nothing else got no release page at all,
+ * which meant `cutver notes` never ran for it, which meant
+ * `changelog.summarize` and every `summarizer:` setting were dead config in the
+ * most common kind of repository there is. Binaries are a reason to *upload*
+ * something; they were never the reason to have a release.
+ *
+ * @param artifacts whether an `artifacts` job ran and left files to attach.
+ *                  Decides what this waits on, and whether there is anything to
+ *                  download and upload.
+ */
+function releaseJob(
+  eco: Ecosystem,
+  version: string | undefined,
+  artifacts: boolean,
+): string {
+  const RUN = runners(version)
+  return `  release:
+    needs: ${artifacts ? 'artifacts' : 'publish'}
     runs-on: ubuntu-latest
     permissions:
       contents: write
 
     steps:
-      - uses: actions/download-artifact@v4
+      # Checked out for one file: the changelog. The release body comes from the
+      # section this tag already has, so the notes people read on GitHub are the
+      # same words as the ones in the repository rather than a second telling
+      # that drifts from it.
+      - uses: actions/checkout@v4
+        with:
+          ref: \${{ inputs.tag || github.ref_name }}
+
+${
+  artifacts
+    ? `      - uses: actions/download-artifact@v4
         with:
           path: staged
           merge-multiple: true
 
-      - name: Attach them to the release
+`
+    : ''
+}${RUN[eco].setup}
+
+      # The changelog section for this tag, and — if \`changelog.summarize\` is
+      # set — rewritten by that command. Both live in cutver rather than in this
+      # file on purpose: **anything written here is frozen at \`init\` time for
+      # every repository that already ran it**, so improving it later would mean
+      # asking everyone to regenerate a workflow they have since hand-edited.
+      # One line here, the logic in a tool that upgrades on its own.
+      #
+      # It always exits 0. No changelog, no section for this version, a
+      # summariser that died — each prints why on stderr and releases without a
+      # body, because the binaries are the point of this job.
+      #
+      # \`timeout-minutes\` is the only guard a hanging summariser needs, and it
+      # belongs here rather than inside cutver: GitHub enforces it, and a model
+      # that never returns would otherwise hold a runner until the job timeout.
+      - name: Release notes
+        timeout-minutes: 15
+        continue-on-error: true
+        env:
+          # The summariser command, when \`changelog.summarize\` is on. **Here and
+          # not in cutver.yml**: a command in a tracked file is a command a fork
+          # can put there, and \`gh pr checkout\` brings a fork's tracked files
+          # into a maintainer's working tree. A workflow env is set by whoever
+          # controls this repository.
+          #
+          # Anything that reads markdown on stdin and writes markdown on stdout:
+          # a model on the runner, a curl to an endpoint, a script. Whatever it
+          # needs, install it in a step above. Unset is fine — the notes go out
+          # as written.
+          CUTVER_SUMMARIZE: ''
+          # The other route, and the one \`summarizer:\` in cutver.yml uses. That
+          # block names a provider and a model; it deliberately holds no key,
+          # because the config file is committed and shipped inside a published
+          # tarball. So the key arrives here, from a repository secret.
+          #
+          # Unset is not a failure. cutver says which variables it looked in and
+          # publishes the compiled notes — the same fallback as every other way
+          # this step can go wrong.
+          CUTVER_SUMMARIZE_KEY: \${{ secrets.CUTVER_SUMMARIZE_KEY }}
+        run: ${RUN[eco].cutver} notes "$TAG" > notes.md
+
+      # A prerelease is **marked** as one, which matters more than it sounds:
+      # \`releases/latest/download/…\` follows GitHub's idea of latest and skips
+      # prereleases, so an unmarked beta becomes the thing every install script
+      # in the world downloads.
+      - name: ${artifacts ? 'Attach them to the release' : 'Create the release'}
         env:
           GH_TOKEN: \${{ github.token }}
           REPO: \${{ github.repository }}
@@ -466,9 +540,23 @@ const RELEASE_JOB = `  release:
             *-*) pre=--prerelease ;;
             *)   pre= ;;
           esac
-          gh release create "$TAG" --repo "$REPO" --title "$TAG" --notes "" $pre \\
-            || echo "release $TAG already exists — uploading into it"
+          # An empty body is worse than a mechanical one — it reads as though
+          # nothing changed. \`notes\` always exits 0, so this is about the file
+          # being empty rather than about it having failed.
+          [ -s notes.md ] || echo "_No release notes._" > notes.md
+          gh release create "$TAG" --repo "$REPO" --title "$TAG" --notes-file notes.md $pre \\
+            || echo "release $TAG already exists — updating its notes"
+          # The notes are set either way: a re-run after a failed leg must not
+          # leave the body from a half-finished attempt.
+          gh release edit "$TAG" --repo "$REPO" --notes-file notes.md${
+            artifacts
+              ? `
+          # \`--clobber\` so a re-run replaces a partially uploaded asset rather
+          # than failing on it.
           gh release upload "$TAG" --repo "$REPO" --clobber staged/*`
+              : ''
+          }`
+}
 
 /** The publish step, which is the only part that genuinely differs per registry. */
 const PUBLISH_STEP: Record<Ecosystem, string> = {
@@ -478,12 +566,14 @@ const PUBLISH_STEP: Record<Ecosystem, string> = {
       # Bun and handing npm a finished tarball keeps that rewriting *and* gets
       # OIDC, because npm publishes the bytes it is given.
       - name: Publish
+        if: steps.exists.outputs.value != 'true'
         env:
           DIST_TAG: \${{ steps.disttag.outputs.value }}
         run: |
           bun pm pack --destination "$GITHUB_WORKSPACE/dist"
           npm publish "$GITHUB_WORKSPACE"/dist/*.tgz --tag "$DIST_TAG"`,
   node: `      - name: Publish
+        if: steps.exists.outputs.value != 'true'
         env:
           DIST_TAG: \${{ steps.disttag.outputs.value }}
         run: npm publish --tag "$DIST_TAG"`,
@@ -495,21 +585,25 @@ const PUBLISH_STEP: Record<Ecosystem, string> = {
       # supports trusted publishing, which removes the secret entirely — worth
       # switching to, and worth checking the current action version rather than
       # trusting a generated file for it.
+      # No "already published?" guard here, unlike npm. crates.io has no
+      # equivalent of a single-package existence probe across a whole workspace,
+      # and \`cargo publish --workspace\` already refuses a version it has seen —
+      # which is the same protection, arriving as a red run rather than a green
+      # skip.
       - name: Publish
         env:
           CARGO_REGISTRY_TOKEN: \${{ secrets.CARGO_REGISTRY_TOKEN }}
         run: cargo publish --workspace`,
 }
 
-function publishWorkflow(
+export function publishWorkflow(
   eco: Ecosystem,
   config: Config,
   version?: string,
-  targets: PublishTarget[] = publishTo(ADAPTER_FOR[eco], config),
+  registry: boolean = publishesToRegistry(ADAPTER_FOR[eco], config),
+  artifacts: boolean = producesArtifacts(ADAPTER_FOR[eco], config),
 ): string {
   const RUN = runners(version)
-  const registry = targets.includes('registry')
-  const artifacts = targets.includes('artifacts')
   const npm = eco !== 'cargo' && registry
   return `name: Publish
 
@@ -649,167 +743,35 @@ ${distTagArms(config).join('\n')}
 `
     : ''
 }
-${PUBLISH_STEP[eco]}`
+${
+  npm
+    ? `      # **Idempotent on purpose.** A package's first release goes out by hand —
+      # trusted publishing cannot create a package that does not exist — and the
+      # tag for it is pushed afterwards, which does fire this workflow. The
+      # registry would refuse the duplicate anyway; refusing it here keeps the
+      # run green, and a workflow that is red for a known-fine reason is one
+      # nobody reads.
+      - name: Already on the registry?
+        id: exists
+        run: |
+          name=$(bun -e 'console.log(require("./package.json").name)')
+          version="\${TAG#v}"
+          if curl -fsS -o /dev/null "https://registry.npmjs.org/$name/$version"; then
+            echo "value=true" >> "$GITHUB_OUTPUT"
+            echo "$name@$version is already published — skipping the publish"
+          else
+            echo "value=false" >> "$GITHUB_OUTPUT"
+          fi
+
+`
     : ''
-}${artifacts ? `${registry ? '\n\n' : ''}${ARTIFACT_JOB[eco]}\n\n${RELEASE_JOB}` : ''}
+}${PUBLISH_STEP[eco]}`
+    : ''
+}${artifacts ? `${registry ? '\n\n' : ''}${ARTIFACT_JOB[eco].replace(UPLOAD_PLACEHOLDER, collectStep(config))}` : ''}${
+    // **Every tag gets a release page, whatever it produces.** Previously this
+    // was written only alongside binaries, so an npm-only package had nowhere
+    // for `cutver notes` to run and its `summarizer:` config did nothing.
+    registry || artifacts ? `\n\n${releaseJob(eco, version, artifacts)}` : ''
+  }
 `
-}
-
-const CHANGELOG = `# Changelog
-
-## [Unreleased]
-`
-
-/** Everything \`init\` would write, without touching the disk. */
-export function initFiles(
-  eco: Ecosystem,
-  version?: string,
-  config: Config = DEFAULT_CONFIG,
-): InitFile[] {
-  // A tag that produces nothing needs no workflow to produce it. Writing an
-  // empty publish.yml would leave a file whose whole job is to be misread as
-  // broken; `version.yml`'s handoff step is skipped to match.
-  const targets = publishTo(ADAPTER_FOR[eco], config)
-
-  return [
-    { path: '.github/workflows/version.yml', contents: versionWorkflow(eco, config, version) },
-    ...(targets.length
-      ? [
-          {
-            path: '.github/workflows/publish.yml',
-            contents: publishWorkflow(eco, config, version, targets),
-          },
-        ]
-      : []),
-    // Only if absent, and never with content: a changelog is prose someone
-    // writes. cutver opens the heading and fills in nothing.
-    { path: 'CHANGELOG.md', contents: CHANGELOG, onlyIfAbsent: true },
-    // Also only if absent. A config already in the tree is the repository's
-    // release policy; replacing it would change version numbers with no commit
-    // to blame, which is the one thing this whole tool is arranged against.
-    { path: 'cutver.yml', contents: configTemplate(eco), onlyIfAbsent: true },
-  ]
-}
-
-export interface InitResult {
-  path: string
-  state: 'written' | 'skipped'
-  detail: string
-}
-
-/**
- * The range to pin cutver at.
- *
- * Exact for a prerelease, caret for a stable release. `^0.1.0-beta.6` is not
- * the range anyone means — a caret on a 0.x prerelease matches only later
- * prereleases of that same 0.1.0, which reads as a range and behaves as a pin.
- * Being explicit about it beats being subtly narrow.
- */
-export function pinFor(version: string): string {
-  return version.includes('-') ? version : `^${version}`
-}
-
-export interface InitOptions {
-  force?: boolean
-  dryRun?: boolean
-  /**
-   * The repository's rules, so the generated triggers and dist-tag arms match
-   * the config that is actually there rather than the defaults.
-   */
-  config?: Config
-  /** Install the pre-push guard too. On by default: it is part of "set this up". */
-  hook?: boolean
-  /**
-   * The running cutver's version, pinned into the manifest so the tool that
-   * computes your version numbers does not float. `dev` (running from source)
-   * pins nothing — there is no published version to name.
-   */
-  version?: string
-}
-
-export async function init(
-  root: string,
-  eco: Ecosystem,
-  { force = false, dryRun = false, hook = true, version, config = DEFAULT_CONFIG }: InitOptions = {},
-): Promise<InitResult[]> {
-  const out: InitResult[] = []
-
-  // **The workflows must match the config this run is about to write**, not
-  // the built-in defaults. Without this, `init` on a fresh repository writes a
-  // `cutver.yml` saying one thing and an `on.push.branches` list derived from
-  // another — and the disagreement is invisible until a branch silently fails
-  // to trigger. When a config already exists it wins, because it is the
-  // repository's actual policy.
-  const effective = config.source ? config : parseConfig(Bun.YAML.parse(configTemplate(eco)), 'cutver.yml')
-
-  for (const file of initFiles(eco, version, effective)) {
-    const full = `${root}/${file.path}`
-    const exists = await Bun.file(full).exists()
-
-    if (exists && (file.onlyIfAbsent || !force)) {
-      out.push({
-        path: file.path,
-        state: 'skipped',
-        detail: file.onlyIfAbsent ? 'already exists' : 'already exists — --force to replace',
-      })
-      continue
-    }
-
-    if (!dryRun) await Bun.write(full, file.contents)
-    out.push({
-      path: file.path,
-      state: 'written',
-      detail: exists ? 'replaced' : 'created',
-    })
-  }
-
-  // **The workflows and the hook both need a cutver to run, so pin one.**
-  // Without this both reach for `bunx cutver`, which resolves `latest` from
-  // the registry on every run — so the tool that decides your version numbers
-  // floats, and a cutver release could change them without a commit in your
-  // repository. A devDependency also makes `bunx`/`npx` prefer the local copy,
-  // so nothing has to be re-fetched per run.
-  //
-  // Cargo repositories get no say here: there is no JavaScript manifest to pin
-  // into, which is why the executable exists and why `init cargo` downloads it.
-  if (eco !== 'cargo') {
-    if (!version || version === 'dev') {
-      out.push({
-        path: 'package.json',
-        state: 'skipped',
-        detail: 'cutver is running from source — nothing to pin',
-      })
-    } else {
-      const range = pinFor(version)
-      const result = await addDevDependency(root, 'cutver', range, dryRun)
-      out.push({
-        path: 'package.json',
-        state: result === 'added' ? 'written' : 'skipped',
-        detail:
-          result === 'added'
-            ? `devDependency cutver@${range}`
-            : 'already declares cutver — left alone',
-      })
-    }
-  }
-
-  if (hook) {
-    // `init` deliberately works in a tree that is not a repository yet —
-    // scaffolding before `git init` is a reasonable order to do things in —
-    // so a missing hooks directory is reported rather than thrown. The
-    // workflows are the valuable half and they have already been written by
-    // this point; failing here would abort a command that mostly succeeded.
-    const installed = await installHook(root, { force, dryRun, version }).catch((e: Error) => ({
-      state: 'skipped' as const,
-      detail: `not installed — ${e.message}`,
-    }))
-
-    out.push({
-      path: `${HOOK_NAME} (git hook)`,
-      state: installed.state,
-      detail: installed.detail,
-    })
-  }
-
-  return out
 }

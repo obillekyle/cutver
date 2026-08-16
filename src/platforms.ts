@@ -101,7 +101,10 @@ export interface PlatformNote {
  * files; a probe that could fail the command it decorates would be a worse
  * trade than the warning is worth.
  */
-export async function probeTarget(root: string, target: string): Promise<PlatformNote | null> {
+export async function probeTarget(
+  root: string,
+  target: string,
+): Promise<PlatformNote | null> {
   const { ok, out } = await run(
     ['cargo', 'metadata', '--format-version', '1', '--filter-platform', target],
     root,
@@ -128,7 +131,10 @@ export async function probeTargets(
 export function platformAdvice(notes: PlatformNote[]): string[] {
   if (!notes.length) return []
 
-  const lines = ['', '  the matrix in publish.yml starts with three runners, and:']
+  const lines = [
+    '',
+    '  the matrix in publish.yml starts with three runners, and:',
+  ]
   for (const note of notes) {
     for (const dep of note.deps) {
       lines.push(`    ${note.target}`)
