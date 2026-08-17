@@ -18,6 +18,36 @@ A scope does not hide the marker: `feat(cli)!:` is a major, and so is
 `refactor(orm,core)!:`. The `!` is checked before the type, so a `chore!:` is a
 major too — if it breaks something, it breaks something.
 
+## Below 1.0.0, cutver stops and asks
+
+The table above is the arithmetic, and on a `0.x` project the arithmetic says a
+breaking change is `1.0.0`. cutver will not cut that for you:
+
+```
+cutver: these commits imply 1.0.0, and this project is at 0.2.0.
+        Leaving 0.x is a promise about the API rather than a fact
+        about the commits, so cutver will not make it for you.
+
+        If the API is settled:
+          cutver stage 1.0.0
+        If it is not, a breaking change below 1.0.0 is conventionally
+        a minor:
+          cutver stage 0.3.0
+```
+
+**Because leaving 0.x is not something a commit message can tell you.** `0.x`
+is the range where an author is still allowed to change their mind, and `1.0.0`
+is a promise to stop. cutver reads subject lines; it has no idea whether your
+API is finished. Every other number here it will work out and write without
+asking, because every other number is a fact about the commits.
+
+Both ways out are one command, and neither is a flag — pass the version you
+mean. `--if-needed` does not soften this: that flag means "no release was
+warranted", and here one is, which is exactly why the refusal exists.
+
+Nothing changes at `1.0.0` and above: `1.4.0` with a `feat!` cuts `2.0.0`
+without a word, because the promise has already been made.
+
 ## Both breaking markers count
 
 A lot of tooling reads only the `BREAKING CHANGE:` footer. That is a bad bet:

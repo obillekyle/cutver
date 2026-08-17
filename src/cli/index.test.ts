@@ -193,3 +193,106 @@ describe('cutver stage, against an orphaned tag', () => {
     rmSync(dir, { recursive: true, force: true })
   })
 })
+
+/**
+ * Leaving 0.x, which no commit message can authorise.
+ *
+ * **The arithmetic is right and stays as it is** — semver says a `feat!` is a
+ * major, and the ported `applyBump` applies it. What it cannot know is that
+ * crossing out of `0.x` means something no rule decides: `0.x` is where an
+ * author may still change their mind and `1.0.0` is a promise to stop.
+ *
+ * Left alone it was the most expensive accident available here. The generated
+ * `version.yml` runs `stage --if-needed` unattended and then commits, tags and
+ * pushes — so a 0.x project's first `feat!` shipped `1.0.0` to a registry with
+ * nobody in the loop, and npm never gives a number back.
+ */
+describe('cutver stage, crossing out of 0.x', () => {
+  async function repo(version: string, subject: string): Promise<string> {
+    const dir = mkdtempSync(`${tmpdir()}/cutver-zerox-`).replaceAll('\\', '/')
+    const git = (...args: string[]) =>
+      Bun.spawn(['git', ...args], { cwd: dir, stdout: 'pipe', stderr: 'pipe' })
+        .exited
+
+    await git('init', '-q')
+    await git('config', 'user.email', 'a@b.c')
+    await git('config', 'user.name', 't')
+    await Bun.write(
+      `${dir}/package.json`,
+      `{"name":"p","version":"${version}"}`,
+    )
+    await git('add', '-A')
+    await git('commit', '-qm', 'feat: base')
+    await git('tag', `v${version}`)
+
+    await Bun.write(`${dir}/f.txt`, 'x')
+    await git('add', '-A')
+    await git('commit', '-qm', subject)
+    return dir
+  }
+
+  test('refuses, writes nothing, and names both ways out', async () => {
+    const dir = await repo('0.2.0', 'feat(core)!: a breaking change')
+    const { out, code } = await cutver('stage', '--offline', '--cwd', dir)
+
+    expect(code).toBe(1)
+    expect(out).toContain('cutver stage 1.0.0')
+    // The conventional reading below 1.0.0, offered rather than applied —
+    // cutver does not get to pick which of the two a project meant.
+    expect(out).toContain('cutver stage 0.3.0')
+
+    const manifest = await Bun.file(`${dir}/package.json`).json()
+    expect(manifest.version).toBe('0.2.0')
+
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  test('--if-needed does not soften it', async () => {
+    // That flag means no release was warranted. Here one is, and cannot be
+    // cut for you — which is the whole reason to stop.
+    const dir = await repo('0.2.0', 'feat(core)!: a breaking change')
+    const { code } = await cutver(
+      'stage',
+      '--offline',
+      '--if-needed',
+      '--cwd',
+      dir,
+    )
+
+    expect(code).toBe(1)
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  test('an explicit version is obeyed, either way', async () => {
+    for (const asked of ['1.0.0', '0.3.0']) {
+      const dir = await repo('0.2.0', 'feat(core)!: a breaking change')
+      const { out, code } = await cutver(
+        'stage',
+        asked,
+        '--offline',
+        '--dry-run',
+        '--cwd',
+        dir,
+      )
+
+      expect(code, asked).toBe(0)
+      expect(out, asked).toContain(`0.2.0 -> ${asked}`)
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test('1.x is untouched — the promise is already made', async () => {
+    const dir = await repo('1.4.0', 'feat(core)!: a breaking change')
+    const { out, code } = await cutver(
+      'stage',
+      '--offline',
+      '--dry-run',
+      '--cwd',
+      dir,
+    )
+
+    expect(code).toBe(0)
+    expect(out).toContain('1.4.0 -> 2.0.0')
+    rmSync(dir, { recursive: true, force: true })
+  })
+})

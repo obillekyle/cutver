@@ -46,6 +46,21 @@ import {
 import { runChangelog } from './commands'
 import { say } from './style'
 
+/**
+ * The minor bump inside 0.x, for the advice line.
+ *
+ * Conventional rather than mandated: semver says nothing below 1.0.0 is
+ * guaranteed, so a break there is usually taken as a minor. Named only as the
+ * alternative, never applied — cutver does not get to pick which of the two a
+ * project meant.
+ */
+function bumpWithinZero(current: string): string {
+  const [, minor = 0] = (current.split(/[-+]/)[0] ?? current)
+    .split('.')
+    .map(Number)
+  return `0.${minor + 1}.0`
+}
+
 /** How each file's outcome is marked in the report column. */
 // Green for a file that moved, dim for one that did not — the report is read
 // by someone deciding whether to commit, and "what changed" is the question.
@@ -390,6 +405,42 @@ export async function runStage(argv: string[]): Promise<void> {
   // `v1.1.0` is not a valid version string in any manifest.
   if (!SEMVER.test(version)) {
     die(`'${version}' is not a semver version (no leading 'v')`)
+  }
+
+  // **Graduating to 1.0.0 is a decision, and this is where it gets asked.**
+  //
+  // The arithmetic is right and stays as it is: semver says a `feat!` is a
+  // major, and `applyBump` applies it. What it cannot know is that crossing out
+  // of 0.x means something no rule can decide — 0.x is the range where the
+  // author is still allowed to change their mind, and 1.0.0 is a promise to
+  // stop. cutver reads commit messages; it does not know whether the API is
+  // finished.
+  //
+  // Left alone this is the most expensive accident available here. The
+  // generated `version.yml` runs `stage --if-needed` unattended and then
+  // commits, tags and pushes, so a 0.x project's first `feat!` ships 1.0.0 to a
+  // registry with nobody in the loop — and npm never gives a number back.
+  //
+  // Refused rather than capped at `0.(minor+1).0`. Capping is also a policy,
+  // silently disagreeing with what the arithmetic says, and it would leave two
+  // answers to the same question. A refusal spends nothing and names both ways
+  // out. `--if-needed` does not soften it: that flag means no release was
+  // warranted, and this is one that is warranted and cannot be cut for you.
+  if (
+    !explicit &&
+    current.startsWith('0.') &&
+    /^1\.0\.0(?:$|[-+])/.test(version)
+  ) {
+    die(
+      `these commits imply ${version}, and this project is at ${current}.\n` +
+        '        Leaving 0.x is a promise about the API rather than a fact\n' +
+        '        about the commits, so cutver will not make it for you.\n\n' +
+        '        If the API is settled:\n' +
+        '          cutver stage 1.0.0\n' +
+        '        If it is not, a breaking change below 1.0.0 is conventionally\n' +
+        '        a minor:\n' +
+        `          cutver stage ${bumpWithinZero(current)}`,
+    )
   }
 
   // **Refused before anything is written, because the failure lands after.**
