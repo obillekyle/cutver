@@ -1,0 +1,82 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>cutver — terminal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; padding: 40px; background: #8b8b8b; display: flex; flex-direction: column; gap: 40px; align-items: flex-start; }
+  .win {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
+    overflow: hidden; width: max-content; box-shadow: 0 8px 30px rgba(0,0,0,.18);
+  }
+  .bar {
+    height: 34px; background: var(--chrome); border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 8px; padding: 0 13px;
+  }
+  .d { width: 11px; height: 11px; border-radius: 50%; display: inline-block; }
+  .r { background: #ff5f57 } .y { background: #febc2e } .g { background: #28c840 }
+  .t {
+    margin-left: 10px; font-size: 12px; color: var(--title);
+    /* Google Sans if this machine has it, and the usual UI stack if not. */
+    font-family: "Google Sans", "Google Sans Text", ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif;
+  }
+  pre {
+    margin: 0; padding: 18px 22px 20px;
+    font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 13px; line-height: 1.62; letter-spacing: 0;
+    white-space: pre; tab-size: 2;
+    /* **Ligatures off, and this is not taste.** JetBrains Mono draws `--` as a
+       single long dash and `->` as an arrow, so `--offline` reads as
+       `—offline` and `1.2.0 -> 1.3.0` as `1.2.0 → 1.3.0`. Every one of those
+       is a flag or a string somebody retypes from the picture. A screenshot
+       that renders a command differently from how it must be typed is worse
+       than no screenshot. */
+    font-variant-ligatures: none;
+    font-feature-settings: "liga" 0, "calt" 0;
+  }
+</style>
+<div class="win" id="dark" style="--bg:#0d1117;--chrome:#161b22;--border:#30363d;--title:#8b949e">
+  <div class="bar"><i class="d r"></i><i class="d y"></i><i class="d g"></i><span class="t">notes-app — cutver</span></div>
+  <pre><span style="color:#c9d1d9">cutver: ~/notes-app </span><span style="color:#8b949e">(js, at</span><span style="color:#c9d1d9"> </span><span style="color:#79c0ff">1.2.0</span><span style="color:#8b949e">, on 'main')</span>
+<span style="color:#c9d1d9">cutver: </span><span style="color:#79c0ff">6</span><span style="color:#c9d1d9"> </span><span style="color:#8b949e">commit(s) since v1.2.0</span>
+<span style="color:#c9d1d9">  </span><span style="color:#7ee787">minor</span><span style="color:#c9d1d9"> </span><span style="color:#79c0ff">2</span>
+<span style="color:#c9d1d9">        </span><span style="color:#8b949e">feat(reader): continuous scroll between chapters</span>
+<span style="color:#c9d1d9">        </span><span style="color:#8b949e">feat: shelves remember their sort order</span>
+<span style="color:#c9d1d9">  </span><span style="color:#79c0ff">patch</span><span style="color:#c9d1d9"> </span><span style="color:#79c0ff">3</span>
+<span style="color:#c9d1d9">        </span><span style="color:#8b949e">perf: cache the shelf index</span>
+<span style="color:#c9d1d9">        </span><span style="color:#8b949e">fix(search): accents no longer split a word</span>
+<span style="color:#c9d1d9">        </span><span style="color:#8b949e">fix: stop the sync loop retrying a deleted note</span>
+<span style="color:#c9d1d9">  </span><span style="color:#8b949e">none</span><span style="color:#c9d1d9">  </span><span style="color:#d29922">1</span><span style="color:#c9d1d9"> </span><span style="color:#8b949e">not conventional — no version, no changelog entry</span>
+<span style="color:#c9d1d9">        </span><span style="color:#8b949e">wip</span>
+<span style="color:#c9d1d9">cutver: </span><span style="color:#8b949e">1.2.0</span><span style="color:#c9d1d9"> </span><span style="color:#8b949e">-&gt;</span><span style="color:#c9d1d9"> </span><span style="color:#79c0ff;font-weight:600">1.3.0</span><span style="color:#c9d1d9"> </span><span style="color:#8b949e">(minor)</span>
+&nbsp;
+<span style="color:#c9d1d9">preflight: skipped (--offline)</span>
+&nbsp;
+<span style="color:#c9d1d9">files (dry run — nothing is written)</span>
+<span style="color:#c9d1d9">  </span><span style="color:#7ee787">↑</span><span style="color:#c9d1d9"> package.json  </span><span style="color:#8b949e">1.2.0 -&gt; 1.3.0</span>
+&nbsp;
+<span style="color:#c9d1d9">cutver: dry run — 1 file(s) would change, none did.</span></pre>
+</div>
+<div class="win" id="light" style="--bg:#ffffff;--chrome:#f6f8fa;--border:#d0d7de;--title:#6e7781">
+  <div class="bar"><i class="d r"></i><i class="d y"></i><i class="d g"></i><span class="t">notes-app — cutver</span></div>
+  <pre><span style="color:#24292f">cutver: ~/notes-app </span><span style="color:#6e7781">(js, at</span><span style="color:#24292f"> </span><span style="color:#0969da">1.2.0</span><span style="color:#6e7781">, on 'main')</span>
+<span style="color:#24292f">cutver: </span><span style="color:#0969da">6</span><span style="color:#24292f"> </span><span style="color:#6e7781">commit(s) since v1.2.0</span>
+<span style="color:#24292f">  </span><span style="color:#1a7f37">minor</span><span style="color:#24292f"> </span><span style="color:#0969da">2</span>
+<span style="color:#24292f">        </span><span style="color:#6e7781">feat(reader): continuous scroll between chapters</span>
+<span style="color:#24292f">        </span><span style="color:#6e7781">feat: shelves remember their sort order</span>
+<span style="color:#24292f">  </span><span style="color:#0969da">patch</span><span style="color:#24292f"> </span><span style="color:#0969da">3</span>
+<span style="color:#24292f">        </span><span style="color:#6e7781">perf: cache the shelf index</span>
+<span style="color:#24292f">        </span><span style="color:#6e7781">fix(search): accents no longer split a word</span>
+<span style="color:#24292f">        </span><span style="color:#6e7781">fix: stop the sync loop retrying a deleted note</span>
+<span style="color:#24292f">  </span><span style="color:#6e7781">none</span><span style="color:#24292f">  </span><span style="color:#9a6700">1</span><span style="color:#24292f"> </span><span style="color:#6e7781">not conventional — no version, no changelog entry</span>
+<span style="color:#24292f">        </span><span style="color:#6e7781">wip</span>
+<span style="color:#24292f">cutver: </span><span style="color:#6e7781">1.2.0</span><span style="color:#24292f"> </span><span style="color:#6e7781">-&gt;</span><span style="color:#24292f"> </span><span style="color:#0969da;font-weight:600">1.3.0</span><span style="color:#24292f"> </span><span style="color:#6e7781">(minor)</span>
+&nbsp;
+<span style="color:#24292f">preflight: skipped (--offline)</span>
+&nbsp;
+<span style="color:#24292f">files (dry run — nothing is written)</span>
+<span style="color:#24292f">  </span><span style="color:#1a7f37">↑</span><span style="color:#24292f"> package.json  </span><span style="color:#6e7781">1.2.0 -&gt; 1.3.0</span>
+&nbsp;
+<span style="color:#24292f">cutver: dry run — 1 file(s) would change, none did.</span></pre>
+</div>

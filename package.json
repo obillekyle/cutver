@@ -40,7 +40,8 @@
     "cutver": "bun run src/cli/index.ts",
     "release": "bun run src/cli/index.ts",
     "format": "prettier --write \"src/**/*.ts\" \"scripts/**/*.ts\"",
-    "format:check": "prettier --check \"src/**/*.ts\" \"scripts/**/*.ts\""
+    "format:check": "prettier --check \"src/**/*.ts\" \"scripts/**/*.ts\"",
+    "shot": "bun run scripts/terminal-shot.ts"
   },
   "devDependencies": {
     "bun-types": "^1.3.14",

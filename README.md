@@ -3,6 +3,12 @@
 Work out the next version from your commit messages, write it into every
 manifest, and stop.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/obillekyle/cutver/main/assets/terminal-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/obillekyle/cutver/main/assets/terminal-light.svg">
+  <img alt="cutver stage --dry-run: a commit survey showing two features, three fixes and one subject counted for nothing, then 1.2.0 -&gt; 1.3.0" src="https://raw.githubusercontent.com/obillekyle/cutver/main/assets/terminal-light.svg" width="620">
+</picture>
+
 ```bash
 bunx cutver stage --dry-run
 ```
