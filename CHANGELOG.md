@@ -8,9 +8,37 @@ is only ever as good as the commits — which is the point.
 explanation in the commit body, where it is also visible in `git log`, in a
 pull request, and on the release page.
 
+## [2.1.0] — 2026-08-17
+
+diff: [c2c3bc3...8f24725](https://github.com/obillekyle/cutver/compare/c2c3bc3...8f24725)
+
+### New Features
+
+- **cli:** colour the terminal output, with bakery's `%<code>` markers ([8f24725](https://github.com/obillekyle/cutver/commit/8f24725))
+
+    Same convention as bakery's logger, deliberately: `%<green>` and the one-letter aliases, `%0` to reset, `%%` for a literal percent. Two projects read by the same person should not have two spellings for one idea, and the markers read as the line they produce — `` `%g↑%0 ${file}` `` rather than a sentence about producing it.
+
+- **changelog:** `file` and `pages` targets, and `changelog.file: false` ([848e11c](https://github.com/obillekyle/cutver/commit/848e11c))
+
+    Three changes, all of them the same realisation: the file and the release pages are two jobs, and `--overwrite` was a second command wearing a flag's clothes.
+
+- **changelog:** `--overwrite` creates a release page when the tag has none ([1dcd8ea](https://github.com/obillekyle/cutver/commit/1dcd8ea))
+
+    The command exists to catch release pages up with a changelog, and it could not help the repository most in need of it: one that tagged for a year and adopted `changelog:` last week has a good file and an empty Releases tab. Nine tags, nine "no GitHub release for this tag", nothing written.
+
+### Fixes
+
+- **changelog:** a prerelease being cut gets no heading when prereleases are off ([07a3880](https://github.com/obillekyle/cutver/commit/07a3880))
+
+    The tag filter and the release being cut are two paths to the same list, and only the tags were filtered. So with `prereleases: false` a beta got a heading the moment it was cut, and lost it on the next regeneration when that version arrived as a tag — an entry that exists between one release and the next rebuild is worse than either answer.
+
+- **init:** retry the cutver download in the generated Cargo workflow ([dc78ed6](https://github.com/obillekyle/cutver/commit/dc78ed6))
+
+    It is the one step in a release job with no second chance. Every other download there is a package manager that retries on its own; this is a bare curl, and it failed a real release on `curl: (35) Recv failure: Connection reset by peer` with the asset answering 200 thirty seconds later.
+
 ## [2.0.3] — 2026-08-16
 
-diff: [8c7f569...36b6f32](https://github.com/obillekyle/cutver/compare/8c7f569...36b6f32)
+diff: [8c7f569...c2c3bc3](https://github.com/obillekyle/cutver/compare/8c7f569...c2c3bc3)
 
 ### Fixes
 
