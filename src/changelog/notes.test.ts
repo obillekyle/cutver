@@ -229,7 +229,7 @@ describe('diffLine', () => {
     expect(
       diffLine({ from: 'a1b2c3', to: 'd4e5f6', repo: 'github.com/o/r' }),
     ).toBe(
-      'diff: [a1b2c3...d4e5f6](https://github.com/o/r/compare/a1b2c3...d4e5f6)',
+      '<sub>diff: [a1b2c3...d4e5f6](https://github.com/o/r/compare/a1b2c3...d4e5f6)</sub>',
     )
   })
 
@@ -239,9 +239,9 @@ describe('diffLine', () => {
     // which anyone can paste into `git diff`.
     expect(
       diffLine({ from: 'a1b2c3', to: 'd4e5f6', repo: 'gitlab.com/o/r' }),
-    ).toBe('diff: a1b2c3...d4e5f6')
+    ).toBe('<sub>diff: a1b2c3...d4e5f6</sub>')
     expect(diffLine({ from: 'a1b2c3', to: 'd4e5f6', repo: null })).toBe(
-      'diff: a1b2c3...d4e5f6',
+      '<sub>diff: a1b2c3...d4e5f6</sub>',
     )
   })
 })

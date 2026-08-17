@@ -89,6 +89,34 @@ ${notes.trim()}
 }
 
 /**
+ * Put the `diff:` line back, exactly, with a blank line under it.
+ *
+ * **The model was asked to copy it and had two ways to get it wrong.** A sha
+ * altered by one character resolves to nothing, and the shape in the prompt
+ * showed the line directly above the opening sentence — so markdown folded the
+ * two into one paragraph and every release page read as a link with prose
+ * glued to it.
+ *
+ * Neither is a prompt problem worth solving with more prompt. The line is a
+ * fact cutver already holds; the model's only job is the prose. So whatever it
+ * emitted at the top is dropped and the real line is prepended, which also
+ * takes one rule out of the instructions — and fewer rules is what makes the
+ * remaining ones stick.
+ */
+export function withDiffLine(body: string, metadata: string | null): string {
+  const line = metadata?.trim()
+  if (!line) return body
+
+  // Any leading `diff:` line the model produced, `<sub>`-wrapped or not, plus
+  // the blank line after it if there is one.
+  const without = body
+    .replace(/^\s*(?:<sub>)?\s*diff:.*?(?:<\/sub>)?\s*(?:\n|$)/i, '')
+    .trimStart()
+
+  return `${line}\n\n${without}`
+}
+
+/**
  * The publishable half of a two-part answer.
  *
  * **The reasoning pass exists to be thrown away.** Asking the model to state
@@ -228,7 +256,7 @@ export async function summarize(
         note: `${summarizer.connector}: empty release body — notes used as written`,
       }
     return {
-      text: body,
+      text: withDiffLine(body, metadata),
       note: `release body summarised by ${summarizer.model}`,
     }
   }
@@ -282,7 +310,10 @@ export async function summarize(
         note: 'summariser returned nothing — notes used as written',
       }
     }
-    return { text, note: 'release body summarised' }
+    return {
+      text: withDiffLine(text, metadata),
+      note: 'release body summarised',
+    }
   } catch (e) {
     return {
       text: fallback,

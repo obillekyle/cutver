@@ -16,7 +16,6 @@ Turn the commits below into a release body. Answer in exactly two tagged parts a
 
 ### Shape
 ```
-diff: <copied exactly from <metadata>>
 <1–2 sentences: what this release is for and who cares>
 
 ### <heading>
@@ -25,6 +24,7 @@ diff: <copied exactly from <metadata>>
 ```
 
 * Headings only from: `Breaking Changes`, `New Features`, `Fixes`, `Performance`, `Refactor`, `Docs`, `Deprecated`, `Build`, `CI`, `Tests` — in that order, dropping empty ones. Invent none.
-* Link shas on GitHub, taking owner and repo from the `diff:` URL: `([abc1234](https://github.com/<owner>/<repo>/commit/abc1234))`. Otherwise `(abc1234)`.
+* Do not write a `diff:` line. cutver puts it back itself, so anything you emit there is discarded.
+* Link shas on GitHub, taking owner and repo from the `<metadata>` URL: `([abc1234](https://github.com/<owner>/<repo>/commit/abc1234))`. Otherwise `(abc1234)`.
 * One line per bullet — no second line, nested bullets or explanation. No scope means the line starts with the change; never write an empty `**:**`.
 * **A `### Breaking Changes` heading requires a `### Migration` heading**, last, with one imperative step per breaking bullet. Not a judgement call: if you emitted a breaking change, the reader has work to do and this is where it goes. Each step must **name something the reader can type or edit** — a config key, a flag, a command, a file. A function or symbol from the source is not one of those, however prominently a body names it; the reader has no file to put it in. And name it: the commit body is not on the page, so "remove the key" tells them nothing. Where a breaking change truly needs no action, say that in one line rather than dropping the section.

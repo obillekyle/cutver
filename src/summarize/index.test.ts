@@ -5,6 +5,7 @@ import {
   extractRelease,
   payload,
   summarize,
+  withDiffLine,
 } from './index'
 import type { ChangelogConfig } from '../config/schema'
 import { SECTIONS, sectionFor } from '../changelog/notes'
@@ -535,5 +536,44 @@ describe('summarize', () => {
       text: '',
       note: null,
     })
+  })
+})
+
+/**
+ * The `diff:` line, which cutver owns rather than trusts.
+ *
+ * It was in the prompt as "copy this exactly", with the shape showing it
+ * directly above the opening sentence — so markdown folded the two into one
+ * paragraph on every summarised release page, and a sha altered by one
+ * character would have resolved to nothing. Both stop being possible when the
+ * line is put back from the fact cutver already holds.
+ */
+describe('withDiffLine', () => {
+  const LINE =
+    '<sub>diff: [aaa...bbb](https://github.com/o/r/compare/aaa...bbb)</sub>'
+
+  test('separates the line from the prose with a blank line', () => {
+    // The reported bug: one newline, so the renderer joins them.
+    expect(withDiffLine('This release fixes things.', LINE)).toBe(
+      `${LINE}\n\nThis release fixes things.`,
+    )
+  })
+
+  test('replaces whatever the model wrote, rather than trusting it', () => {
+    const wrong =
+      'diff: [aaa...zzz](https://github.com/o/r/compare/aaa...zzz)\nThe prose.'
+    expect(withDiffLine(wrong, LINE)).toBe(`${LINE}\n\nThe prose.`)
+  })
+
+  test('strips a `<sub>`-wrapped copy too', () => {
+    const wrapped = `${LINE}\n\nThe prose.`
+    expect(withDiffLine(wrapped, LINE)).toBe(`${LINE}\n\nThe prose.`)
+  })
+
+  test('leaves a body alone when there is no range', () => {
+    // A repository with no remote still gets its notes; there is simply no
+    // line to put back.
+    expect(withDiffLine('The prose.', null)).toBe('The prose.')
+    expect(withDiffLine('The prose.', '   ')).toBe('The prose.')
   })
 })

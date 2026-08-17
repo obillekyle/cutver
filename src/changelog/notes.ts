@@ -190,7 +190,14 @@ export function diffLine({ from, to, repo }: DiffRange): string {
   const link = repo?.startsWith('github.com/')
     ? `https://${repo}/compare/${range}`
     : null
-  return link ? `diff: [${range}](${link})` : `diff: ${range}`
+  const text = link ? `diff: [${range}](${link})` : `diff: ${range}`
+
+  // **`<sub>` because this is a footnote at the top of the page.** It is a
+  // provenance line — where these notes came from — and set at body size it
+  // competes with the sentence that says what the release is for. GitHub
+  // renders `<sub>` in both release bodies and markdown files, and a reader
+  // with no renderer still sees the range and the URL either side of a tag.
+  return `<sub>${text}</sub>`
 }
 
 /**
