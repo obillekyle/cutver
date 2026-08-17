@@ -117,6 +117,40 @@ export function withDiffLine(body: string, metadata: string | null): string {
 }
 
 /**
+ * Unwrap a body the model put inside a code fence.
+ *
+ * **Measured, on this repository's own v2.1.0.** Asked for markdown, a model
+ * may hand back markdown *as a code sample* — ` ```markdown ` … ` ``` ` around
+ * the whole answer — and the release page then renders the entire body as a
+ * grey box with a copy button, headings and links showing as literal source.
+ * It is intermittent: the release after it came back clean from the same model
+ * and the same prompt, which is exactly what makes it worth handling in code
+ * rather than in the instructions.
+ *
+ * **Only when the fence wraps everything.** A body may legitimately contain
+ * one — a bullet quoting a command — so the first non-empty line has to open
+ * it and the last non-empty line has to close it. Anything else is left alone,
+ * because a fence in the middle is content.
+ */
+export function unfence(text: string): string {
+  const lines = text.trim().split('\n')
+  const first = lines[0]?.trim() ?? ''
+  const last = lines.at(-1)?.trim() ?? ''
+
+  // ```markdown, ```md, or a bare ``` — and the same for tildes, which are the
+  // other fence markdown allows.
+  const opens = /^(`{3,}|~{3,})[a-zA-Z]*$/.exec(first)
+  if (!opens || lines.length < 2) return text.trim()
+
+  const marker = opens[1] as string
+  if (!new RegExp(`^${marker[0] === '`' ? '`' : '~'}{3,}$`).test(last)) {
+    return text.trim()
+  }
+
+  return lines.slice(1, -1).join('\n').trim()
+}
+
+/**
  * The publishable half of a two-part answer.
  *
  * **The reasoning pass exists to be thrown away.** Asking the model to state
@@ -150,14 +184,20 @@ export function extractRelease(text: string): string {
   const OPEN = /`?<release>`?/g
   const CLOSE = /`?<\/release>`?/
 
+  // **Line endings first, because everything below counts lines.** A model
+  // may answer with CRLF — measured on this repository's v2.1.0 — and a stray
+  // carriage return rides into the release body, the changelog section, and
+  // every comparison made against either.
+  text = text.replace(/\r\n?/g, '\n')
+
   let open: RegExpExecArray | null = null
   for (const m of text.matchAll(OPEN)) open = m as RegExpExecArray
-  if (!open) return text.trim()
+  if (!open) return unfence(text)
 
   const from = (open.index ?? 0) + open[0].length
   const rest = text.slice(from)
   const close = CLOSE.exec(rest)
-  return (close ? rest.slice(0, close.index) : rest).trim()
+  return unfence(close ? rest.slice(0, close.index) : rest)
 }
 
 /**

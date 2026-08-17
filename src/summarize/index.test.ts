@@ -5,6 +5,7 @@ import {
   extractRelease,
   payload,
   summarize,
+  unfence,
   withDiffLine,
 } from './index'
 import type { ChangelogConfig } from '../config/schema'
@@ -575,5 +576,59 @@ describe('withDiffLine', () => {
     // line to put back.
     expect(withDiffLine('The prose.', null)).toBe('The prose.')
     expect(withDiffLine('The prose.', '   ')).toBe('The prose.')
+  })
+})
+
+/**
+ * A body the model wrapped in a code fence.
+ *
+ * **Measured on this repository's own v2.1.0.** Asked for markdown, the model
+ * returned markdown *as a code sample* — ```` ```markdown ```` around the whole
+ * answer — and the release page rendered as one grey box with a copy button,
+ * every heading and link showing as literal source. The release after it came
+ * back clean from the same model and the same prompt, which is what makes this
+ * code's problem rather than the prompt's: an instruction cannot be relied on
+ * to hold when the failure is intermittent.
+ */
+describe('unfence', () => {
+  test('unwraps a fence around the whole body', () => {
+    expect(unfence('```markdown\n### Fixes\n- a thing\n```')).toBe(
+      '### Fixes\n- a thing',
+    )
+    expect(unfence('```\n### Fixes\n```')).toBe('### Fixes')
+    expect(unfence('~~~md\n### Fixes\n~~~')).toBe('### Fixes')
+  })
+
+  test('leaves a fence that is part of the content', () => {
+    // The reason both ends are checked. A bullet quoting a command is a body
+    // with a fence in it, and unwrapping that would eat the prose around it.
+    const body = 'Run this:\n\n```bash\ncutver stage\n```\n\nand more'
+    expect(unfence(body)).toBe(body)
+  })
+
+  test('leaves a body that only opens a fence', () => {
+    // Truncated output. Stripping the opener would publish the remains as
+    // prose and hide that the answer was cut off.
+    const body = '```markdown\n### Fixes\n- a thing'
+    expect(unfence(body)).toBe(body)
+  })
+})
+
+describe('extractRelease, on what a model actually returns', () => {
+  test('a fenced release body comes out as markdown', () => {
+    const answer =
+      '<release>\n```markdown\ndiff: [a...b](url)\n\n### Fixes\n- a thing\n```\n</release>'
+    expect(extractRelease(answer)).toBe(
+      'diff: [a...b](url)\n\n### Fixes\n- a thing',
+    )
+  })
+
+  test('CRLF is normalised before anything counts lines', () => {
+    // A stray carriage return rides into the release body, the changelog
+    // section, and every comparison made against either — including the one
+    // that decides whether a page already matches.
+    expect(
+      extractRelease('<release>\r\n### Fixes\r\n- a thing\r\n</release>'),
+    ).toBe('### Fixes\n- a thing')
   })
 })
