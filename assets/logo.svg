@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100" role="img" aria-label="cutver">
+  <title>cutver</title>
+  <desc>Scissors cutting a line of three dots — major, minor and patch.</desc>
+
+  <!--
+    One file for both themes.
+
+    `#0d9488` is the one stop in the brand ramp that clears contrast on white
+    and on GitHub's dark canvas alike, so this needs no `<picture>` pair and no
+    media query — which matters, because GitHub proxies README images and strips
+    the CSS a query inside the file would need.
+
+    Drawn to read at 80px, which is the only size it is used at. An earlier
+    version carried a dashed cut-line and a trailing row of small dots; both
+    disappeared at that size, so the blades take the whole box and the three
+    numbers they decide between are the only detail left.
+  -->
+  <g fill="none" stroke="#0d9488" stroke-width="8" stroke-linecap="round" stroke-linejoin="round">
+    <!-- major . minor . patch, on the line about to be cut. -->
+    <path d="M20 50h62" stroke-width="8" stroke-dasharray="0.5 17" opacity=".45"/>
+
+    <!-- Blades, crossing at the pivot. -->
+    <path d="M30 50 86 20"/>
+    <path d="M30 50 86 80"/>
+
+    <!-- Handles. -->
+    <circle cx="22" cy="31" r="11"/>
+    <circle cx="22" cy="69" r="11"/>
+  </g>
+</svg>

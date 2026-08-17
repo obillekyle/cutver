@@ -1,7 +1,20 @@
+<div align="center">
+
+<a href="https://cutver.okyle.dev"><img src="https://raw.githubusercontent.com/obillekyle/cutver/main/assets/logo.svg" alt="cutver" title="Read the docs" width="80"></a>
+
 # cutver
 
-Work out the next version from your commit messages, write it into every
-manifest, and stop.
+### The version is arithmetic. The prose is the work.
+
+Works out the next version from your commit messages, writes it into every
+manifest, and stops.
+
+[![npm](https://img.shields.io/npm/v/cutver?label=npm&color=0d9488&logo=npm)](https://www.npmjs.com/package/cutver)
+[![dependencies](https://img.shields.io/badge/dependencies-0-0d9488)](https://www.npmjs.com/package/cutver?activeTab=dependencies)
+![license](https://img.shields.io/npm/l/cutver?color=0d9488)
+![stars](https://img.shields.io/github/stars/obillekyle/cutver?color=0d9488)
+
+</div>
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/obillekyle/cutver/main/assets/terminal-dark.svg">

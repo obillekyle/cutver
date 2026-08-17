@@ -361,6 +361,27 @@ describe('what the docs tell you to run and write', () => {
       .filter((w): w is string => w !== null && !w.startsWith('-'))
   }
 
+  test('the badges claim nothing the manifest does not', async () => {
+    // **A typed badge among computed ones is how a README starts lying.** The
+    // npm, licence and stars badges are rendered from live sources and cannot
+    // go stale; `dependencies-0` is a string somebody wrote, and it is also the
+    // one claim this project is actually built on. So it is checked here
+    // instead — which makes a hand-written badge exactly as trustworthy as a
+    // measured one, and costs three lines.
+    const readme = await Bun.file(
+      new URL('../README.md', import.meta.url),
+    ).text()
+    if (!readme.includes('dependencies-0')) return
+
+    const manifest = await Bun.file(
+      new URL('../package.json', import.meta.url),
+    ).json()
+    expect(
+      Object.keys(manifest.dependencies ?? {}),
+      'the README claims zero dependencies',
+    ).toEqual([])
+  })
+
   test('no page shows a command the CLI does not have', async () => {
     const names = new Set(COMMANDS.map(c => c.name))
     const readme = await Bun.file(
