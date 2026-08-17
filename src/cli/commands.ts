@@ -708,11 +708,21 @@ async function overwriteReleases(
       token,
       tag,
       async () => {
+        // **The `diff:` footnote is handed over, not left in the material.**
+        // It opens every compiled section, so the model used to copy it out of
+        // `<commits>` — and now it is told not to write one at all, because
+        // cutver restores it. Restoring needs it *passed*: without this the
+        // page came out with no footnote, which is how the first run of this
+        // went out.
+        const head = release.notes.split('\n')[0] ?? ''
+        const metadata = /^\s*(?:<sub>)?\s*diff:/i.test(head) ? head : null
+
         const summary = await summarize(
           release.notes,
           config.changelog,
           env,
           release.notes,
+          metadata,
         )
         note = summary.note
         return summary.text
