@@ -6,13 +6,15 @@
 
 ### The version is arithmetic. The prose is the work.
 
-Works out the next version from your commit messages, writes it into every
-manifest, and stops.
+<!--
+  One line each, and not by accident. GitHub renders a single newline inside a
+  centred block as a `<br>`, so an 80-column paragraph breaks mid-sentence and
+  four badges become four rows. Wrapping these would be a layout change.
+-->
 
-[![npm](https://img.shields.io/npm/v/cutver?label=npm&color=295d8d&logo=npm)](https://www.npmjs.com/package/cutver)
-[![dependencies](https://img.shields.io/badge/dependencies-0-295d8d)](https://www.npmjs.com/package/cutver?activeTab=dependencies)
-![license](https://img.shields.io/npm/l/cutver?color=295d8d)
-![stars](https://img.shields.io/github/stars/obillekyle/cutver?color=295d8d)
+Works out the next version from your commit messages, writes it into every manifest, and stops.
+
+[![npm](https://img.shields.io/npm/v/cutver?label=npm&color=295d8d&logo=npm)](https://www.npmjs.com/package/cutver) [![dependencies](https://img.shields.io/badge/dependencies-0-295d8d)](https://www.npmjs.com/package/cutver?activeTab=dependencies) ![license](https://img.shields.io/npm/l/cutver?color=295d8d) ![stars](https://img.shields.io/github/stars/obillekyle/cutver?color=295d8d)
 
 </div>
 
