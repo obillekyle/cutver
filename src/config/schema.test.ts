@@ -165,6 +165,43 @@ describe('docs/cutver.schema.json', () => {
     ).not.toThrow()
   })
 
+  test('offers every `changelog` key the loader accepts', () => {
+    // **The gap that let `changelog.file` go missing.** The top-level keys are
+    // pinned above and `artifacts`' are pinned beside this; nothing pinned
+    // `changelog`'s. So `file` shipped real, load-bearing at `stage.ts` and
+    // `commands.ts`, undocumented — and *rejected by this schema*, which sets
+    // `additionalProperties: false`. A valid config got a red squiggle from the
+    // editor completion the docs advertise.
+    //
+    // Asserted by round-tripping each key through the real loader rather than
+    // against a second list: a list here would be the third copy of the same
+    // thing, which is the shape of the original bug.
+    const shapes = schema.properties.changelog.oneOf as {
+      type?: string
+      properties?: Record<string, unknown>
+    }[]
+    const mapping = shapes.find(s => s.type === 'object') as {
+      properties: Record<string, unknown>
+    }
+
+    for (const key of Object.keys(mapping.properties)) {
+      expect(
+        () => parseConfig({ changelog: { [key]: undefined } }, 'test'),
+        `schema offers \`changelog.${key}\`, loader rejects it`,
+      ).not.toThrow(/unknown key/)
+    }
+
+    // And the direction that actually failed: a key the loader takes must be
+    // offered. `summarize` is excluded — it parses, and it is the pre-2.0
+    // spelling nothing should complete to.
+    for (const key of ['sections', 'keep', 'prereleases', 'file', 'prompt']) {
+      expect(
+        Object.keys(mapping.properties),
+        `loader accepts \`changelog.${key}\`, schema does not offer it`,
+      ).toContain(key)
+    }
+  })
+
   test('caps `schema` at the version this build understands', () => {
     expect(schema.properties.schema.maximum).toBe(SCHEMA_VERSION)
     expect(() => parseConfig({ schema: SCHEMA_VERSION + 1 }, 'test')).toThrow(

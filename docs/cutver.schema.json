@@ -76,6 +76,11 @@
               "minLength": 1,
               "description": "The instruction sent ahead of the notes, replacing the shipped one. Unlike the command, this belongs in the config: a prompt is data on a model’s stdin rather than something executed, and it is the part that needs tuning against a particular model. Only used when changelog.summarizer is on."
             },
+            "file": {
+              "type": "boolean",
+              "default": true,
+              "description": "Whether cutver writes CHANGELOG.md at all. Turning changelog: on means cutver owns that file — it is rewritten whole on every release and edits do not survive — which is the wrong trade for a project whose changelog is prose somebody wrote. With file: false nothing in the tree is touched and everything else still works: sections are compiled for the GitHub release body, notes answers from the commit range, and --overwrite fills the pages."
+            },
             "prereleases": {
               "type": "boolean",
               "default": false,

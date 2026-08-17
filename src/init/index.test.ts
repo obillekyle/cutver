@@ -132,7 +132,7 @@ describe('the generated workflows', () => {
     // **Presence before order.** `indexOf` answers -1 for something absent,
     // and -1 is less than every real position — so an ordering assertion passes
     // when the thing it is ordering simply is not there. Measured: deleting
-    // `jq -r` from `init.ts` left all 26 tests in this file green.
+    // `jq -r` from `init/workflows.ts` left every test in this file green.
     for (const needle of ['jq -r', "tr -d '\\r'", 'while read -r bin']) {
       expect(collect).toContain(needle)
     }
@@ -252,6 +252,20 @@ describe('the generated workflows', () => {
     }
   })
 
+  test('a node workflow never reaches for a runtime it did not install', () => {
+    // **`READ_VERSION` is a per-ecosystem record and the registry probe
+    // hardcoded `bun -e` anyway.** A generated `node` workflow sets up
+    // `actions/setup-node` and runs `npm ci`; there is no Bun on the runner, so
+    // "Already on the registry?" died on a missing binary. Steps run under
+    // `bash -e`, so it took the publish with it.
+    //
+    // Asserted across every file `init` writes rather than at the one line,
+    // because the next hardcoded runtime will be somewhere else.
+    for (const file of initFiles('node')) {
+      expect(file.contents, file.path).not.toMatch(/\bbunx?\b/)
+    }
+  })
+
   test('cargo fetches the executable instead of a JavaScript runtime', () => {
     const version = initFiles('cargo')[0]?.contents as string
     expect(version).toContain('releases/latest/download/cutver-linux-x64')
@@ -278,6 +292,48 @@ describe('init', () => {
       results
         .filter(r => r.path.endsWith('.yml'))
         .every(r => r.state === 'written'),
+    ).toBe(true)
+  })
+
+  test('a private package is scaffolded to tag and stop', async () => {
+    // **`private: true` is npm's own refusal to publish**, and cutver trusted
+    // it everywhere except where it decided anything: `init` wrote
+    // `publish: true` and a `publish.yml` carrying `id-token: write` and an
+    // `npm publish` the registry would reject. `doctor` then reported nothing
+    // wrong, because the package it would have checked was filtered out for
+    // being private — a bad default with a diagnostic certifying it.
+    const root = await fixture({
+      'package.json': '{"name":"app","version":"0.1.0","private":true}',
+    })
+    await init(root, 'node', { hook: false })
+
+    // **Written, not commented out.** Cargo can omit the line and mean it; for
+    // npm the default is `true`, so silence still publishes. That is why
+    // commenting it out was not enough on its own.
+    expect(await Bun.file(`${root}/cutver.yml`).text()).toContain(
+      'publish: false',
+    )
+    expect(
+      await Bun.file(`${root}/.github/workflows/publish.yml`).exists(),
+      'a private package got a publish workflow',
+    ).toBe(false)
+    // The half that must not change: versions are still computed and tagged.
+    expect(
+      await Bun.file(`${root}/.github/workflows/version.yml`).exists(),
+    ).toBe(true)
+  })
+
+  test('a publishable package is untouched by that', async () => {
+    const root = await fixture({
+      'package.json': '{"name":"lib","version":"0.1.0"}',
+    })
+    await init(root, 'node', { hook: false })
+
+    expect(await Bun.file(`${root}/cutver.yml`).text()).toContain(
+      'publish: true',
+    )
+    expect(
+      await Bun.file(`${root}/.github/workflows/publish.yml`).exists(),
     ).toBe(true)
   })
 

@@ -1,10 +1,9 @@
 /**
  * The config file `cutver init` scaffolds.
  *
- * Hand-written, never serialised. `Bun.YAML.stringify` emits flow style and
- * drops comments, and in this codebase the comments *are* the artifact — a
- * config whose keys nobody can explain is a config nobody edits with
- * confidence.
+ * Hand-written, never serialised. A YAML serialiser emits flow style and drops
+ * comments, and in this codebase the comments *are* the artifact — a config
+ * whose keys nobody can explain is a config nobody edits with confidence.
  *
  * YAML rather than JSON for the same reason, though both are read. Anyone who
  * prefers JSON renames the file and deletes the `#` lines.
@@ -15,10 +14,15 @@
  * releases on `develop` for everyone already using it. A repository that runs
  * `init` is choosing the stricter shape, which is a different thing from
  * having it imposed.
+ *
+ * `publishes` comes from the manifest — see `detectPublishes`. A `package.json`
+ * marked `"private": true` gets the same commented-out treatment cargo has
+ * always had, for the same reason: publishing is not a side effect of wanting
+ * version numbers, and here the repository has already said so out loud.
  */
 import type { Ecosystem } from './schema'
 
-export function configTemplate(eco: Ecosystem): string {
+export function configTemplate(eco: Ecosystem, publishes = true): string {
   return `# cutver.yml — which branches release what.
 # Docs: https://cutver.okyle.dev/#/reference/config
 schema: 1
@@ -39,7 +43,19 @@ ${
 # wanting version numbers. Uncomment to publish as well.
 #
 # publish: true`
-    : `publish: true`
+    : publishes
+      ? `publish: true`
+      : `#
+# **Written out rather than left off, because for npm the default is \`true\`.**
+# Cargo can comment this line and mean it; here silence means publish, so an
+# application would still get a workflow carrying \`npm publish\` and
+# \`id-token: write\` — a permission nobody asked for, to do a thing npm would
+# refuse anyway.
+#
+# \`false\` because this \`package.json\` says \`"private": true\`, which is npm's
+# own refusal to publish. Tags, version numbers and changelogs all still
+# happen. Set it to \`true\` if the package stops being private.
+publish: false`
 }
 
 # Compile changelog sections from the commits in each release. Off by default:

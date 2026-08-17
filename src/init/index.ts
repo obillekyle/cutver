@@ -43,6 +43,7 @@ import { parseConfig } from '../config/load'
 import { configTemplate } from '../config/template'
 import { publishWorkflow, versionWorkflow } from './workflows'
 import { exists, parseYaml, remove, write } from '../runtime'
+import { detectPublishes } from './detect'
 
 // Declared once, in `config/schema.ts`, because `target:` in the config names
 // the same set. Two copies type-checked only because the unions happened to be
@@ -55,7 +56,7 @@ export { ECOSYSTEMS, type Ecosystem }
 // matrix to probe.
 export { branchTriggers, distTagArms } from './triggers'
 export { CARGO_RUNNERS } from './workflows'
-export { detectCi, detectEcosystem, type Ci } from './detect'
+export { detectCi, detectEcosystem, detectPublishes, type Ci } from './detect'
 
 export interface InitFile {
   /** Repo-relative path. */
@@ -102,6 +103,7 @@ export function initFiles(
   eco: Ecosystem,
   version?: string,
   config: Config = DEFAULT_CONFIG,
+  publishes = true,
 ): InitFile[] {
   // A tag that produces nothing needs no workflow to produce it. Writing an
   // empty publish.yml would leave a file whose whole job is to be misread as
@@ -138,7 +140,11 @@ export function initFiles(
     // Also only if absent. A config already in the tree is the repository's
     // release policy; replacing it would change version numbers with no commit
     // to blame, which is the one thing this whole tool is arranged against.
-    { path: 'cutver.yml', contents: configTemplate(eco), onlyIfAbsent: true },
+    {
+      path: 'cutver.yml',
+      contents: configTemplate(eco, publishes),
+      onlyIfAbsent: true,
+    },
   ]
 }
 
@@ -215,11 +221,17 @@ export async function init(
   // another — and the disagreement is invisible until a branch silently fails
   // to trigger. When a config already exists it wins, because it is the
   // repository's actual policy.
+  //
+  // **And the config it writes has to match the manifest.** A `private: true`
+  // package scaffolds `publish:` commented out, which makes `publishesToRegistry`
+  // false, which is what stops `publish.yml` being written at all — so this has
+  // to be resolved before the effective config is parsed, not after.
+  const publishes = await detectPublishes(root)
   const effective = config.source
     ? config
-    : parseConfig(parseYaml(configTemplate(eco)), 'cutver.yml')
+    : parseConfig(parseYaml(configTemplate(eco, publishes)), 'cutver.yml')
 
-  for (const file of initFiles(eco, version, effective)) {
+  for (const file of initFiles(eco, version, effective, publishes)) {
     const full = `${root}/${file.path}`
     const present = await exists(full)
 

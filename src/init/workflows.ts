@@ -9,9 +9,9 @@
  * only in a docs page is folklore that gets deleted by the first person tidying
  * up.
  *
- * Kept apart from `index.ts` because they are text, not logic: nearly six
- * hundred lines of YAML in template literals, next to eighty lines that decide
- * which of them to write and where.
+ * Kept apart from `index.ts` because they are text, not logic: almost all of
+ * this file is YAML in template literals, and the decision about which of them
+ * to write, and where, is a much shorter file next door.
  */
 import { ADAPTER_FOR } from '../adapters'
 import {
@@ -117,6 +117,23 @@ const READ_VERSION: Record<Ecosystem, string> = {
   bun: `bun -e 'console.log(require("./package.json").version)'`,
   node: `node -p "require('./package.json').version"`,
   cargo: `sed -n 's/^version *= *"\\(.*\\)"/\\1/p' Cargo.toml | head -1`,
+}
+
+/**
+ * The package name, per ecosystem, for exactly the reason `READ_VERSION` is a
+ * record and not a string.
+ *
+ * **The registry probe hardcoded `bun -e` while the version beside it
+ * dispatched properly.** The npm arm generates for `bun` and `node` alike, and
+ * a `node` workflow sets up `actions/setup-node` and runs `npm ci` — there is
+ * no Bun on the runner. Steps run under `bash -e`, so the "Already on the
+ * registry?" step died on a missing binary in every generated `node` publish
+ * workflow.
+ */
+const READ_NAME: Record<Ecosystem, string> = {
+  bun: `bun -e 'console.log(require("./package.json").name)'`,
+  node: `node -p "require('./package.json').name"`,
+  cargo: `sed -n 's/^name *= *"\\(.*\\)"/\\1/p' Cargo.toml | head -1`,
 }
 
 export function versionWorkflow(
@@ -258,29 +275,6 @@ export const CARGO_RUNNERS: readonly { os: string; target: string }[] = [
 ]
 
 /**
- * Building executables and attaching them to the GitHub release.
- *
- * **Native builds on three runners, not cross-compilation.** Adding a target is
- * a decision with a toolchain attached, and a generated file that quietly
- * cross-compiles is a generated file that quietly ships a broken binary — which
- * is not hypothetical here. cutver published a segfaulting
- * `cutver-windows-x64.exe` for five releases because CI cross-compiled every
- * target on Linux and `--bytecode` produces a broken executable for the Windows
- * target. Three native runners cannot fail that way.
- *
- * **The binaries are discovered, never named.** `cargo metadata` lists the bin
- * targets the workspace actually declares, so adding a binary needs no edit
- * here and a renamed one cannot leave the workflow uploading nothing.
- *
- * **The three runners are a starting point, not a promise.** cutver knows which
- * binaries a workspace declares; it cannot know what they link against. A crate
- * pulling `fuser` under `cfg(unix)` builds on Linux and fails on macOS, because
- * `cfg(unix)` is true there and libfuse is not — measured, on a real release.
- * Windows crates that read an SDK at build time need it installed first. Both
- * are for the caller to add or to delete the row, the same way the gates are:
- * a generated file that guessed would ship a binary nobody tested.
- */
-/**
  * Where the collect-and-upload step is spliced into the JavaScript jobs.
  *
  * The two of them differ only in their runner setup, so the part that reads the
@@ -355,6 +349,29 @@ ${lines.join('\n')}
           path: staged/*`
 }
 
+/**
+ * Building executables and attaching them to the GitHub release.
+ *
+ * **Native builds on three runners, not cross-compilation.** Adding a target is
+ * a decision with a toolchain attached, and a generated file that quietly
+ * cross-compiles is a generated file that quietly ships a broken binary — which
+ * is not hypothetical here. cutver published a segfaulting
+ * `cutver-windows-x64.exe` for five releases because CI cross-compiled every
+ * target on Linux and `--bytecode` produces a broken executable for the Windows
+ * target. Three native runners cannot fail that way.
+ *
+ * **The binaries are discovered, never named.** `cargo metadata` lists the bin
+ * targets the workspace actually declares, so adding a binary needs no edit
+ * here and a renamed one cannot leave the workflow uploading nothing.
+ *
+ * **The three runners are a starting point, not a promise.** cutver knows which
+ * binaries a workspace declares; it cannot know what they link against. A crate
+ * pulling `fuser` under `cfg(unix)` builds on Linux and fails on macOS, because
+ * `cfg(unix)` is true there and libfuse is not — measured, on a real release.
+ * Windows crates that read an SDK at build time need it installed first. Both
+ * are for the caller to add or to delete the row, the same way the gates are:
+ * a generated file that guessed would ship a binary nobody tested.
+ */
 const ARTIFACT_JOB: Record<Ecosystem, string> = {
   cargo: `  artifacts:
     name: \${{ matrix.target }}
@@ -440,24 +457,21 @@ ${UPLOAD_PLACEHOLDER}`,
 }
 
 /**
- * Attaching what the matrix built, and marking a prerelease as one.
- *
- * **\`--prerelease\` is not cosmetic.** \`releases/latest/download/…\` follows
- * GitHub's idea of latest, which skips prereleases — so a beta wrongly marked
- * as a full release becomes the target of every unpinned download URL, and a
- * project that has only published prereleases gets a 404 from that URL rather
- * than an empty result. Both were measured against this project.
- */
-/**
  * The GitHub release, which every tag gets — with or without binaries to hang
  * on it.
  *
  * **It used to be written only for `artifacts`, and that was the wrong seam.**
  * A package publishing to npm and nothing else got no release page at all,
  * which meant `cutver notes` never ran for it, which meant
- * `changelog.summarize` and every `summarizer:` setting were dead config in the
+ * `changelog.summarizer` and every summariser setting were dead config in the
  * most common kind of repository there is. Binaries are a reason to *upload*
  * something; they were never the reason to have a release.
+ *
+ * **`--prerelease` is not cosmetic.** `releases/latest/download/…` follows
+ * GitHub's idea of latest, which skips prereleases — so a beta wrongly marked
+ * as a full release becomes the target of every unpinned download URL, and a
+ * project that has only published prereleases gets a 404 from that URL rather
+ * than an empty result. Both were measured against this project.
  *
  * @param artifacts whether an `artifacts` job ran and left files to attach.
  *                  Decides what this waits on, and whether there is anything to
@@ -495,7 +509,7 @@ ${
     : ''
 }${RUN[eco].setup}
 
-      # The changelog section for this tag, and — if \`changelog.summarize\` is
+      # The changelog section for this tag, and — if \`changelog.summarizer\` is
       # set — rewritten by that command. Both live in cutver rather than in this
       # file on purpose: **anything written here is frozen at \`init\` time for
       # every repository that already ran it**, so improving it later would mean
@@ -513,7 +527,7 @@ ${
         timeout-minutes: 15
         continue-on-error: true
         env:
-          # The summariser command, when \`changelog.summarize\` is on. **Here and
+          # The summariser command, when \`changelog.summarizer\` is on. **Here and
           # not in cutver.yml**: a command in a tracked file is a command a fork
           # can put there, and \`gh pr checkout\` brings a fork's tracked files
           # into a maintainer's working tree. A workflow env is set by whoever
@@ -762,7 +776,7 @@ ${
       - name: Already on the registry?
         id: exists
         run: |
-          name=$(bun -e 'console.log(require("./package.json").name)')
+          name=$(${READ_NAME[eco]})
           version="\${TAG#v}"
           if curl -fsS -o /dev/null "https://registry.npmjs.org/$name/$version"; then
             echo "value=true" >> "$GITHUB_OUTPUT"

@@ -86,6 +86,7 @@ changelog:
 | key | |
 | --- | --- |
 | `sections` | Which commit types get a heading, in reading order. |
+| `file` | Whether cutver writes `CHANGELOG.md` at all. `true` by default. `false` keeps everything else — compiled release bodies, `notes`, `--overwrite` — and never touches the file, which is what a project whose changelog is hand-written prose wants. |
 | `keep` | Release sections retained in the file. Default 10; `false`, `0` and `null` all keep every one. |
 | `prereleases` | Whether a prerelease gets its own heading. **Off by default** — excluding them widens each stable release's span to the previous *stable* tag rather than dropping the commits. |
 | `summarizer` | Where the **GitHub release body** goes to be rewritten. `CHANGELOG.md` is never summarised. See [The summariser](#the-summariser). |
@@ -263,6 +264,14 @@ file must not publish one as a side effect of wanting version numbers: opting in
 is a line of config, opting out afterwards is not possible at all. npm has no
 reservation of that kind and a `package.json` almost always exists to be
 installed, so the safe default differs the same way the risk does.
+
+> **`"private": true` settles it, and `cutver init` reads it.** That flag is
+> npm's own refusal to publish, so a scaffolded `publish: true` would generate a
+> workflow asking for `id-token: write` to run a publish the registry would
+> reject. A private root gets `publish: false` written out — stated rather than
+> left off, because for npm the *default* is `true` and silence still publishes
+> — and no `publish.yml` at all. Tags, version numbers and changelogs are
+> unaffected. Change the line if the package stops being private.
 
 Two things follow from the setting, beyond which jobs `cutver init` writes:
 

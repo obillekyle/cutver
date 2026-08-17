@@ -8,7 +8,7 @@
  * workflows into a GitLab repository as readily as into a GitHub one, where
  * they sit in a directory nothing reads.
  */
-import { exists } from '../runtime'
+import { exists, readText } from '../runtime'
 
 /** The CI systems worth telling apart, and the file that gives each away. */
 const CI_MARKERS = [
@@ -96,4 +96,37 @@ export async function detectEcosystem(root: string): Promise<Detected | null> {
     exists(`${root}/bun.lock`),
   ])
   return lockb || lock ? 'bun' : 'node'
+}
+
+/**
+ * Whether a tag here should reach a registry, from what the manifest already
+ * says.
+ *
+ * **`private: true` is npm's own refusal to publish, and cutver already trusts
+ * it everywhere except the one place it decides anything.** `adapters/js.ts`
+ * uses it to skip the registry lookup, to leave a package's version alone, and
+ * to answer what would reach the registry at all. `init` never read it — so an
+ * application scaffolded `publish: true` and got a `publish.yml` carrying
+ * `id-token: write` and an `npm publish` that npm would refuse. `doctor` then
+ * said nothing was wrong, because the package it would have checked had been
+ * filtered out for being private.
+ *
+ * Cargo has scaffolded the careful way since 2.0 — `config/schema.ts` makes the
+ * argument, that a Rust workspace is more often an application than a library.
+ * This is that argument applied where the manifest states the answer outright
+ * rather than leaving it to a base rate.
+ *
+ * Absent or unreadable, the answer is `true`: that is the behaviour every
+ * release before this had, and a missing manifest is not evidence of intent.
+ */
+export async function detectPublishes(root: string): Promise<boolean> {
+  try {
+    const raw = await readText(`${root}/package.json`)
+    return (JSON.parse(raw) as { private?: boolean }).private !== true
+  } catch {
+    // Missing, or a manifest that will not parse. Neither is this function's to
+    // report — `stage` and `doctor` both say so in terms — and neither is
+    // evidence of intent, so the long-standing default stands.
+    return true
+  }
 }
