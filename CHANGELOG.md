@@ -8,9 +8,19 @@ is only ever as good as the commits — which is the point.
 explanation in the commit body, where it is also visible in `git log`, in a
 pull request, and on the release page.
 
+## [2.1.3] — 2026-08-17
+
+<sub>diff: [13f569f...d59d1de](https://github.com/obillekyle/cutver/compare/13f569f...d59d1de)</sub>
+
+### Fixes
+
+- **changelog:** `pages` lost the `diff:` footnote ([d59d1de](https://github.com/obillekyle/cutver/commit/d59d1de))
+
+    The prompt now tells the model not to write one, because cutver restores it from the fact it already holds. `notes` passes that fact; `pages` never did — it handed over the compiled section and nothing else, so the model obeyed, cutver had nothing to restore, and every page came out with no footnote at all. Measured by regenerating two repositories and reading the result.
+
 ## [2.1.2] — 2026-08-17
 
-<sub>diff: [df84d95...8d0d98b](https://github.com/obillekyle/cutver/compare/df84d95...8d0d98b)</sub>
+<sub>diff: [df84d95...13f569f](https://github.com/obillekyle/cutver/compare/df84d95...13f569f)</sub>
 
 ### Fixes
 
@@ -153,15 +163,5 @@ pull request, and on the release page.
     The generated cargo artifact job built fine on Windows and then could not copy a binary that was sitting right there:
 
         cp: cannot stat 'target/release/app'$'\r''.exe': No such file or directory
-
-## [1.1.0] — 2026-08-15
-
-<sub>diff: [f74270c...0cc9606](https://github.com/obillekyle/cutver/compare/f74270c...0cc9606)</sub>
-
-### New Features
-
-- `publish` decides what a tag produces ([fbf66bb](https://github.com/obillekyle/cutver/commit/fbf66bb))
-
-    A list rather than a choice, because these were never alternatives. cutver's own release publishes to npm *and* attaches five standalone executables — a repository with no JavaScript runtime still needs a way to run a version bump — so an enum would have made this project's own release shape unrepresentable.
 
 Older releases are in the git tags and on the releases page.
