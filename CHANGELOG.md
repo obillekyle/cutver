@@ -8,9 +8,19 @@ is only ever as good as the commits — which is the point.
 explanation in the commit body, where it is also visible in `git log`, in a
 pull request, and on the release page.
 
+## [2.1.4] — 2026-08-17
+
+<sub>diff: [6251d93...c401fcb](https://github.com/obillekyle/cutver/compare/6251d93...c401fcb)</sub>
+
+### Performance
+
+- **changelog:** decide which pages need writing before compiling any ([c401fcb](https://github.com/obillekyle/cutver/commit/c401fcb))
+
+    `cutver changelog pages v2.1.0` read thirty-eight release sections to write one, and printed the proof: two full passes of `generating changelog for …`, one for the file's list and one for the every-tag list, before filtering to a single entry.
+
 ## [2.1.3] — 2026-08-17
 
-<sub>diff: [13f569f...d59d1de](https://github.com/obillekyle/cutver/compare/13f569f...d59d1de)</sub>
+<sub>diff: [13f569f...6251d93](https://github.com/obillekyle/cutver/compare/13f569f...6251d93)</sub>
 
 ### Fixes
 
@@ -151,17 +161,5 @@ pull request, and on the release page.
 - **init:** name the matrix rows that will need a setup step ([4ccf863](https://github.com/obillekyle/cutver/commit/4ccf863))
 
     cutver knows which binaries a cargo workspace declares — the collect step asks cargo rather than naming them. It cannot know what they *link against*, because the thing that stops a build is a system library and system libraries appear in no manifest. `fuser` needs libfuse; nothing in any Cargo.toml says so.
-
-## [1.1.1] — 2026-08-15
-
-<sub>diff: [0cc9606...8aadce9](https://github.com/obillekyle/cutver/compare/0cc9606...8aadce9)</sub>
-
-### Fixes
-
-- **init:** strip the carriage return jq leaves on a Windows runner ([400d3a4](https://github.com/obillekyle/cutver/commit/400d3a4))
-
-    The generated cargo artifact job built fine on Windows and then could not copy a binary that was sitting right there:
-
-        cp: cannot stat 'target/release/app'$'\r''.exe': No such file or directory
 
 Older releases are in the git tags and on the releases page.
