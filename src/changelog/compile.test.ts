@@ -5,15 +5,26 @@ import { compileReleases } from './compile'
 import { write } from '../runtime'
 
 /**
- * A git identity for every fixture here, set once — see `plan.test.ts` for why
- * this is the environment rather than two `git config` spawns per fixture.
+ * A git identity for every fixture here.
+ *
+ * **Passed to each spawn, not assigned to `process.env`.** `Bun.spawn`
+ * snapshots the environment at startup and does not see later mutations —
+ * measured — while `node:child_process` does. Assigning to `process.env`
+ * therefore worked in the files that spawn through `run()` and silently did
+ * nothing here: it passed locally, where this machine has a global git
+ * identity to fall back on, and failed on CI, which has none.
+ *
+ * The commits never landed and nothing said so — the fixtures ignored every
+ * exit code, so an empty history arrived at the assertions as "no user-facing
+ * changes". `git()` throws now, which is the half that made this expensive.
  */
-Object.assign(process.env, {
+const GIT_ENV = {
+  ...process.env,
   GIT_AUTHOR_NAME: 'fixture',
   GIT_AUTHOR_EMAIL: 'fixture@example.invalid',
   GIT_COMMITTER_NAME: 'fixture',
   GIT_COMMITTER_EMAIL: 'fixture@example.invalid',
-})
+}
 
 /**
  * Which releases get a heading, and which are folded into the next one.
@@ -38,9 +49,19 @@ async function repo(): Promise<string> {
   const dir = mkdtempSync(`${tmpdir()}/cutver-compile-`).replaceAll('\\', '/')
   roots.push(dir)
 
-  const git = (...args: string[]) =>
-    Bun.spawn(['git', ...args], { cwd: dir, stdout: 'pipe', stderr: 'pipe' })
-      .exited
+  const git = async (...args: string[]) => {
+    const p = Bun.spawn(['git', ...args], {
+      cwd: dir,
+      env: GIT_ENV,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    const code = await p.exited
+    if (code !== 0) {
+      const why = (await new Response(p.stderr).text()).trim()
+      throw new Error(`git ${args.join(' ')} exited ${code}: ${why}`)
+    }
+  }
 
   await git('init', '-q')
 

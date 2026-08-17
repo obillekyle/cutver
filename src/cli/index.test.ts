@@ -4,15 +4,26 @@ import { tmpdir } from 'node:os'
 import manifest from '../../package.json' with { type: 'json' }
 
 /**
- * A git identity for every fixture here, set once — see `plan.test.ts` for why
- * this is the environment rather than two `git config` spawns per fixture.
+ * A git identity for every fixture here.
+ *
+ * **Passed to each spawn, not assigned to `process.env`.** `Bun.spawn`
+ * snapshots the environment at startup and does not see later mutations —
+ * measured — while `node:child_process` does. Assigning to `process.env`
+ * therefore worked in the files that spawn through `run()` and silently did
+ * nothing here: it passed locally, where this machine has a global git
+ * identity to fall back on, and failed on CI, which has none.
+ *
+ * The commits never landed and nothing said so — the fixtures ignored every
+ * exit code, so an empty history arrived at the assertions as "no user-facing
+ * changes". `git()` throws now, which is the half that made this expensive.
  */
-Object.assign(process.env, {
+const GIT_ENV = {
+  ...process.env,
   GIT_AUTHOR_NAME: 'fixture',
   GIT_AUTHOR_EMAIL: 'fixture@example.invalid',
   GIT_COMMITTER_NAME: 'fixture',
   GIT_COMMITTER_EMAIL: 'fixture@example.invalid',
-})
+}
 
 /**
  * The CLI as a subprocess, which is the only way to see what it reports.
@@ -194,9 +205,19 @@ describe('the version it reports', () => {
 describe('cutver stage, against an orphaned tag', () => {
   async function repo(): Promise<string> {
     const dir = mkdtempSync(`${tmpdir()}/cutver-orphan-`).replaceAll('\\', '/')
-    const git = (...args: string[]) =>
-      Bun.spawn(['git', ...args], { cwd: dir, stdout: 'pipe', stderr: 'pipe' })
-        .exited
+    const git = async (...args: string[]) => {
+      const p = Bun.spawn(['git', ...args], {
+        cwd: dir,
+        env: GIT_ENV,
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      const code = await p.exited
+      if (code !== 0) {
+        const why = (await new Response(p.stderr).text()).trim()
+        throw new Error(`git ${args.join(' ')} exited ${code}: ${why}`)
+      }
+    }
 
     await git('init', '-q')
     await Bun.write(`${dir}/package.json`, '{"name":"p","version":"1.0.0"}')
@@ -278,9 +299,19 @@ describe('cutver stage, against an orphaned tag', () => {
 describe('cutver check, with both manifests present', () => {
   async function repo(): Promise<string> {
     const dir = mkdtempSync(`${tmpdir()}/cutver-dual-`).replaceAll('\\', '/')
-    const git = (...args: string[]) =>
-      Bun.spawn(['git', ...args], { cwd: dir, stdout: 'pipe', stderr: 'pipe' })
-        .exited
+    const git = async (...args: string[]) => {
+      const p = Bun.spawn(['git', ...args], {
+        cwd: dir,
+        env: GIT_ENV,
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      const code = await p.exited
+      if (code !== 0) {
+        const why = (await new Response(p.stderr).text()).trim()
+        throw new Error(`git ${args.join(' ')} exited ${code}: ${why}`)
+      }
+    }
 
     await git('init', '-q')
     await Bun.write(`${dir}/package.json`, '{"name":"p","version":"1.0.0"}')
@@ -371,9 +402,19 @@ describe('cutver check, with both manifests present', () => {
 describe('cutver stage, in a repository with no tags', () => {
   async function repo(version: string, subject: string): Promise<string> {
     const dir = mkdtempSync(`${tmpdir()}/cutver-first-`).replaceAll('\\', '/')
-    const git = (...args: string[]) =>
-      Bun.spawn(['git', ...args], { cwd: dir, stdout: 'pipe', stderr: 'pipe' })
-        .exited
+    const git = async (...args: string[]) => {
+      const p = Bun.spawn(['git', ...args], {
+        cwd: dir,
+        env: GIT_ENV,
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      const code = await p.exited
+      if (code !== 0) {
+        const why = (await new Response(p.stderr).text()).trim()
+        throw new Error(`git ${args.join(' ')} exited ${code}: ${why}`)
+      }
+    }
 
     await git('init', '-q')
     await Bun.write(
@@ -472,9 +513,19 @@ describe('cutver stage, in a repository with no tags', () => {
 describe('cutver stage, crossing out of 0.x', () => {
   async function repo(version: string, subject: string): Promise<string> {
     const dir = mkdtempSync(`${tmpdir()}/cutver-zerox-`).replaceAll('\\', '/')
-    const git = (...args: string[]) =>
-      Bun.spawn(['git', ...args], { cwd: dir, stdout: 'pipe', stderr: 'pipe' })
-        .exited
+    const git = async (...args: string[]) => {
+      const p = Bun.spawn(['git', ...args], {
+        cwd: dir,
+        env: GIT_ENV,
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      const code = await p.exited
+      if (code !== 0) {
+        const why = (await new Response(p.stderr).text()).trim()
+        throw new Error(`git ${args.join(' ')} exited ${code}: ${why}`)
+      }
+    }
 
     await git('init', '-q')
     await Bun.write(
@@ -586,9 +637,19 @@ describe('cutver stage, crossing out of 0.x', () => {
 describe('cutver stage, the guards before the write', () => {
   async function repo(): Promise<string> {
     const dir = mkdtempSync(`${tmpdir()}/cutver-guard-`).replaceAll('\\', '/')
-    const git = (...args: string[]) =>
-      Bun.spawn(['git', ...args], { cwd: dir, stdout: 'pipe', stderr: 'pipe' })
-        .exited
+    const git = async (...args: string[]) => {
+      const p = Bun.spawn(['git', ...args], {
+        cwd: dir,
+        env: GIT_ENV,
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      const code = await p.exited
+      if (code !== 0) {
+        const why = (await new Response(p.stderr).text()).trim()
+        throw new Error(`git ${args.join(' ')} exited ${code}: ${why}`)
+      }
+    }
 
     await git('init', '-q')
     await Bun.write(`${dir}/package.json`, '{"name":"p","version":"1.0.0"}')
