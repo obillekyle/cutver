@@ -7,8 +7,8 @@
  * config it was generated from. Add a channel, forget to regenerate, and the
  * publish reaches its last step and dies on the catch-all *after the tag and
  * the release commit are already public*. That failure is described in
- * `init.ts` as the reason the arms are derived at all; this is the part that
- * notices.
+ * `init/index.ts` as the reason the arms are derived at all; this is the part
+ * that notices.
  *
  * **Two rules about where this runs, and both matter more than the check.**
  *
@@ -209,7 +209,7 @@ export function inspect(
       })
     }
 
-    // **Opted in, and nothing to run it with.** `changelog.summarize: true` is
+    // **Opted in, and nothing to run it with.** `changelog.summarizer: true` is
     // the repository saying it wants a summarised body; the command that does
     // the summarising deliberately does not live in the config, so turning the
     // switch on is only half of it. Nothing warns you about the other half —
@@ -229,13 +229,20 @@ export function inspect(
     ) {
       found.push({
         level: 'warn',
+        // **Nested under `changelog:`, and named `summarizer`.** Both halves
+        // of this were wrong in the same four lines: it reported the key as
+        // `changelog.summarize`, which this project deprecated in 2.0, and the
+        // block it told you to paste was a top-level `summarizer:`, which the
+        // loader flags as the pre-2.0 spelling. Following `doctor`'s advice
+        // produced a config `doctor` then complains about.
         message:
-          '`changelog.summarize` is on, but nothing is configured to do it — ' +
+          '`changelog.summarizer` is on, but nothing is configured to do it — ' +
           'the release body goes out as written.\n' +
           '        Name a provider in cutver.yml:\n' +
-          '          summarizer:\n' +
-          '            connector: gemini      # or anthropic, openai-compatible\n' +
-          '            model: gemini-3.5-flash\n' +
+          '          changelog:\n' +
+          '            summarizer:\n' +
+          '              connector: gemini      # or anthropic, openai-compatible\n' +
+          '              model: gemini-3.5-flash\n' +
           '        and set the key in your CI secrets as `CUTVER_SUMMARIZE_KEY`.\n' +
           '        There is no key in the config: this file is committed and published.\n' +
           '\n' +
@@ -246,7 +253,7 @@ export function inspect(
     }
 
     // A workflow older than `cutver notes` carries the extraction itself, so it
-    // cannot pick up `changelog.summarize` or anything else added since.
+    // cannot pick up `changelog.summarizer` or anything else added since.
     // **Only where a release body exists to extract.** `cutver notes` runs in
     // the job that creates the GitHub release, which `init` writes only for
     // `artifacts`. A registry-only workflow has no release page and no notes

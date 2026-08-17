@@ -5,10 +5,13 @@
  * manifest is read, before anything is written. A config file that is wrong
  * should cost you an error message, never a version number.
  *
- * Both parsers are worse than they look and the difference matters:
- * `JSON.parse` and `Bun.YAML.parse` give no line numbers, and both silently
- * keep the *last* of a duplicated key. Measured, both of them. So cutver adds
- * the file path to every message and lints for duplicates itself.
+ * Neither parser says enough on its own. `JSON.parse` gives no line numbers and
+ * silently keeps the *last* of a duplicated key — measured. The YAML parser
+ * does reject a repeated key, which sounds better and is worse: the same
+ * mistake in `cutver.json` would go unreported, so one error would have two
+ * spellings depending on the file extension. `parseYaml` disables that check
+ * for exactly this reason (see `runtime/index.ts`), and cutver adds the file
+ * path to every message and lints for duplicates itself, in both formats.
  */
 import { AUTO, type ArtifactsConfig } from './schema'
 import { CONNECTORS_AVAILABLE } from '../summarize/connectors'
@@ -211,6 +214,26 @@ export function parseConfig(raw: unknown, where: string): Config {
   }
 }
 
+/** Every key `changelog:` accepts, including the spellings kept for 2.x. */
+const CHANGELOG_KEYS = [
+  'sections',
+  'keep',
+  'prereleases',
+  'file',
+  'summarizer',
+  'summarize',
+  'prompt',
+]
+
+/**
+ * The same list, minus what nobody should start writing today.
+ *
+ * A message that fires on a typo is the one moment the correct list is worth
+ * having, and offering `summarize` there taught the spelling this file warns
+ * about two functions below.
+ */
+const SUGGESTED_CHANGELOG_KEYS = CHANGELOG_KEYS.filter(k => k !== 'summarize')
+
 /**
  * `changelog: true`, a list of sections, or an object with both knobs.
  *
@@ -249,21 +272,15 @@ function parseChangelog(
 
   const doc = raw as Record<string, unknown>
   for (const key of Object.keys(doc)) {
-    if (
-      [
-        'sections',
-        'keep',
-        'prereleases',
-        'file',
-        'summarizer',
-        'summarize',
-        'prompt',
-      ].includes(key)
-    )
-      continue
+    if (CHANGELOG_KEYS.includes(key)) continue
+    // **Listed from the array that decides, not from a second copy.** The two
+    // had drifted: seven keys were accepted and four were named, so the message
+    // that fires on a typo — the one moment the correct list is worth having —
+    // omitted `prereleases`, `file` and `summarizer`, and offered `summarize`,
+    // which this loader deprecates twenty lines below.
     throw new ConfigError(
-      `${where}: unknown key \`changelog.${key}\` — expected sections, keep,` +
-        `summarize or prompt`,
+      `${where}: unknown key \`changelog.${key}\` — expected ` +
+        `${SUGGESTED_CHANGELOG_KEYS.join(', ')}`,
     )
   }
 

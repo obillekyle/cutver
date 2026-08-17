@@ -171,15 +171,19 @@ export interface ChangelogConfig {
    * pointed at `0.1.0-beta.9`, nobody installed it on purpose, and everything
    * in it ships again under the stable version that follows — so a heading for
    * it describes a version its reader cannot get and spends one of `keep`'s
-   * slots doing it. Measured on this repository: five of ten kept sections were
-   * betas.
+   * slots doing it. Measured on this repository when the default was chosen:
+   * five of the ten kept sections were betas. (It is none of ten now — fourteen
+   * stable releases have shipped since, which is what a full `keep` window
+   * looks like once a project stops living in prerelease. The ratio moves; the
+   * reason a beta heading is worth nothing does not.)
    *
    * **Excluding them widens the ranges rather than dropping the commits**, and
    * that is the part worth stating. A stable release's span runs from the
    * previous *stable* tag, absorbing every prerelease between — otherwise
    * removing the headings would silently delete their contents. On this
-   * repository `v1.0.0` covers 2 commits measured from `v0.1.0-beta.12`, and 33
-   * measured from the last stable point. The same distinction already exists in
+   * repository `v1.0.0` covers 2 commits measured from `v0.1.0-beta.12`, and 41
+   * measured from the last stable point — which for the first stable release is
+   * the root commit. The same distinction already exists in
    * `plan.ts`, which asks "any tag" to decide *whether* to release and "last
    * stable tag" to decide *from what*.
    *
@@ -245,7 +249,7 @@ export interface ChangelogConfig {
  * Where the summariser sends the notes, when it is not a local command.
  *
  * **Separate from `changelog`, because they answer different questions.**
- * `changelog.summarize` is the repository saying it wants a summarised release
+ * `changelog.summarizer` is the repository saying it wants a summarised release
  * body — reviewable, and true whoever runs the release. This is the wiring, and
  * a fork is free to point it somewhere else without that meaning anything.
  */
@@ -254,19 +258,18 @@ export interface SummarizerConfig {
   connector: string
   /** Passed through verbatim. cutver keeps no list of model names — it would be stale within the month. */
   model: string
-  /**
-   * There is deliberately no `token` field.
-   *
-   * An earlier draft had one holding the *name* of an environment variable,
-   * with a validator refusing anything that looked like a real key. That works,
-   * and it is still a field whose whole job is to be filled in wrong once:
-   * `cutver.yml` is tracked, pushed, and shipped inside the npm tarball, so a
-   * key pasted there is a key published — and unlike a leaked command it cannot
-   * be made safe by review, only rotated.
-   *
-   * A field that does not exist cannot be filled in wrong. The key is resolved
-   * from the environment by connector — see `keyFor` in `connectors.ts`.
-   */
+  // **There is deliberately no `token` field**, and this is a note about the
+  // interface rather than about the field below it.
+  //
+  // An earlier draft had one holding the *name* of an environment variable,
+  // with a validator refusing anything that looked like a real key. That works,
+  // and it is still a field whose whole job is to be filled in wrong once:
+  // `cutver.yml` is tracked, pushed, and shipped inside the npm tarball, so a
+  // key pasted there is a key published — and unlike a leaked command it cannot
+  // be made safe by review, only rotated.
+  //
+  // A field that does not exist cannot be filled in wrong. The key is resolved
+  // from the environment by connector — see `keyFor` in `connectors.ts`.
   /**
    * Required for `openai-compatible`, optional elsewhere.
    *
@@ -311,24 +314,6 @@ export interface SummarizerConfig {
 }
 
 /**
- * What goes on the release page, for repositories whose build output cutver
- * cannot infer.
- *
- * **A Rust workspace declares its binaries and a JavaScript project does not.**
- * `cargo metadata` names every executable a workspace builds, which is why the
- * cargo job can collect them without being told. Nothing in a `package.json`
- * says whether the thing worth publishing is a compiled executable, a tarball,
- * a folder of assets, or nothing at all — so the generated job hard-coded
- * `dist/*` and a comment asking you to put your output there. A project that
- * builds into `out/`, or wants one file out of twenty, had to edit a generated
- * workflow that `--force` then overwrites.
- *
- * This block says *what to attach*, not how to make it. The build step stays
- * the ecosystem's own — `bun run build`, `npm run build`, the cargo matrix —
- * because that is a command someone already has, and a second place to write it
- * is a second place for it to disagree with package.json.
- */
-/**
  * `folders: auto` / `files: auto` — let the build output be found rather than
  * named.
  *
@@ -349,6 +334,24 @@ export const AUTO = 'auto'
  */
 export const AUTO_DIRS = ['dist', 'build', 'out'] as const
 
+/**
+ * What goes on the release page, for repositories whose build output cutver
+ * cannot infer.
+ *
+ * **A Rust workspace declares its binaries and a JavaScript project does not.**
+ * `cargo metadata` names every executable a workspace builds, which is why the
+ * cargo job can collect them without being told. Nothing in a `package.json`
+ * says whether the thing worth publishing is a compiled executable, a tarball,
+ * a folder of assets, or nothing at all — so the generated job hard-coded
+ * `dist/*` and a comment asking you to put your output there. A project that
+ * builds into `out/`, or wants one file out of twenty, had to edit a generated
+ * workflow that `--force` then overwrites.
+ *
+ * This block says *what to attach*, not how to make it. The build step stays
+ * the ecosystem's own — `bun run build`, `npm run build`, the cargo matrix —
+ * because that is a command someone already has, and a second place to write it
+ * is a second place for it to disagree with package.json.
+ */
 export interface ArtifactsConfig {
   /**
    * Directory globs, or `auto`. Each match is archived to `<name>.tar.gz` and
@@ -398,13 +401,6 @@ export interface Config {
   source: string | null
 }
 
-/**
- * What a tag produces here, with the adapter default applied.
- *
- * `null` and `[]` are deliberately different: `null` is "nothing was said, use
- * the default", `[]` is "say it explicitly — tag and stop". Collapsing them
- * would make opting out of publishing impossible to express.
- */
 /**
  * Whether a tag publishes to the ecosystem's registry.
  *

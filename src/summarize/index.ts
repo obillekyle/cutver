@@ -317,7 +317,7 @@ export async function summarize(
     return {
       text: fallback,
       note:
-        '`changelog.summarize` is on but nothing is configured to do it — notes used as written ' +
+        '`changelog.summarizer` is on but nothing is configured to do it — notes used as written ' +
         `(name a provider under \`summarizer:\`, or set ${COMMAND_ENV}; ` +
         `\`cutver check\` prints both)`,
     }

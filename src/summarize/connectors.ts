@@ -135,9 +135,8 @@ async function request<T>(
   // A 200 with nothing usable in it. Reported rather than treated as an empty
   // summary, because "the model returned nothing" and "cutver could not find
   // the text in this response" are different bugs and only one of them is the
-  // user's to fix.
-  // A 200 whose body has no text in it. Not retryable: the request was
-  // accepted and answered, and asking again produces the same shape.
+  // user's to fix. Not retryable either way: the request was accepted and
+  // answered, so asking again produces the same shape.
   return text
     ? { text, error: null, retryable: false }
     : { text: null, error: 'no text in the response', retryable: false }

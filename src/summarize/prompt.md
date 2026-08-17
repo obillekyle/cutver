@@ -23,7 +23,7 @@ Turn the commits below into a release body. Answer in exactly two tagged parts a
 - <the change, one line> (<sha>)          ← a commit whose subject has no scope
 ```
 
-* Headings only from: `Breaking Changes`, `New Features`, `Fixes`, `Performance`, `Refactor`, `Docs`, `Deprecated`, `Build`, `CI`, `Tests` — in that order, dropping empty ones. Invent none.
+* Headings only from: `Breaking Changes`, `New Features`, `Fixes`, `Performance`, `Refactor`, `Docs`, `Build`, `CI`, `Tests` — in that order, dropping empty ones. Invent none.
 * Do not write a `diff:` line. cutver puts it back itself, so anything you emit there is discarded.
 * Link shas on GitHub, taking owner and repo from the `<metadata>` URL: `([abc1234](https://github.com/<owner>/<repo>/commit/abc1234))`. Otherwise `(abc1234)`.
 * One line per bullet — no second line, nested bullets or explanation. No scope means the line starts with the change; never write an empty `**:**`.

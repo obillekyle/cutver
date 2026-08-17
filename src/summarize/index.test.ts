@@ -220,13 +220,36 @@ describe('payload', () => {
     expect(PROMPT).toContain('keep only the shipped state, under the later sha')
   })
 
-  test('the shipped prompt names every heading it may use', () => {
+  test('the shipped prompt authorises no heading the changelog cannot render', () => {
     // The model picks the heading now — the input is raw commits with no
-    // sections in it — so the set has to be closed and it has to match the ones
-    // `SECTIONS` renders. Otherwise the release page and `CHANGELOG.md`
+    // sections in it — so the set has to be closed, and every name in it has to
+    // be one `SECTIONS` renders. Otherwise the release page and `CHANGELOG.md`
     // describe the same release under different names.
-    for (const heading of Object.values(SECTIONS).slice(0, 6)) {
-      expect(PROMPT).toContain(heading)
+    //
+    // **Read out of the prompt rather than asserted against a fixed count.**
+    // This checked `Object.values(SECTIONS).slice(0, 6)`, which asks whether
+    // the prompt contains six strings it already contained and can never fail
+    // for the reason the comment gives. It passed the whole time the prompt
+    // authorised a "Deprecated" heading, which is not a section this writes —
+    // so a summarised release could carry a heading its changelog never uses.
+    //
+    // One direction only. `SECTIONS` also renders `Style`, `Chores` and
+    // `Reverts`, which the prompt deliberately withholds: a release page is
+    // read by people deciding whether to upgrade, and a chore is not that.
+    // `PROMPT` is the prompt with runs of whitespace collapsed, so this matches
+    // inline rather than anchoring to a line.
+    const listed = /Headings only from: (.+?) — in that order/.exec(PROMPT)?.[1]
+    expect(listed, 'the prompt no longer lists its headings').toBeTruthy()
+
+    const authorised = [...(listed ?? '').matchAll(/`([^`]+)`/g)].map(
+      m => m[1] as string,
+    )
+    expect(authorised.length).toBeGreaterThan(0)
+
+    const renderable = new Set(Object.values(SECTIONS))
+    for (const heading of authorised) {
+      expect(renderable, `\`${heading}\` is not a section cutver writes`)
+        .toContain(heading)
     }
     expect(PROMPT).toContain('Invent none')
   })

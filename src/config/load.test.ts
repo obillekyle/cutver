@@ -96,6 +96,30 @@ describe('validation', () => {
     expect(() => at({ targets: 'bun' })).toThrow(/unknown key `targets`/)
   })
 
+  test('a bad `changelog:` key is told the whole list, and no dead spelling', () => {
+    // **The accepted set and the advertised set were two literals.** Seven keys
+    // were accepted and four named, so the message that fires on a typo — the
+    // one moment the list is worth having — omitted `prereleases`, `file` and
+    // `summarizer`, and offered `summarize`, which this loader deprecates.
+    //
+    // Each accepted key is probed rather than the sentence being matched
+    // whole: that is what makes adding a key to the array and forgetting the
+    // message impossible, which is the failure this replaces.
+    let message = ''
+    try {
+      at({ changelog: { nope: 1 } })
+    } catch (e) {
+      message = (e as Error).message
+    }
+
+    for (const key of ['sections', 'keep', 'prereleases', 'file', 'prompt']) {
+      expect(message, key).toContain(key)
+    }
+    expect(message).toContain('summarizer')
+    // The 2.x spelling still parses; it must not be taught to anyone new.
+    expect(message).not.toMatch(/\bsummarize\b(?!r)/)
+  })
+
   test('a newer schema refuses rather than guesses', () => {
     // An unknown schema may give a key this build already knows a different
     // meaning, and the failure mode of guessing is an irreversible publish.
