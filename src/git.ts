@@ -5,8 +5,16 @@
  * repository rather than from inside its own, so an implicit `process.cwd()`
  * anywhere here is a bug waiting for the first `--cwd` invocation.
  *
- * Nothing here writes. The commit and the tag are left to the caller — see the
- * note at the end of `cli/index.ts` for why the tool stops where it does.
+ * **One function here writes, and only one: `createTag`.** Everything else
+ * reads. The commit is still the caller's, and so is the push — see the note at
+ * the top of `cli/index.ts` for why the tool stops where it does.
+ *
+ * The exception is the *first* tag in a repository that has none. Every release
+ * after it is measured from a tag, so the first one is the only thing standing
+ * between a fresh project and a tool that cannot help it yet — and asking
+ * someone to type `git tag v0.1.0` correctly, once, before anything works is a
+ * bad first five minutes. A local tag publishes nothing: the push is still a
+ * separate act by a person, which is the line that actually matters.
  */
 import { run } from './run'
 import type { Commit } from './version-from-commits'
@@ -25,7 +33,8 @@ export async function isGitRepo(root: string): Promise<boolean> {
  *
  * Stable specifically — `git describe --abbrev=0` would hand back
  * `v1.3.0-beta.2`, and measuring commits from there is how a breaking change
- * that lands mid-beta gets released as a minor. See `nextVersion`.
+ * that lands mid-beta gets released as a minor. See `baseline` in `plan.ts`,
+ * which is what calls this and where the rule is applied.
  */
 export async function lastStableTag(
   root: string,
@@ -200,6 +209,30 @@ export async function tagExists(root: string, tag: string): Promise<boolean> {
     root,
   )
   return ok
+}
+
+/**
+ * Create a lightweight tag at HEAD. The only write in this file.
+ *
+ * **Lightweight rather than annotated**, because an annotated tag needs a
+ * message and a tagger identity, and a repository fresh enough to have no tags
+ * is one where `user.email` may not be set either — a release should not fail on
+ * git config it never needed to read. Every tag cutver's own workflows push is
+ * lightweight too, so this matches what the rest of the pipeline expects.
+ *
+ * **Never forced.** `git tag` refuses an existing name and that refusal is
+ * wanted: the one path that calls this has already established the repository
+ * had no tags, so a collision here means something changed underneath and the
+ * honest answer is to stop rather than move somebody's tag.
+ *
+ * @returns the error git gave, or `null` when the tag was created.
+ */
+export async function createTag(
+  root: string,
+  tag: string,
+): Promise<string | null> {
+  const { ok, out } = await run(['git', 'tag', tag], root)
+  return ok ? null : out || `git refused to create ${tag}`
 }
 
 /**

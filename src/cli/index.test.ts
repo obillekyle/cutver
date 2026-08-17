@@ -30,6 +30,26 @@ const ENTRY = new URL('./index.ts', import.meta.url).pathname.replace(
   '$1',
 )
 
+/**
+ * Every test here spawns at least one process, and bun's default allows 5s.
+ *
+ * **Measured, after chasing it as a mystery flake for a while.** The suite went
+ * green 18 runs out of 20 and failed twice with no pattern; the failures were
+ * `Expected: 0, Received: 143`, which is SIGTERM — bun killing a subprocess it
+ * had already given up on. The line above it said so plainly once the run was
+ * captured: `this test timed out after 5000ms`, at 5030ms.
+ *
+ * `an explicit version is obeyed, either way` is the one that goes first,
+ * because it builds a git repository and spawns cutver *twice* in a loop. On an
+ * idle machine it lands just under the limit; with anything else running it
+ * does not. Nothing was wrong with the code, and every re-run said so, which is
+ * exactly what made it expensive to find.
+ *
+ * Generous rather than tuned: the number that matters is "not a wall clock a
+ * loaded laptop can lose against", and a test that hangs for real still fails.
+ */
+const SLOW = 30_000
+
 async function cutver(
   ...args: string[]
 ): Promise<{ out: string; code: number }> {
@@ -70,14 +90,14 @@ describe('cutver notes', () => {
       .slice(1)
     for (const older of rest)
       expect(out, `ran on into ${older}`).not.toContain(`## [${older}]`)
-  })
+  }, SLOW)
 
   test('a range compiles from the commits instead', async () => {
     const { out, code } = await cutver('notes', 'v1.1.0', 'v1.1.1')
     expect(code).toBe(0)
     expect(out).toContain('diff:')
     expect(out).toMatch(/^### /m)
-  })
+  }, SLOW)
 
   test('a version nobody tagged is not an error', async () => {
     // **Always exit 0.** This runs in a publish job that has already tagged and
@@ -86,12 +106,12 @@ describe('cutver notes', () => {
     const { out, code } = await cutver('notes', 'v99.99.99')
     expect(code).toBe(0)
     expect(out).toContain('releasing without a body')
-  })
+  }, SLOW)
 
   test('no argument is refused, since there is nothing to guess', async () => {
     const { code } = await cutver('notes')
     expect(code).toBe(1)
-  })
+  }, SLOW)
 })
 
 describe('the version it reports', () => {
@@ -99,15 +119,15 @@ describe('the version it reports', () => {
     const { out, code } = await cutver('--version')
     expect(code).toBe(0)
     expect(out.trim()).toBe(manifest.version)
-  })
+  }, SLOW)
 
   test('appears in --help too', async () => {
-    // `HELP` interpolates the same constant, and it is what a person reads
+    // `help()` is handed the same version, and it is what a person reads
     // before `--version` occurs to them.
     const { out } = await cutver('--help')
     expect(out).toContain(`cutver ${manifest.version}`)
     expect(out).not.toContain('cutver dev')
-  })
+  }, SLOW)
 
   test('is a version the download URLs can be built from', async () => {
     // The consequence, stated as its own assertion: `downloadBase` and `init`'s
@@ -116,7 +136,7 @@ describe('the version it reports', () => {
     // string reaching them at all.
     const { out } = await cutver('--version')
     expect(out.trim()).toMatch(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/)
-  })
+  }, SLOW)
 })
 
 /**
@@ -175,7 +195,7 @@ describe('cutver stage, against an orphaned tag', () => {
     expect(manifest.version).toBe('1.0.0')
 
     rmSync(dir, { recursive: true, force: true })
-  })
+  }, SLOW)
 
   test('--if-needed does not soften it', async () => {
     // That flag means "no release was warranted". This is the opposite: one is
@@ -191,7 +211,171 @@ describe('cutver stage, against an orphaned tag', () => {
 
     expect(code).toBe(1)
     rmSync(dir, { recursive: true, force: true })
-  })
+  }, SLOW)
+})
+
+/**
+ * Both manifests, and no config to say which one the release is about.
+ *
+ * **The refusal is right; ending the process for it was not.** `check`,
+ * `doctor` and `explain` all resolve an adapter, and `resolveAdapter` refuses
+ * to guess when a repository holds a `package.json` and a `Cargo.toml` — the
+ * napi-rs, Tauri and wasm-pack shape. It refused by calling `die()`, which
+ * exits, so `check` left with 1 against a promise to exit 0 for everything but
+ * the branch-declared refusal. `check` is what the pre-push hook runs, so in
+ * one of those repositories that was every push, and the flag the error named
+ * as the way out was rejected for not being in `check`'s flag list.
+ *
+ * Driven end to end because both halves are wiring: which list a flag is in,
+ * and whether a refusal returns or exits. Neither is visible to a unit test of
+ * the functions themselves, which is exactly how it survived.
+ */
+describe('cutver check, with both manifests present', () => {
+  async function repo(): Promise<string> {
+    const dir = mkdtempSync(`${tmpdir()}/cutver-dual-`).replaceAll('\\', '/')
+    const git = (...args: string[]) =>
+      Bun.spawn(['git', ...args], { cwd: dir, stdout: 'pipe', stderr: 'pipe' })
+        .exited
+
+    await git('init', '-q')
+    await git('config', 'user.email', 'a@b.c')
+    await git('config', 'user.name', 't')
+    await Bun.write(`${dir}/package.json`, '{"name":"p","version":"1.0.0"}')
+    await Bun.write(
+      `${dir}/Cargo.toml`,
+      '[package]\nname = "p"\nversion = "1.0.0"\n',
+    )
+    await git('add', '-A')
+    await git('commit', '-qm', 'feat: base')
+    return dir
+  }
+
+  test('exits 0 and names the way out, rather than blocking the push', async () => {
+    const dir = await repo()
+    const { out, code } = await cutver('check', '--cwd', dir)
+
+    expect(code).toBe(0)
+    expect(out).toContain('package.json and Cargo.toml')
+    expect(out).toContain('--adapter js|cargo')
+
+    rmSync(dir, { recursive: true, force: true })
+  }, SLOW)
+
+  test('accepts the flag its own error advises', async () => {
+    const dir = await repo()
+    const { out, code } = await cutver('check', '--adapter', 'js', '--cwd', dir)
+
+    expect(code).toBe(0)
+    expect(out).not.toContain('does not take --adapter')
+    expect(out).toContain('check ok')
+
+    rmSync(dir, { recursive: true, force: true })
+  }, SLOW)
+
+  test('explain keeps its own promise too', async () => {
+    const dir = await repo()
+    const { code } = await cutver('explain', '--cwd', dir)
+
+    expect(code).toBe(0)
+    rmSync(dir, { recursive: true, force: true })
+  }, SLOW)
+
+  test('doctor reports it instead of dying mid-report', async () => {
+    // Exit 1 is right here — it is a real problem and `doctor` grades on
+    // findings. What matters is that the rest of the report still printed.
+    const dir = await repo()
+    const { out, code } = await cutver('doctor', '--offline', '--cwd', dir)
+
+    expect(code).toBe(1)
+    expect(out).toContain('package.json and Cargo.toml')
+    expect(out).toContain('channels')
+
+    rmSync(dir, { recursive: true, force: true })
+  }, SLOW)
+})
+
+/**
+ * The opening tag, in a repository that has none.
+ *
+ * Two halves, and only the second is wiring. `plan` decides that an untagged
+ * repository ships the version its manifest already names; `stage` is what
+ * turns that into a tag on disk, and only when the manifest did not have to
+ * change — because the tag lands on HEAD, and HEAD has to already hold the
+ * version being cut. Neither half is observable from the other.
+ */
+describe('cutver stage, in a repository with no tags', () => {
+  async function repo(version: string, subject: string): Promise<string> {
+    const dir = mkdtempSync(`${tmpdir()}/cutver-first-`).replaceAll('\\', '/')
+    const git = (...args: string[]) =>
+      Bun.spawn(['git', ...args], { cwd: dir, stdout: 'pipe', stderr: 'pipe' })
+        .exited
+
+    await git('init', '-q')
+    await git('config', 'user.email', 'a@b.c')
+    await git('config', 'user.name', 't')
+    await Bun.write(`${dir}/package.json`, `{"name":"p","version":"${version}"}`)
+    await git('add', '-A')
+    await git('commit', '-qm', subject)
+    return dir
+  }
+
+  async function tags(dir: string): Promise<string> {
+    const p = Bun.spawn(['git', 'tag'], { cwd: dir, stdout: 'pipe' })
+    return (await new Response(p.stdout).text()).trim()
+  }
+
+  test('ships the manifest version and tags it', async () => {
+    // `npm init` writes 1.0.0. Before this, the first release of a brand-new
+    // project was 1.1.0 — 1.0.0 skipped, and unavailable to anyone reading the
+    // tag list later.
+    const dir = await repo('1.0.0', 'feat: the library view')
+    const { out, code } = await cutver('stage', '--offline', '--cwd', dir)
+
+    expect(code).toBe(0)
+    expect(out).toContain('1.0.0 -> 1.0.0')
+    expect(out).toContain('first release')
+    expect(await tags(dir)).toBe('v1.0.0')
+
+    // The manifest is left exactly as it was: it already said the right thing,
+    // which is the whole reason the tag can go on HEAD.
+    const manifest = await Bun.file(`${dir}/package.json`).json()
+    expect(manifest.version).toBe('1.0.0')
+
+    rmSync(dir, { recursive: true, force: true })
+  }, SLOW)
+
+  test('does not tag when the manifest had to change', async () => {
+    // `0.0.0` is a placeholder rather than an intended release, so the commits
+    // decide and the manifest moves — which leaves the bump uncommitted. A tag
+    // on HEAD would name a commit whose manifest still says 0.0.0.
+    const dir = await repo('0.0.0', 'feat: the library view')
+    const { out, code } = await cutver('stage', '--offline', '--cwd', dir)
+
+    expect(code).toBe(0)
+    expect(out).toContain('0.0.0 -> 0.1.0')
+    expect(await tags(dir), 'tagged a commit that predates the bump').toBe('')
+    expect(out).toContain('commit, tag v0.1.0')
+
+    rmSync(dir, { recursive: true, force: true })
+  }, SLOW)
+
+  test('a dry run says it would tag, and creates nothing', async () => {
+    const dir = await repo('2.3.1', 'fix: a race')
+    const { out, code } = await cutver(
+      'stage',
+      '--offline',
+      '--dry-run',
+      '--cwd',
+      dir,
+    )
+
+    expect(code).toBe(0)
+    expect(out).toContain('2.3.1 -> 2.3.1')
+    expect(out).toContain('would also create v2.3.1')
+    expect(await tags(dir)).toBe('')
+
+    rmSync(dir, { recursive: true, force: true })
+  }, SLOW)
 })
 
 /**
@@ -245,7 +429,7 @@ describe('cutver stage, crossing out of 0.x', () => {
     expect(manifest.version).toBe('0.2.0')
 
     rmSync(dir, { recursive: true, force: true })
-  })
+  }, SLOW)
 
   test('--if-needed does not soften it', async () => {
     // That flag means no release was warranted. Here one is, and cannot be
@@ -261,7 +445,7 @@ describe('cutver stage, crossing out of 0.x', () => {
 
     expect(code).toBe(1)
     rmSync(dir, { recursive: true, force: true })
-  })
+  }, SLOW)
 
   test('an explicit version is obeyed, either way', async () => {
     for (const asked of ['1.0.0', '0.3.0']) {
@@ -279,7 +463,7 @@ describe('cutver stage, crossing out of 0.x', () => {
       expect(out, asked).toContain(`0.2.0 -> ${asked}`)
       rmSync(dir, { recursive: true, force: true })
     }
-  })
+  }, SLOW)
 
   test('1.x is untouched — the promise is already made', async () => {
     const dir = await repo('1.4.0', 'feat(core)!: a breaking change')
@@ -294,5 +478,5 @@ describe('cutver stage, crossing out of 0.x', () => {
     expect(code).toBe(0)
     expect(out).toContain('1.4.0 -> 2.0.0')
     rmSync(dir, { recursive: true, force: true })
-  })
+  }, SLOW)
 })

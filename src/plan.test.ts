@@ -51,28 +51,75 @@ const at = (root: string, current: string, branch = 'main') =>
   plan({ root, current, branch, channel: null })
 
 describe('with no tags at all', () => {
-  test('measures from the manifest, not from 0.0.0', async () => {
-    // **The deviation from the script this was extracted from, and why.** That
-    // repository has been tagged since its first release, so its `0.0.0`
-    // fallback never ran. Pointed at a repository with zero tags — which is
-    // exactly the case this tool was extracted to serve — `0.0.0` computes
-    // `0.1.0` for a minor: the version the manifest already says, so the tool
-    // reports "nothing to release" across the entire history.
+  test('the first release is the manifest, not a bump past it', async () => {
+    // **A manifest is only a record of a release once something has been
+    // tagged.** With no tags there is nothing to record, so the number in the
+    // manifest is a statement of intent — the version this project means to
+    // ship first — and the commits decide only *whether* to ship it.
+    //
+    // Bumping past it is how `npm init`'s default `1.0.0` produced projects
+    // whose first ever release was `1.1.0`, with `1.0.0` skipped and missing
+    // from the tag list forever after. Measured on a fresh repository before
+    // this changed.
     const root = await repo(['chore: init', 'feat: sync engine', 'fix: a race'])
     expect(await at(root, '0.1.0')).toMatchObject({
       kind: 'release',
-      version: '0.2.0',
+      version: '0.1.0',
+      first: true,
     })
   })
 
-  test('a patch does not go backwards', async () => {
-    // The same fallback in its uglier direction: from 0.0.0 a patch computes
-    // 0.0.1, which is *lower* than the version in the manifest and which the
-    // semver check would happily accept.
+  test('the bump does not move an opening release', async () => {
+    // The same rule from its other side: a `fix:` on an untagged repository
+    // still opens at the manifest version rather than `0.1.1`. What the commits
+    // decide here is that a release is warranted at all.
     const root = await repo(['chore: init', 'fix: a race'])
     expect(await at(root, '0.1.0')).toMatchObject({
       kind: 'release',
-      version: '0.1.1',
+      version: '0.1.0',
+      first: true,
+    })
+  })
+
+  test('0.0.0 is the exception, and the commits decide', async () => {
+    // `0.0.0` is nobody's intended first release — it is the placeholder a
+    // manifest carries before anyone has chosen. Shipping it verbatim would
+    // publish a version that says "unset", so this is the one untagged case
+    // where the bump still applies.
+    const feat = await repo(['feat: sync engine'])
+    expect(await at(feat, '0.0.0')).toMatchObject({
+      kind: 'release',
+      version: '0.1.0',
+    })
+
+    const fix = await repo(['fix: a race'])
+    expect(await at(fix, '0.0.0')).toMatchObject({
+      kind: 'release',
+      version: '0.0.1',
+    })
+  })
+
+  test('an opening release is exempt from "already the current version"', async () => {
+    // That guard exists for a CI race: a workflow pushing a branch and its tag
+    // together triggers per ref, so a run can start before the tag is visible,
+    // measure across the whole history and land back on the manifest version.
+    //
+    // An opening release looks identical *locally* and must not be refused —
+    // the number being cut is supposed to equal the manifest. What separates
+    // them is that the racing repository still has its older tags, which is why
+    // this keys on there being no tag of any kind rather than no stable tag.
+    const root = await repo(['feat: one'])
+    expect(await at(root, '2.3.1')).toMatchObject({
+      kind: 'release',
+      version: '2.3.1',
+      first: true,
+    })
+
+    // And with a tag present, the guard is untouched.
+    const raced = await repo(['feat: one@v1.0.0', 'feat: two'])
+    expect(await at(raced, '1.1.0')).toMatchObject({
+      kind: 'nothing',
+      why: '1.1.0 is already the current version',
     })
   })
 

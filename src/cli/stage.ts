@@ -24,8 +24,15 @@ import {
   toKebab,
   type Config,
 } from '../config/schema'
-import { inspect, readWorkflows } from '../drift'
-import { currentBranch, isGitRepo, remoteUrl, status, tagExists } from '../git'
+import { channelOf, inspect, readWorkflows } from '../drift'
+import {
+  createTag,
+  currentBranch,
+  isGitRepo,
+  remoteUrl,
+  status,
+  tagExists,
+} from '../git'
 import { plan, SEMVER, type Survey } from '../plan'
 import {
   checkRegistry,
@@ -44,7 +51,7 @@ import {
   type Options,
 } from './args'
 import { runChangelog } from './commands'
-import { say } from './style'
+import { say, style, warn } from '../style'
 
 /**
  * The minor bump inside 0.x, for the advice line.
@@ -70,11 +77,28 @@ const MARK = {
   absent: '%d·%0',
 } as const
 
+/**
+ * The bump levels, coloured by what they cost a consumer.
+ *
+ * Red for a major is not "error" — it is the one row on screen that obliges
+ * somebody downstream to do work, and the survey exists so that obligation is
+ * visible *before* the tag rather than in a bug report after it. Green is
+ * additive, cyan is a fix, and anything unrecognised stays grey rather than
+ * borrowing a meaning it has not earned.
+ */
+const BUMP: Record<string, string> = {
+  major: '%r',
+  minor: '%g',
+  patch: '%c',
+}
+
 /** One aligned line per file touched, or deliberately not touched. */
 function report(changes: Change[]): void {
   const width = Math.max(...changes.map(c => c.file.length), 0)
   for (const c of changes) {
-    say(`  ${MARK[c.state]} ${c.file.padEnd(width)}  ${c.detail}`)
+    // The path is the anchor; the detail is a note about it. Same three
+    // weights the doctor report uses, for the same reason.
+    say(`  ${MARK[c.state]} ${c.file.padEnd(width)}  %d${c.detail}%0`)
   }
 }
 
@@ -86,14 +110,14 @@ function report(changes: Change[]): void {
  * touching nothing but its argument.
  */
 function reportSurvey(survey: Survey): void {
-  console.log(`cutver: ${survey.total} commit(s) since ${survey.since}`)
+  say(`cutver: %c${survey.total}%0 %dcommit(s) since ${survey.since}%0`)
   for (const { level, subjects } of survey.tally) {
-    console.log(`  ${level.padEnd(5)} ${subjects.length}`)
+    say(`  ${BUMP[level] ?? '%d'}${level.padEnd(5)}%0 %c${subjects.length}%0`)
     // Show the work. A computed version nobody can check is worse than a typed
     // one: the reason for a major has to be visible before it is tagged.
-    for (const s of subjects.slice(0, 3)) console.log(`        ${s}`)
+    for (const s of subjects.slice(0, 3)) say(`        %d${s}%0`)
     if (subjects.length > 3)
-      console.log(`        … and ${subjects.length - 3} more`)
+      say(`        %<dim>… and ${subjects.length - 3} more%0`)
   }
 
   // The two ranges, when they differ. Without this line the output shows a
@@ -107,12 +131,11 @@ function reportSurvey(survey: Survey): void {
   // is the one thing this tool refuses to do.
   if (survey.unconventional.length) {
     const n = survey.unconventional.length
-    console.log(
-      `  none  ${n} not conventional — no version, no changelog entry`,
+    say(
+      `  %dnone%0  %y${n}%0 %dnot conventional — no version, no changelog entry%0`,
     )
-    for (const s of survey.unconventional.slice(0, 3))
-      console.log(`        ${s}`)
-    if (n > 3) console.log(`        … and ${n - 3} more`)
+    for (const s of survey.unconventional.slice(0, 3)) say(`        %d${s}%0`)
+    if (n > 3) say(`        %<dim>… and ${n - 3} more%0`)
   }
 
   if (survey.base) {
@@ -354,7 +377,9 @@ export async function runStage(argv: string[]): Promise<void> {
   }
 
   const branch = opts.branch ?? (await currentBranch(root))
-  console.log(`cutver: ${root} (${adapter.id}, at ${current}, on '${branch}')`)
+  say(
+    `cutver: ${root} %d(${adapter.id}, at%0 %c${current}%0%d, on '${branch}')%0`,
+  )
 
   const decision = await plan({
     root,
@@ -396,7 +421,14 @@ export async function runStage(argv: string[]): Promise<void> {
   }
 
   const { version } = decision
-  console.log(`cutver: ${decision.from} -> ${version} (${decision.why})`)
+  // **The one line this whole tool exists to print.** The version being cut is
+  // the only thing on screen that cannot be recovered once it is wrong, so it
+  // is the only thing here in bold: the number you came from recedes, the
+  // reason is a footnote, and the number you are about to spend is unmissable.
+  say(
+    `cutver: %d${decision.from}%0 %d->%0 %<bold>%c${version}%0 ` +
+      `%d(${decision.why})%0`,
+  )
 
   // A release number is interpolated into every manifest and a git tag, so it
   // is validated rather than trusted — including the computed one, which is
@@ -486,7 +518,7 @@ export async function runStage(argv: string[]): Promise<void> {
   // release commit are public. Here it costs a re-run.
   //
   // Deliberately not in the pre-push hook: see `drift.ts`.
-  const drift = inspect(await readWorkflows(root), config, version)
+  const drift = inspect(await readWorkflows(root), config, version, adapterId)
   for (const d of drift.filter(d => d.level === 'warn')) {
     console.error(`\ncutver: ${d.message}\n        Docs: ${d.docs}`)
   }
@@ -572,14 +604,55 @@ export async function runStage(argv: string[]): Promise<void> {
   // re-tagging by hand *after* users have already installed it, so the flag is
   // printed here rather than left to be remembered at the point of running the
   // publish.
-  const dist = channel ?? /-([a-z]+)\./.exec(version)?.[1]
+  // `channelOf` rather than a regex written again here. The inline one read
+  // `[a-z]+`, and channel names are kebab-case — so `1.2.0-my-prefix.1` gave
+  // `prefix`, and the line whose whole job is stopping a prerelease from
+  // becoming `latest` advised the wrong dist-tag.
+  const dist = channel ?? channelOf(version)
+
+  // **The opening tag, and only when nothing was written.**
+  //
+  // A repository with no tags cannot be measured from one, so the first is the
+  // only thing between a fresh project and a tool that cannot help it yet.
+  // cutver creates it rather than asking someone to type `git tag v0.1.0`
+  // correctly, once, before anything works.
+  //
+  // `updated === 0` is the condition and it is not a heuristic. This tags
+  // *HEAD*, so HEAD's manifest has to already hold the version — which is
+  // exactly the first-release case, where the number being cut is the one the
+  // manifest already stated. When the manifest did change (a `0.0.0`
+  // placeholder becoming `0.1.0`) the bump is still uncommitted, and tagging
+  // HEAD would put the tag on a commit that says `0.0.0`. So that path keeps
+  // the old advice and lets the caller commit first.
+  //
+  // A local tag publishes nothing. The push is still a separate act.
+  const tag = `v${version}`
+  const opened =
+    decision.first && updated === 0 && !opts.dryRun
+      ? await createTag(root, tag)
+      : 'skip'
+
+  if (opened !== 'skip' && opened !== null) {
+    // Not fatal. The version is correct and the manifests are right; a tag is
+    // one command, and dying here would strand a release over the easiest part
+    // of it to do by hand.
+    warn(`\ncutver: could not create ${tag} — ${opened}\n        git tag ${tag}`)
+  }
+
+  const tagged = opened === null
 
   console.log(
     opts.dryRun
-      ? `\ncutver: dry run — ${updated} file(s) would change, none did.`
-      : `\ncutver: ${updated} file(s) updated.\n` +
-          '  next: review the diff, commit, tag ' +
-          `v${version}, and publish from the tag.` +
+      ? `\ncutver: dry run — ${updated} file(s) would change, none did.` +
+          (decision.first && updated === 0
+            ? `\n  It would also create ${tag}, this repository having no tags.`
+            : '')
+      : `\ncutver: ${updated} file(s) updated.` +
+          (tagged
+            ? `\n  ${style('%g↑%0')} tagged ${tag}\n` +
+              `  next: git push --tags, and publish from the tag.`
+            : '\n  next: review the diff, commit, tag ' +
+              `${tag}, and publish from the tag.`) +
           (dist && adapter.registry === 'npm'
             ? `\n\n  Publish this one with \`--tag ${dist}\`. Without it npm marks\n` +
               `  ${version} as \`latest\` and every plain install resolves to a\n` +

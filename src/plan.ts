@@ -3,7 +3,7 @@
  *
  * `version-from-commits.ts` is the arithmetic; this is the policy that feeds it
  * — where the baseline comes from, when a branch name wins, and what counts as
- * "nothing to release". Kept out of `cli/release.ts` so it can be tested
+ * "nothing to release". Kept out of `cli/stage.ts` so it can be tested
  * without a process, which is the same reason the arithmetic was kept out of
  * the original release script.
  */
@@ -134,6 +134,15 @@ export type Plan =
       from: string
       why: string
       survey: Survey | null
+      /**
+       * No tag has ever existed in this repository, so this is the opening one.
+       *
+       * A flag rather than a caller re-deriving it: `stage` creates the first
+       * tag itself, and "does this repository have tags" is a question with an
+       * answer already in hand here. Re-asking git for it downstream is how the
+       * two would come to disagree.
+       */
+      first: boolean
     }
   | { kind: 'nothing'; why: string; survey: Survey | null }
   /**
@@ -249,6 +258,7 @@ export async function plan({
       version: explicit,
       from: current,
       why: 'given explicitly',
+      first: since === 'the first commit',
       survey: survey(
         commits.map(c => ({ ...c, bump: classify(c) })),
         since,
@@ -383,6 +393,9 @@ export async function plan({
       kind: 'release',
       version: declaredNext,
       from: current,
+      // A branch that declares its own base is not an opening tag: the name
+      // carries the number, so there is nothing here for the manifest to say.
+      first: false,
       why: `declared by branch '${branch}'`,
       survey: s,
     }
@@ -405,7 +418,27 @@ export async function plan({
   // not from the last tag. `nextVersion`'s comment documents why both of those
   // are wrong; its two lines are inlined here only so the channel can be a
   // configured name rather than the ported `Channel` union.
-  const base = applyBump(from, bump)
+  // **The first release ships the manifest, it does not bump past it.**
+  //
+  // With no tags at all, nothing has ever been cut here, so the manifest is not
+  // a record of a release — it is a statement of what the first one should be.
+  // Bumping past it is how `npm init`'s default `1.0.0` became a project whose
+  // first ever release was `1.1.0`, with `1.0.0` skipped and unavailable to
+  // anyone reading the tag list later.
+  //
+  // `0.0.0` is the exception, because it is nobody's intended first release —
+  // it is the placeholder a manifest carries before anyone has decided. There
+  // the commits decide as usual, so a `feat:` opens at `0.1.0` and a `fix:` at
+  // `0.0.1`.
+  //
+  // **Zero tags of *any* kind, not "no stable tag".** The distinction is the
+  // guard below: a workflow that pushes a branch and its tag together triggers
+  // per ref, so a run can start before the tag is visible and see a manifest
+  // that looks exactly like an unreleased one. A repository in that state still
+  // has its older tags, so `lastAny` tells the two apart.
+  const firstEver = !stableTag && !lastAny
+  const opening = firstEver && from !== '0.0.0'
+  const base = opening ? from : applyBump(from, bump)
   const version = effective ? withStage(base, effective, current) : base
 
   // A computed version equal to the current one means there is nothing to
@@ -417,7 +450,12 @@ export async function plan({
   // whole history, and lands back on the version already in the manifests.
   // Guarding on the version rather than on a clean tree also makes the check
   // immune to unrelated dirt, which is what CI was really tripping over.
-  if (version === current) {
+  // `opening` is exempt, and it is the one case that must be: the first
+  // release *is* the version already in the manifest, so equality there means
+  // "correct" rather than "spent". Every other path keeps the guard, including
+  // the CI race it was written for — that repository has tags, so `firstEver`
+  // is false and this still fires.
+  if (version === current && !opening) {
     return {
       kind: 'nothing',
       why: `${version} is already the current version`,
@@ -429,7 +467,9 @@ export async function plan({
     kind: 'release',
     version,
     from: current,
+    first: firstEver,
     why:
+      (opening ? 'first release, ' : '') +
       `${bump}${effective ? `, ${effective}` : ''}` +
       // Say where the channel came from when it was not asked for on the
       // command line. A `-beta.0` appearing because of a branch name is

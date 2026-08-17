@@ -126,19 +126,57 @@ graduating a prerelease is "the same base, minus the tag":
 | 1.2.3 | minor | 1.3.0-beta.4 | 1.3.0 — the base the beta was for |
 | 1.2.3 | major | 1.3.0-beta.2 | 2.0.0 — the break wins |
 
-## With no tags, the baseline is your manifest
+## With no tags, the first release is your manifest
 
-A repository that has never tagged anything has one record of what shipped: the
-version in its manifest. So that is what cutver measures from.
+A repository that has never tagged anything has never released anything, so the
+version in its manifest is not a record — it is a statement of what the first
+release should be. cutver ships that number rather than bumping past it, and
+**creates the tag itself**:
 
-The alternative — starting at `0.0.0` — is wrong in a way that is easy to miss.
-Against a manifest at `0.1.0`, a minor computes `0.1.0`: the version you are
-already on, so cutver reports "nothing to release" across your entire history.
-And a patch computes `0.0.1`, which is *lower* than what you have and which the
-semver check would happily accept.
+```
+cutver: 1.0.0 -> 1.0.0 (first release, minor)
 
-> **The catch:** a manifest is a claim that that version was released. If yours
-> holds a number that never reached a registry, fix that first — see
+files
+  = package.json  already 1.0.0
+
+cutver: 0 file(s) updated.
+  ↑ tagged v1.0.0
+  next: git push --tags, and publish from the tag.
+```
+
+The commits still decide *whether* there is a release — a repository of `chore:`
+commits gets nothing — they just do not move the number.
+
+**Because `npm init` writes `1.0.0`.** Bumping past the manifest meant a
+brand-new project's first ever release was `1.1.0`, with `1.0.0` skipped and
+missing from the tag list for good. The same held at any starting number:
+`0.1.0` opened at `0.2.0`.
+
+`0.0.0` is the one exception, because it is nobody's intended release — it is
+the placeholder a manifest carries before anyone has chosen. There the commits
+decide as usual:
+
+| Manifest | Commits | First release |
+| --- | --- | --- |
+| `1.0.0` | any `feat`/`fix`/`perf` | `1.0.0` |
+| `0.1.0` | any | `0.1.0` |
+| `2.3.1` | any | `2.3.1` |
+| `0.0.0` | `feat:` | `0.1.0` |
+| `0.0.0` | `fix:` | `0.0.1` |
+
+### When it tags, and when it does not
+
+cutver writes the tag only when the manifest did not have to change — which is
+every case above except `0.0.0`. The tag goes on `HEAD`, so `HEAD` has to
+already hold the version being cut. When the manifest moves, the bump is still
+uncommitted and a tag there would name a commit saying something else, so that
+path keeps the usual advice: review, commit, then tag.
+
+A local tag publishes nothing. The push is still yours.
+
+> **The catch:** this reads "no tags" as "nothing released yet". If you have
+> published without ever tagging, tag what you last shipped before running
+> cutver — see
 > [Your first release](../getting-started/first-release.md#the-manifest-is-a-claim).
 > After the first tag exists this cannot recur.
 
