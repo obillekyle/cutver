@@ -350,3 +350,62 @@ describe('a workflow that calls cutver the pre-2.0 way', () => {
     expect(found.some(d => d.message.includes('pre-2.0'))).toBe(false)
   })
 })
+
+/**
+ * A publish workflow the config says should not exist.
+ *
+ * **Every other rule here inspects the file's contents**, so all of them sit
+ * inside `if (files.publish)` and none can ask whether the file belongs. Set
+ * `publish: false`, re-run `init`, and publish.yml is simply left off the list
+ * of things to write — never rewritten, never removed, still firing on
+ * `push: tags: v*`. Reported by an outside reviewer who found three cutver
+ * statements about that one file, two of them wrong, while it sat there armed.
+ */
+describe('a publish.yml that should not be there', () => {
+  const config = (over: Partial<Config> = {}): Config => ({
+    ...DEFAULT_CONFIG,
+    publish: false,
+    artifacts: false,
+    ...over,
+  })
+
+  test('is a refusal, not a note', () => {
+    // A warning would let `doctor` keep saying "nothing wrong here" while a
+    // tag publishes a package the config says produces nothing.
+    const found = inspect(generated(), config(), '1.3.0')
+    const hit = found.find(d => d.message.includes('publishes nothing'))
+
+    expect(hit?.level).toBe('refuse')
+  })
+
+  test('says nothing when a tag does publish', () => {
+    const found = inspect(
+      generated(),
+      { ...DEFAULT_CONFIG, publish: true },
+      '1.3.0',
+    )
+    expect(found.some(d => d.message.includes('publishes nothing'))).toBe(false)
+  })
+
+  test('says nothing when a tag carries artifacts instead', () => {
+    // `publish: false` with `artifacts:` is a real shape — a Rust workspace
+    // that ships binaries and touches no registry. publish.yml belongs there.
+    const found = inspect(
+      generated(),
+      config({ artifacts: { folders: [], files: 'auto' } }),
+      '1.3.0',
+      'cargo',
+    )
+
+    expect(found.some(d => d.message.includes('publishes nothing'))).toBe(false)
+  })
+
+  test('says nothing when the file is not there', () => {
+    const found = inspect(
+      { version: 'name: Version', publish: null },
+      config(),
+      '1.3.0',
+    )
+    expect(found.some(d => d.message.includes('publishes nothing'))).toBe(false)
+  })
+})

@@ -31,7 +31,11 @@
  * choice someone made about their own CI.
  */
 import { branchTriggers, distTagArms } from './init'
-import { producesArtifacts, type Config } from './config/schema'
+import {
+  producesArtifacts,
+  publishesToRegistry,
+  type Config,
+} from './config/schema'
 import { parseYaml, readText } from './runtime'
 
 const DOCS = 'https://cutver.okyle.dev'
@@ -94,6 +98,34 @@ export function inspect(
   adapter: 'js' | 'cargo' = config.target === 'cargo' ? 'cargo' : 'js',
 ): Drift[] {
   const found: Drift[] = []
+
+  // **A workflow that should not exist at all, which every rule below misses.**
+  //
+  // Everything else here inspects the *contents* of publish.yml, so all of it
+  // sits inside `if (files.publish)` and none of it can ask whether the file
+  // belongs. Set `publish: false`, re-run `init`, and the file is simply left
+  // off the list of things to write — never rewritten, never removed. It stays
+  // triggered on `push: tags: v*`, still running a publish, while the
+  // regenerated version.yml says in a comment that there is no publish.yml to
+  // dispatch and `doctor` reports nothing wrong.
+  //
+  // A refusal rather than a warning: the config says a tag produces nothing,
+  // and the file on disk publishes a package. One of them is going to be
+  // obeyed, and it is not the config.
+  const publishes =
+    publishesToRegistry(adapter, config) || producesArtifacts(adapter, config)
+
+  if (files.publish && !publishes) {
+    found.push({
+      level: 'refuse',
+      message:
+        'publish.yml is still here, and this config publishes nothing.\n' +
+        '        It fires on `push: tags: v*` and runs a publish for a tag that\n' +
+        '        is meant to produce nothing at all. `cutver init --force`\n' +
+        '        removes it, or delete it by hand.',
+      docs: `${DOCS}/#/reference/config`,
+    })
+  }
 
   // No workflows at all is not drift. A repository releasing from a laptop, or
   // from CI cutver did not generate, is a normal repository — and a tool that

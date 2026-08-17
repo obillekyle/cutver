@@ -176,10 +176,12 @@ export async function runInit(argv: string[]): Promise<void> {
   )
   const width = Math.max(...results.map(r => r.path.length))
   for (const r of results) {
-    console.log(
-      `  ${r.state === 'written' ? '↑' : '='} ${r.path.padEnd(width)}  ` +
-        `${r.detail}`,
-    )
+    // `stale` is a file this config says should not exist. Red rather than
+    // another `=`, because it is the one row here that is a problem instead of
+    // a report.
+    const mark =
+      r.state === 'written' ? '%g↑%0' : r.state === 'stale' ? '%r✗%0' : '%d=%0'
+    say(`  ${mark} ${r.path.padEnd(width)}  ${r.detail}`)
   }
 
   // A new devDependency and an unchanged lockfile disagree, and the generated

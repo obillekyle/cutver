@@ -42,7 +42,7 @@ import { ADAPTER_FOR } from '../adapters'
 import { parseConfig } from '../config/load'
 import { configTemplate } from '../config/template'
 import { publishWorkflow, versionWorkflow } from './workflows'
-import { exists, parseYaml, write } from '../runtime'
+import { exists, parseYaml, remove, write } from '../runtime'
 
 // Declared once, in `config/schema.ts`, because `target:` in the config names
 // the same set. Two copies type-checked only because the unions happened to be
@@ -144,8 +144,26 @@ export function initFiles(
 
 export interface InitResult {
   path: string
-  state: 'written' | 'skipped'
+  state: 'written' | 'skipped' | 'stale'
   detail: string
+}
+
+/**
+ * Files this config says should **not** exist.
+ *
+ * **A config change can un-generate a file, and nothing was noticing.** Set
+ * `publish: false` and re-run `init`: the publish workflow drops off the list
+ * above, so it is never rewritten — and never removed either. It stays on disk
+ * triggered on `push: tags: v*`, still running `npm publish`, while the
+ * regenerated `version.yml` says in a comment that there is no publish.yml to
+ * dispatch. Three statements about one file, two of them wrong, and the file is
+ * the one that reaches a registry.
+ */
+export function obsoleteFiles(eco: Ecosystem, config: Config): string[] {
+  const registry = publishesToRegistry(ADAPTER_FOR[eco], config)
+  const artifacts = producesArtifacts(ADAPTER_FOR[eco], config)
+
+  return registry || artifacts ? [] : ['.github/workflows/publish.yml']
 }
 
 /**
@@ -272,6 +290,34 @@ export async function init(
       state: installed.state,
       detail: installed.detail,
     })
+  }
+
+  // **Files this config un-generated, which nothing else would ever mention.**
+  // Reported always; removed only under `--force`, on the same reasoning as
+  // every other file here — a generated workflow is meant to be edited, and one
+  // that has been is not cutver's to delete on a whim. But left unsaid it is
+  // worse than a stale file: publish.yml still fires on `push: tags: v*` and
+  // still runs a publish for a repository whose config says a tag produces
+  // nothing.
+  for (const path of obsoleteFiles(eco, effective)) {
+    if (!(await exists(`${root}/${path}`))) continue
+
+    if (force) {
+      if (!dryRun) await remove(`${root}/${path}`)
+      out.push({
+        path,
+        state: 'written',
+        detail: 'removed — this config publishes nothing',
+      })
+    } else {
+      out.push({
+        path,
+        state: 'stale',
+        detail:
+          'still here, still triggered on v* — this config publishes nothing.' +
+          ' --force removes it',
+      })
+    }
   }
 
   return out
