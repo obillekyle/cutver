@@ -18,38 +18,24 @@ Works out the next version from your commit messages, writes it into every manif
 
 </div>
 
+<div align="center">
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/obillekyle/cutver/main/assets/terminal-dark.svg">
   <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/obillekyle/cutver/main/assets/terminal-light.svg">
   <img alt="cutver stage --dry-run: a commit survey showing two features, three fixes and one subject counted for nothing, then 1.2.0 -&gt; 1.3.0" src="https://raw.githubusercontent.com/obillekyle/cutver/main/assets/terminal-light.svg" width="620">
 </picture>
+</div>
 
 ```bash
 bunx cutver stage --dry-run
 ```
 
-```
-cutver: /repo (cargo, at 0.1.0, on 'main')
-cutver: 49 commit(s) since the first commit
-  minor 5
-        feat: bidirectional sync engine
-        … and 4 more
-  patch 8
-cutver: 0.1.0 -> 0.2.0 (minor)
-
-preflight (10 package(s) on crates.io)
-  · oidc  not in CI — publishing will use whatever credential crates.io finds locally
-  ✗ alloyfs-proto  NOT on the registry — this would be its first publish
-
-files (dry run — nothing is written)
-  ↑ Cargo.toml  [workspace.package] 0.1.0 -> 0.2.0
-  ↑ Cargo.lock  would run `cargo update -w`
-```
-
-The preflight block is this repository asking about `publish: true`. A Cargo
-repository publishes nothing by default and prints `preflight: skipped` instead
-— [Configuration](docs/reference/config.md#what-a-tag-produces) covers what a
-tag produces.
+That run is against a JavaScript repository with `--offline`, which is why it
+says `preflight: skipped`. Given a config that publishes, the preflight block
+asks the registry about every package before a single file is written — and a
+Cargo repository publishes nothing by default, so it skips for a different
+reason. [Configuration](docs/reference/config.md#what-a-tag-produces) covers
+what a tag produces.
 
 **It does not publish.** Publishing is the one irreversible step in a release —
 a registry never lets a version number be reused, by anyone, ever — so it gets
