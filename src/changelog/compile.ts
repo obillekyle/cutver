@@ -210,6 +210,13 @@ export async function compileReleases(
   pending: { version: string; date: string } | null,
   sections: readonly string[],
   prereleases = false,
+  /**
+   * Compile only these versions, or all of them when absent.
+   *
+   * `changelog pages v1.2.0` needs one section and used to build every one to
+   * find it — twice, because the caller compiled the file list first.
+   */
+  only?: Set<string>,
 ): Promise<ReleaseSection[]> {
   const [tags, remote, root0] = await Promise.all([
     releaseTags(root),
@@ -265,8 +272,16 @@ export async function compileReleases(
     })),
   ]
 
+  // **Every span is worked out; only the wanted ones are read.** The spans
+  // themselves are arithmetic over the tag list and cost nothing, and they have
+  // to be computed in full because a release measures from the tag *before* it.
+  // Reading them is what costs: a `git log` and two `rev-parse`s each, so a
+  // repository with twenty-five tags spends fifty git invocations to write one
+  // release page it was asked for by name.
+  const wanted = only ? spans.filter(s => only.has(s.version)) : spans
+
   const built = await Promise.all(
-    spans.map(async span => {
+    wanted.map(async span => {
       // Named as it goes. Regenerating walks every tag in the repository, and
       // on a project with a long history that is a silent minute — long enough
       // to wonder whether it is doing anything.

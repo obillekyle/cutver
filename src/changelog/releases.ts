@@ -138,6 +138,43 @@ interface Release {
 }
 
 /**
+ * Every release the repository has, by tag, in as few calls as possible.
+ *
+ * **So the expensive half can be skipped.** Whether a page needs writing is
+ * decided entirely by the body that is already there — missing, empty,
+ * generated, or somebody's prose — and none of that needs the new body. Asking
+ * first means a run over twenty-five tags where twenty-four are already right
+ * compiles one section instead of twenty-five, and each section is a `git log`
+ * and two `rev-parse`s.
+ *
+ * Paginated, because a project with two hundred releases is exactly the one
+ * this matters most for. A page of results that cannot be read stops the walk
+ * and returns what it has: the caller treats an absent tag as "no release",
+ * which is the safe direction — it compiles a body it may not need rather than
+ * skipping one it did.
+ */
+export async function listReleases(
+  repo: string,
+  token: string,
+): Promise<Map<string, string | null>> {
+  const found = new Map<string, string | null>()
+
+  for (let page = 1; page <= 10; page++) {
+    const res = await api(
+      `/repos/${repo}/releases?per_page=100&page=${page}`,
+      token,
+    ).catch(() => null)
+    if (!res?.ok) break
+
+    const batch = (await res.json()) as { tag_name: string; body: string }[]
+    for (const r of batch) found.set(r.tag_name, r.body ?? null)
+    if (batch.length < 100) break
+  }
+
+  return found
+}
+
+/**
  * Create the release page for a tag that has none.
  *
  * **The remote tag is verified first, and that check is the whole risk here.**

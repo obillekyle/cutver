@@ -18,6 +18,8 @@ import {
 import { writeChangelog } from '../changelog'
 import {
   githubRepo,
+  isUnauthored,
+  listReleases,
   resolveToken,
   updateRelease,
   type ReleaseUpdate,
@@ -25,7 +27,7 @@ import {
 import { loadConfig } from '../config/load'
 import { channelNames, producesArtifacts, type Config } from '../config/schema'
 import { explainReport } from '../explain'
-import { currentBranch, isGitRepo } from '../git'
+import { currentBranch, isGitRepo, releaseTags } from '../git'
 import { installHook, uninstallHook } from '../hook'
 import {
   CARGO_RUNNERS,
@@ -48,6 +50,7 @@ import {
   VERSION,
 } from './args'
 import { env, exists } from '../runtime'
+import { say } from './style'
 
 /**
  * `--force` names the files it is about to replace, and asks.
@@ -506,13 +509,23 @@ export async function runChangelog(argv: string[]): Promise<void> {
     )
   }
 
-  const releases = await compileReleases(
-    root,
-    null,
-    config.changelog.sections,
-    config.changelog.prereleases,
-  )
-  if (!releases.length) {
+  // **Compiled only when something asks for it.** Reading a release costs a
+  // `git log` and two `rev-parse`s, so the file's whole list is built when the
+  // file is being written — or when `pages` has no selector and therefore means
+  // "the ones the file lists". Naming a version asks for one section, and used
+  // to build every one twice over to find it.
+  const needsList = wantsFile
+
+  const releases = needsList
+    ? await compileReleases(
+        root,
+        null,
+        config.changelog.sections,
+        config.changelog.prereleases,
+      )
+    : []
+
+  if (needsList && !releases.length) {
     die('no `v*` tags — there are no releases to compile a changelog from')
   }
 
@@ -545,7 +558,27 @@ export async function runChangelog(argv: string[]): Promise<void> {
     await overwriteReleases(
       root,
       config,
-      await pagesFor(root, config, releases, selector),
+      await candidateVersions(root, config.changelog.prereleases, selector),
+      // **Compiled on demand, and only for the pages that need writing.**
+      // Which ones those are is a question about the *old* body, so it is
+      // answered from one listing before any of this runs. Anything already
+      // compiled for the file is reused rather than read twice.
+      async only => {
+        const sections = config.changelog?.sections ?? []
+        const have = new Map(releases.map(r => [r.version, r.notes]))
+        const missing = [...only].filter(v => !have.has(v))
+        if (missing.length) {
+          const built = await compileReleases(
+            root,
+            null,
+            sections,
+            true,
+            new Set(missing),
+          )
+          for (const r of built) have.set(r.version, r.notes)
+        }
+        return have
+      },
       opts.dryRun,
       opts.force,
     )
@@ -553,7 +586,7 @@ export async function runChangelog(argv: string[]): Promise<void> {
 }
 
 /**
- * Which release pages a selector names.
+ * Which tags a selector names — decided from the tag list, nothing compiled.
  *
  * **`keep` and `prereleases` describe the file, not these.** The file is a
  * narrative with a length; a page is one per tag. With `prereleases: false` an
@@ -562,49 +595,51 @@ export async function runChangelog(argv: string[]): Promise<void> {
  * somebody installed through a dist-tag and can land on from a link.
  *
  * So the default stays what `--overwrite` always did — the tags the file lists
- * — and every wider answer is asked for by name. A tag the changelog does not
- * list gets its body compiled from its own range, which is exactly what `notes`
- * does when asked for one.
+ * — and every wider answer is asked for by name.
+ *
+ * Answered from `releaseTags`, which is one `for-each-ref`. Answering it from
+ * compiled sections instead is what made `pages v1.2.0` read twenty-five
+ * releases to keep one, at a `git log` and two `rev-parse`s each.
  */
-async function pagesFor(
+async function candidateVersions(
   root: string,
-  config: Config,
-  listed: { version: string; notes: string }[],
+  prereleases: boolean,
   selector: string | undefined,
-): Promise<{ version: string; notes: string }[]> {
-  if (selector === undefined) return listed
+): Promise<string[]> {
+  const tags = await releaseTags(root)
+  if (!tags.length) {
+    die('no `v*` tags — there are no releases to write a page for')
+  }
 
-  const every =
-    config.changelog?.prereleases === true
-      ? listed
-      : await compileReleases(
-          root,
-          null,
-          config.changelog?.sections ?? [],
-          true,
-        )
+  // No selector means "the tags the file lists", which is the same filter
+  // `compileReleases` applies — and knowable from the tag names alone, so the
+  // default no longer builds the whole file to find out what it covers.
+  if (selector === undefined) {
+    return tags
+      .filter(t => prereleases || !t.version.includes('-'))
+      .map(t => t.version)
+  }
 
-  if (selector === 'all') return every
+  if (selector === 'all') return tags.map(t => t.version)
 
   if (/^\d+$/.test(selector)) {
     const count = Number(selector)
     if (count < 1) die('a count has to be at least 1')
-    return every.slice(0, count)
+    return tags.slice(0, count).map(t => t.version)
   }
 
   // A version, with or without the `v` the tag carries.
-  const wanted = selector.replace(/^v/, '')
-  const one = every.find(r => r.version === wanted)
-  if (!one) {
+  const version = selector.replace(/^v/, '')
+  if (!tags.some(t => t.version === version)) {
     die(
       `no tag for \`${selector}\`.\n` +
-        `        Tags cutver can write a page for: ${every
+        `        Tags cutver can write a page for: ${tags
           .slice(0, 5)
-          .map(r => `v${r.version}`)
-          .join(', ')}${every.length > 5 ? ', …' : ''}`,
+          .map(t => t.tag)
+          .join(', ')}${tags.length > 5 ? ', …' : ''}`,
     )
   }
-  return [one]
+  return [version]
 }
 
 /**
@@ -622,7 +657,10 @@ async function pagesFor(
 async function overwriteReleases(
   root: string,
   config: Config,
-  releases: { version: string; notes: string }[],
+  /** Versions to consider, newest first. Every one is reported. */
+  candidates: string[],
+  /** Compiled sections for the versions asked for — called once, if at all. */
+  compile: (only: Set<string>) => Promise<Map<string, string>>,
   dryRun: boolean,
   force: boolean,
 ): Promise<void> {
@@ -649,6 +687,31 @@ async function overwriteReleases(
   // this against the wrong account would otherwise find out from the audit log.
   if (from === 'gh') console.log('cutver: using the token from `gh auth token`')
 
+  // **Asked before anything is compiled.** Whether a page needs writing is
+  // decided entirely by the body already on it — missing, empty, generated, or
+  // somebody's prose — and none of that needs the new body. One listing answers
+  // it for every tag at once, so a run over twenty-five tags where twenty-four
+  // are already right reads one section instead of twenty-five, each of which
+  // is a `git log` and two `rev-parse`s.
+  const existing = await listReleases(repo, token)
+  const needed = new Set(
+    candidates.filter(version => {
+      const body = existing.get(`v${version}`)
+      return body === undefined || force || isUnauthored(body, `v${version}`)
+    }),
+  )
+
+  if (!needed.size) {
+    console.log(`\nrelease pages on ${repo}`)
+    const width = Math.max(...candidates.map(v => v.length + 1), 4)
+    for (const version of candidates) {
+      say(
+        `  %d·%0 ${`v${version}`.padEnd(width)}  has a written body — left alone (--force replaces it)`,
+      )
+    }
+    return
+  }
+
   // **`--force` destroys published prose, so it asks.** Everything else in this
   // command is safe by construction — a body is replaced only when nobody wrote
   // it. `--force` removes exactly that protection, and GitHub keeps no history
@@ -667,38 +730,36 @@ async function overwriteReleases(
     }
   }
 
+  // **Nothing is compiled for a dry run.** The decision to write, skip or
+  // create comes from the body already on the page, and `updateRelease` never
+  // asks for a new one when it is not going to send it — so building them is
+  // work whose only output is the progress lines it prints on the way.
+  const notes = dryRun ? new Map<string, string>() : await compile(needed)
+
   console.log(`\nrelease pages on ${repo}`)
-  const width = Math.max(...releases.map(r => r.version.length + 1), 4)
+  const width = Math.max(...candidates.map(v => v.length + 1), 4)
 
   // Sequential on purpose: GitHub rate-limits by the hour, and a repository
   // with two hundred tags firing two hundred concurrent requests is how a
   // command that was meant to tidy up gets an account throttled. The summariser
   // has the same shape of limit, measured in tokens per minute.
-  // **Oldest first, and the report is put back the other way round.**
   //
-  // GitHub marks the most recently *created* release as `Latest`, which is
-  // what `releases/latest/download` resolves to and what every install script
-  // pinned to that URL follows. Walking newest-first meant the oldest release
-  // was created last, so backfilling nine tags left `v1.0.0` labelled Latest
-  // and `releases/latest` pointing eight versions behind — measured, on the
-  // first repository this ran against.
-  //
-  // Creation order is the fix rather than `make_latest`, because it is also
-  // right for the mixed case: a run that creates some pages and updates others
-  // only ever moves the label forward.
+  // **Oldest first, and the report is put back the other way round.** GitHub
+  // marks the most recently *created* release as `Latest`, which is what
+  // `releases/latest/download` resolves to and what every install script
+  // pinned to that URL follows. Walking newest-first created the oldest page
+  // last, so backfilling nine tags left `v1.0.0` labelled Latest and
+  // `releases/latest` pointing eight versions behind — measured, on the first
+  // repository this ran against.
   const rows: { tag: string; result: ReleaseUpdate; note: string | null }[] = []
 
-  for (const release of [...releases].reverse()) {
-    const tag = `v${release.version}`
+  for (const version of [...candidates].reverse()) {
+    const tag = `v${version}`
 
     // **Summarised where the release path would summarise.** A page written by
     // `cutver notes` at release time gets the readable version; one written by
     // this command was getting the compiled section, so the same surface read
     // two different ways depending only on when it was filled in.
-    //
-    // The compiled section stays the fallback, per release rather than for the
-    // run: a rate limit on the fourth of twenty leaves that one compiled and
-    // lets the rest through.
     //
     // Passed unevaluated — `updateRelease` calls it only once this page is
     // known to be eligible, so the pages it leaves alone cost no inference.
@@ -708,20 +769,26 @@ async function overwriteReleases(
       token,
       tag,
       async () => {
+        // Compiled above for everything `needed`; the fallback covers a page
+        // that turns out eligible after all, rather than writing an empty body.
+        const section =
+          notes.get(version) ??
+          (await compile(new Set([version]))).get(version) ??
+          ''
+
         // **The `diff:` footnote is handed over, not left in the material.**
         // It opens every compiled section, so the model used to copy it out of
         // `<commits>` — and now it is told not to write one at all, because
         // cutver restores it. Restoring needs it *passed*: without this the
-        // page came out with no footnote, which is how the first run of this
-        // went out.
-        const head = release.notes.split('\n')[0] ?? ''
+        // page came out with no footnote at all.
+        const head = section.split('\n')[0] ?? ''
         const metadata = /^\s*(?:<sub>)?\s*diff:/i.test(head) ? head : null
 
         const summary = await summarize(
-          release.notes,
+          section,
           config.changelog,
           env,
-          release.notes,
+          section,
           metadata,
         )
         note = summary.note
@@ -730,6 +797,7 @@ async function overwriteReleases(
       dryRun,
       force,
     )
+
     rows.push({ tag, result, note })
   }
 
@@ -737,19 +805,19 @@ async function overwriteReleases(
   for (const { tag, result, note } of rows.reverse()) {
     const mark =
       result.state === 'created'
-        ? '+'
+        ? '%g+%0'
         : result.state === 'updated'
-          ? '↑'
+          ? '%g↑%0'
           : result.state === 'skipped'
-            ? '·'
-            : '='
-    console.log(`  ${mark} ${tag.padEnd(width)}  ${result.detail}`)
+            ? '%d·%0'
+            : '%d=%0'
+    say(`  ${mark} ${tag.padEnd(width)}  ${result.detail}`)
 
     // **Said per page, because it is per page.** Every summariser failure falls
     // back to the compiled section, which is publishable — so without this a
     // page that hit a rate limit reports `replaced` and reads as a success,
     // while sitting there in a different voice from the four around it.
-    if (note) console.log(`    ${note}`)
+    if (note) say(`    %d${note}%0`)
   }
 }
 
