@@ -8,9 +8,55 @@ is only ever as good as the commits — which is the point.
 explanation in the commit body, where it is also visible in `git log`, in a
 pull request, and on the release page.
 
+## [2.3.0] — 2026-08-17
+
+<sub>diff: [56a9f96...469afbc](https://github.com/obillekyle/cutver/compare/56a9f96...469afbc)</sub>
+
+### New Features
+
+- **stage:** keep docs/versions.json current, where a repository keeps one ([e32fbcf](https://github.com/obillekyle/cutver/commit/e32fbcf))
+
+    The previous commit put this in `version.yml` as a shell step: `git tag --list` piped through `jq`. Wrong layer three times over. It is a third copy of the tag list to keep in step, it adds a `jq` dependency to a workflow, and the moment it went into the generated template it would land in every repository cutver scaffolds — most of which have no `docs/` at all.
+
+- **docs:** the version list comes from the tags, committed ([c47f180](https://github.com/obillekyle/cutver/commit/c47f180))
+
+    The picker read the npm packument. That works and it ties a docs site to having published a package — which a Rust workspace shipping binaries has not — and it inherits npm's idea of `latest`, which is pinned on a package's first publish whatever `--tag` said, so a project that opened with a prerelease shows a stable release it left behind.
+
+### Fixes
+
+- **docs:** the badge names the version being read, and the dark theme is ours ([97fe44b](https://github.com/obillekyle/cutver/commit/97fe44b))
+
+    Three things, all found by porting this shell to two other repositories.
+
+### Docs
+
+- one line each in the centred block, because GitHub breaks the others ([469afbc](https://github.com/obillekyle/cutver/commit/469afbc))
+
+    Rendering the README through GitHub's own markdown API showed two faults that reading the source could not.
+
+- open the scissors from half size ([20971e8](https://github.com/obillekyle/cutver/commit/20971e8))
+
+    `scale(.5)` rather than `.82`. The eased curve spends most of its travel early, so the smaller start reads as the blades opening into place rather than a nudge — and it gives the half-turn something to carry.
+
+- half a turn, not a full one ([124289f](https://github.com/obillekyle/cutver/commit/124289f))
+
+    A whole revolution reads as a loading spinner; this is an entrance. 180deg to 0 — still counter-clockwise, since the angle decreases — alongside the fade and the 0.82 scale, all three easing out together over the same 900ms.
+
+- the logo, and the scissors turn as it arrives ([4b70dc8](https://github.com/obillekyle/cutver/commit/4b70dc8))
+
+    Replaces the placeholder. Blue rather than the docs site's teal, so the badges follow the logo — it is the identity, and `#295d8d` is the stop that carries white badge text at readable contrast where `#45a6ff` does not.
+
+- a header, and a badge that cannot lie ([3d10891](https://github.com/obillekyle/cutver/commit/3d10891))
+
+    Centred block, logo, tagline, badges — the shape that works in the components README, borrowed because it works.
+
+- show what cutver prints, in the colours it prints it ([1a38d7a](https://github.com/obillekyle/cutver/commit/1a38d7a))
+
+    The README described the output and showed it in a monochrome fence — all of the information and none of the design. The colours are load-bearing: grey for the sentence explaining a row, cyan for the version, red for a `major` because it is the one row that obliges somebody downstream to do work.
+
 ## [2.2.0] — 2026-08-17
 
-<sub>diff: [776a521...a6f5515](https://github.com/obillekyle/cutver/compare/776a521...a6f5515)</sub>
+<sub>diff: [776a521...56a9f96](https://github.com/obillekyle/cutver/compare/776a521...56a9f96)</sub>
 
 ### New Features
 
@@ -163,51 +209,5 @@ pull request, and on the release page.
 - **npm:** run on Node, and bring the docs to the 2.0 CLI ([8c27864](https://github.com/obillekyle/cutver/commit/8c27864))
 
     `bin` pointed at a TypeScript entry behind a `#!/usr/bin/env bun` shebang, so the package installed everywhere and ran only where Bun was on PATH. The `node` workflow `init` generates hit the same wall.
-
-## [2.0.0] — 2026-08-16
-
-<sub>diff: [5fc74d2...9a2fd30](https://github.com/obillekyle/cutver/compare/5fc74d2...9a2fd30)</sub>
-
-### Breaking Changes
-
-- **init:** detect the repository, and give every tag a release page ([9394da5](https://github.com/obillekyle/cutver/commit/9394da5))
-
-    - The ecosystem is detected from the manifests; the argument is only needed when both exist, where guessing would bump the wrong file. - A repository whose CI is not GitHub Actions is refused by name, rather than having workflows written into a directory nothing reads. - **A registry-only repository got no GitHub release at all**, so `cutver notes` never ran and the summariser was dead config for the commonest kind of package. The release job is written whenever a tag produces anything. - The notes step now receives `CUTVER_SUMMARIZE_KEY`, and the publish step is guarded so a re-run cannot publish twice.
-
-- cutver is a command tree, with stage as the verb ([36fbcd4](https://github.com/obillekyle/cutver/commit/36fbcd4))
-
-    A bare `cutver` rewrote every manifest — a mutation from a zero-argument command, and what someone types to find out what the tool does. It prints the command list now, and `cutver stage` releases.
-
-- **config:** one key per decision ([66ecf55](https://github.com/obillekyle/cutver/commit/66ecf55))
-
-    Three keys were answering questions that were not theirs.
-
-- compile CHANGELOG.md and the release body from the commits ([c127b59](https://github.com/obillekyle/cutver/commit/c127b59))
-
-    - `changelog:` compiles sections from commit types. Each entry is the subject, its scope, its linked sha, and the first paragraph of the body. - **cutver then owns the file** and rewrites it whole from the tags each release. - `cutver notes <tag>` prints a release body on stdout, so the generated workflow calls the tool rather than carrying the extraction itself. - The release body can be handed to a model; `CHANGELOG.md` never is. Every failure — no key, wrong model, rate limit, timeout — publishes the compiled notes instead. - Prereleases get no heading by default, which widens each stable release's span to the previous stable tag rather than dropping its commits. - Commits that are not conventional are counted and reported. They raise no version and land in no section, which used to be silent.
-
-### New Features
-
-- **changelog:** summarise `--overwrite`, and add `--force` to replace written bodies ([4fffc29](https://github.com/obillekyle/cutver/commit/4fffc29))
-
-    `--overwrite` wrote the compiled section onto every release page while the release path wrote a summarised one, so the same surface read two different ways depending only on when it was filled in. It now runs the configured summariser, falling back to the compiled section per release rather than for the run — a rate limit on the fourth of twenty leaves that one compiled and lets the rest through.
-
-- **changelog:** `--overwrite` brings the release pages up to date ([0fdb5fc](https://github.com/obillekyle/cutver/commit/0fdb5fc))
-
-    `cutver changelog` rewrites the file; the release pages keep whatever they were given at the time. A project adopting `changelog:` after twenty releases gets a good CHANGELOG.md and twenty pages still showing `--generate-notes` output.
-
-- **docs:** serve the docs at any tagged version ([cee668d](https://github.com/obillekyle/cutver/commit/cee668d))
-
-    `?v=1.1.0` reads that tag's pages *and* that tag's `pages.json`, so an older version describes its own sidebar rather than being shown the current one.
-
-### Docs
-
-- regenerate CHANGELOG.md under the 2.0 rules ([a94ce71](https://github.com/obillekyle/cutver/commit/a94ce71))
-
-    The committed file was compiled before `prereleases: false` became the default, so it carried ten headings — five of them betas, which `keep: 10` was pushing real releases out to make room for.
-
-- rewrite the README and reference for 2.0 ([7d6e8be](https://github.com/obillekyle/cutver/commit/7d6e8be))
-
-    - The README was 374 lines duplicating `docs/`, and taught `cutver [version]` with `stage` as a prerelease flag — the inverse of how 2.0 works. It is 110 lines of onboarding that link out. - The quickstart told you to run `bunx cutver`, which now prints help. - The two config reference pages are one; the stale one documented `artifacts.enabled`, a key the loader rejects. - New page on writing the commits, since the body becomes the release note. - Two guards: every documented config example is loaded through `parseConfig`, and the README is checked against the command table.
 
 Older releases are in the git tags and on the releases page.
