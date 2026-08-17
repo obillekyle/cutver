@@ -8,9 +8,19 @@ is only ever as good as the commits — which is the point.
 explanation in the commit body, where it is also visible in `git log`, in a
 pull request, and on the release page.
 
+## [2.1.1] — 2026-08-17
+
+<sub>diff: [2a4e37e...90be517](https://github.com/obillekyle/cutver/compare/2a4e37e...90be517)</sub>
+
+### Fixes
+
+- **notes:** cutver owns the `diff:` line, and sets it as a footnote ([90be517](https://github.com/obillekyle/cutver/commit/90be517))
+
+    It was in the prompt as a fact to copy exactly, and the shape showed it on the line directly above the opening sentence — so markdown folded the two into one paragraph and every summarised release page read as a link with prose glued to it. The other half of that instruction was worse: a sha altered by one character resolves to nothing, and nothing checked.
+
 ## [2.1.0] — 2026-08-17
 
-diff: [c2c3bc3...8f24725](https://github.com/obillekyle/cutver/compare/c2c3bc3...8f24725)
+<sub>diff: [c2c3bc3...2a4e37e](https://github.com/obillekyle/cutver/compare/c2c3bc3...2a4e37e)</sub>
 
 ### New Features
 
@@ -38,7 +48,7 @@ diff: [c2c3bc3...8f24725](https://github.com/obillekyle/cutver/compare/c2c3bc3..
 
 ## [2.0.3] — 2026-08-16
 
-diff: [8c7f569...c2c3bc3](https://github.com/obillekyle/cutver/compare/8c7f569...c2c3bc3)
+<sub>diff: [8c7f569...c2c3bc3](https://github.com/obillekyle/cutver/compare/8c7f569...c2c3bc3)</sub>
 
 ### Fixes
 
@@ -48,7 +58,7 @@ diff: [8c7f569...c2c3bc3](https://github.com/obillekyle/cutver/compare/8c7f569..
 
 ## [2.0.2] — 2026-08-16
 
-diff: [627f047...8c7f569](https://github.com/obillekyle/cutver/compare/627f047...8c7f569)
+<sub>diff: [627f047...8c7f569](https://github.com/obillekyle/cutver/compare/627f047...8c7f569)</sub>
 
 ### Fixes
 
@@ -58,7 +68,7 @@ diff: [627f047...8c7f569](https://github.com/obillekyle/cutver/compare/627f047..
 
 ## [2.0.1] — 2026-08-16
 
-diff: [9a2fd30...627f047](https://github.com/obillekyle/cutver/compare/9a2fd30...627f047)
+<sub>diff: [9a2fd30...627f047](https://github.com/obillekyle/cutver/compare/9a2fd30...627f047)</sub>
 
 ### Fixes
 
@@ -68,7 +78,7 @@ diff: [9a2fd30...627f047](https://github.com/obillekyle/cutver/compare/9a2fd30..
 
 ## [2.0.0] — 2026-08-16
 
-diff: [5fc74d2...9a2fd30](https://github.com/obillekyle/cutver/compare/5fc74d2...9a2fd30)
+<sub>diff: [5fc74d2...9a2fd30](https://github.com/obillekyle/cutver/compare/5fc74d2...9a2fd30)</sub>
 
 ### Breaking Changes
 
@@ -114,7 +124,7 @@ diff: [5fc74d2...9a2fd30](https://github.com/obillekyle/cutver/compare/5fc74d2..
 
 ## [1.2.0] — 2026-08-15
 
-diff: [8aadce9...5fc74d2](https://github.com/obillekyle/cutver/compare/8aadce9...5fc74d2)
+<sub>diff: [8aadce9...5fc74d2](https://github.com/obillekyle/cutver/compare/8aadce9...5fc74d2)</sub>
 
 ### New Features
 
@@ -124,7 +134,7 @@ diff: [8aadce9...5fc74d2](https://github.com/obillekyle/cutver/compare/8aadce9..
 
 ## [1.1.1] — 2026-08-15
 
-diff: [0cc9606...8aadce9](https://github.com/obillekyle/cutver/compare/0cc9606...8aadce9)
+<sub>diff: [0cc9606...8aadce9](https://github.com/obillekyle/cutver/compare/0cc9606...8aadce9)</sub>
 
 ### Fixes
 
@@ -136,7 +146,7 @@ diff: [0cc9606...8aadce9](https://github.com/obillekyle/cutver/compare/0cc9606..
 
 ## [1.1.0] — 2026-08-15
 
-diff: [f74270c...0cc9606](https://github.com/obillekyle/cutver/compare/f74270c...0cc9606)
+<sub>diff: [f74270c...0cc9606](https://github.com/obillekyle/cutver/compare/f74270c...0cc9606)</sub>
 
 ### New Features
 
@@ -146,7 +156,7 @@ diff: [f74270c...0cc9606](https://github.com/obillekyle/cutver/compare/f74270c..
 
 ## [1.0.1] — 2026-08-15
 
-diff: [6ef5e9e...f74270c](https://github.com/obillekyle/cutver/compare/6ef5e9e...f74270c)
+<sub>diff: [6ef5e9e...f74270c](https://github.com/obillekyle/cutver/compare/6ef5e9e...f74270c)</sub>
 
 ### Fixes
 
@@ -154,123 +164,4 @@ diff: [6ef5e9e...f74270c](https://github.com/obillekyle/cutver/compare/6ef5e9e..
 
     `CUTVER_VERSION` is injected by `bun build --compile --define`, but the npm package's `bin` points straight at `src/cli.ts`, where nothing defines it. Only the compiled executable ever knew its own version; every install from beta.0 onward answered `dev`.
 
-## [1.0.0] — 2026-08-15
-
-diff: [bb957fd...6ef5e9e](https://github.com/obillekyle/cutver/compare/bb957fd...6ef5e9e)
-
-### Breaking Changes
-
-- `--channel <name>` replaces the per-channel flags ([ba613bb](https://github.com/obillekyle/cutver/commit/ba613bb))
-
-    The flags were enumerable when there were three channels; they stopped being enumerable the moment a config file could name a fourth. `--canary` existed only if the repository declared `canary`, which made the flag set a property of the working directory — `HELP` could not print it, `docs/reference/cli.md` could not list it, and the two-way flag-parity test in `docs.test.ts` had to be kept clear of it by writing `--<channel>`, a placeholder that is not a flag.
-
-### New Features
-
-- channel names are kebab-case, converted from camelCase and snake_case ([7ae1c55](https://github.com/obillekyle/cutver/commit/7ae1c55))
-
-    You were right that the constraint was in the wrong place. The rule was "no hyphens", and the actual hazard is narrower than that: a hyphen *inside* the identifier is fine, a hyphen *before the counter* is not.
-
-- cutver.json / cutver.yml, and everything derived from it ([177e4d4](https://github.com/obillekyle/cutver/commit/177e4d4))
-
-    The config is now read, and the two places that used to hard-code the same facts read it too.
-
-- branch rules become data, with the old rules kept as the oracle ([1ec041c](https://github.com/obillekyle/cutver/commit/1ec041c))
-
-    Step one of the config work: `matchBranch` and a `Config` type, wired into `plan.ts`. No file is read yet — this is the substitution, on its own, so that the thing everyone cares about can be proved before anything else moves.
-
-- `prerelease` is an accepted spelling of `rc` ([c2e8518](https://github.com/obillekyle/cutver/commit/c2e8518))
-
-    It reads as a category rather than a channel, and plenty of projects name the branch that. Accepted as a bare branch name, inside the versioned shape (`1.3.0-prerelease`), and as `--prerelease` on the command line.
-
-- a branch named `beta` declares the channel and lets the base move ([4e840e1](https://github.com/obillekyle/cutver/commit/4e840e1))
-
-    `1.3.0-beta` promises a specific number, so the moment a `feat!` lands the commits have outgrown the branch name and cutver refuses the push — correctly, but the fix is renaming a branch mid-flight, which is a chore that recurs every time the base moves.
-
-- the hook falls back to the release binary, with no runtime at all ([6d26922](https://github.com/obillekyle/cutver/commit/6d26922))
-
-    `init` already pins cutver as a devDependency so the workflows and the hook do not float on `latest`. This closes the other half: what happens in a repository that has no JavaScript runtime to resolve that dependency with.
-
-- a pre-push guard, so a branch cannot promise less than it carries ([9df8403](https://github.com/obillekyle/cutver/commit/9df8403))
-
-    The check is not new. A branch named `1.3.0-beta` declares its base, and cutver already refuses to cut a release when the commits imply a higher one — a `feat!` there means 2.0.0, and publishing 1.3.0 would ship a breaking change as a minor. The same commit on `2.0.0-beta` is correct and passes, because there the declared base and the implied base agree.
-
-- check the repository field, and add `cutver init` ([431565f](https://github.com/obillekyle/cutver/commit/431565f))
-
-    **The check.** A publish under trusted publishing carries a provenance statement naming the repository that built the tarball, and npm rejects one whose manifest disagrees — including one that says nothing, which it normalises to `""`. That is a manifest requirement a token-authenticated publish never had, which is why the hand-published first release sailed past it and the first automated one did not.
-
-- ship an executable, and let cutver cut its own releases ([5d18492](https://github.com/obillekyle/cutver/commit/5d18492))
-
-    Three things, and they are the same thing from different sides.
-
-- the generalised half — adapters, plan, preflight, CLI ([4a74f25](https://github.com/obillekyle/cutver/commit/4a74f25))
-
-    The arithmetic was already ecosystem-agnostic. Everything that tied the original script to npm was one thing: reading package.json, writing eight of them, keeping bun.lock in step. That is now an adapter interface — read a version, write a version, name every file it touched, name every package a release is a promise about — with `js` and `cargo` behind it.
-
-- port the version arithmetic from bakery, unchanged ([8387cd3](https://github.com/obillekyle/cutver/commit/8387cd3))
-
-    Both files are byte-identical to `scripts/version-from-commits.{ts,test.ts}` in the bakery repository. Not a rewrite and not a tidy-up: the 27 tests are the reason extracting beat reimplementing, and they only prove anything about the rules they were written against if the rules arrive untouched.
-
-### Fixes
-
-- a docs commit no longer spends a beta number ([c8038e3](https://github.com/obillekyle/cutver/commit/c8038e3))
-
-    "Is there anything to release?" and "what is the base?" are two questions, and answering both from the same range breaks one of them whichever range you pick.
-
-- name the repository, so provenance can be verified ([3a570b1](https://github.com/obillekyle/cutver/commit/3a570b1))
-
-    `npm publish` under trusted publishing got all the way through — OIDC token minted, tarball built, provenance statement signed and written to the sigstore transparency log — and was then rejected by the registry:
-
-        422 Error verifying sigstore provenance bundle: Failed to validate
-        repository information: package.json: "repository.url" is "",
-        expected to match "https://github.com/obillekyle/cutver" from provenance
-
-- the branch-declared guard needs a stable tag to mean anything ([0380eb3](https://github.com/obillekyle/cutver/commit/0380eb3))
-
-    cutver refused its own first CI build. On branch `0.1.0-beta`, with the manifest at 0.1.0-beta.0 and no stable tag anywhere, it reported:
-
-        branch '0.1.0-beta' declares 0.1.0, but the commits since the first
-        commit imply 0.2.0 (minor). Rename the branch to 0.2.0-beta.
-
-- **ci:** make publish.yml safe to re-run ([5b548f6](https://github.com/obillekyle/cutver/commit/5b548f6))
-
-    Release one has to be published by hand — trusted publishing cannot create a package — and its tag is therefore pushed *after* the version is already on the registry. A human-pushed tag does fire this workflow, so the very first tag would have failed on a duplicate version, and the second thing anyone learns about this repo would be a red cross with a good excuse.
-
-### Refactor
-
-- dead code, duplication and two stranded docblocks ([48362f8](https://github.com/obillekyle/cutver/commit/48362f8))
-
-    A full-repository sweep. Nothing here changes behaviour except the four items marked below, each of which was a defect the sweep found rather than a preference.
-
-### Docs
-
-- stop describing cutver as an unreleased tool ([6cf0e2d](https://github.com/obillekyle/cutver/commit/6cf0e2d))
-
-    Every install command asked for `cutver@beta`, and three pages explained why: `latest` was pinned to `0.1.0-beta.0` and would stay there until a stable version graduated. All of it goes stale the moment one does, and stale install instructions are the kind a reader follows anyway — `bunx cutver@beta` keeps working forever, quietly holding people on a channel they have no reason to be on.
-
-- publish the JSON schema, and the notes for six betas ([035dc76](https://github.com/obillekyle/cutver/commit/035dc76))
-
-    `docs/reference/config.md` has told people to point `$schema` at `https://cutver.okyle.dev/cutver.schema.json` since beta.10, and that URL was a 404. Editor completion is the one advantage the page offers for choosing JSON over YAML, so the alternative it recommends was the one that did not work.
-
-- the config reference, and init's workflow matches its own config ([08573f1](https://github.com/obillekyle/cutver/commit/08573f1))
-
-    `docs/reference/config.md` covers the schema, the three branch-pattern shapes, the lowercase-only rule with the frozen-counter reason behind it, discovery, every refusal, and `cutver explain`.
-
-- the older Windows binaries are fixed, not just documented ([26a6d2a](https://github.com/obillekyle/cutver/commit/26a6d2a))
-
-    `v0.1.0-beta.2` through `.6` shipped a `cutver-windows-x64.exe` that segfaulted on launch. Those assets have been rebuilt from their own tags without `--bytecode` and replaced in place — verified by downloading the beta.2 one and running it, which now prints `0.1.0-beta.2` where it used to panic.
-
-- notes for every beta, including the one that was never published ([4e1eff3](https://github.com/obillekyle/cutver/commit/4e1eff3))
-
-    `cutver` opens the heading and writes nothing under it, so five headings had accumulated with nothing beneath them. Filled in from what each release actually changed and why, which is the half a generator cannot produce from a subject line.
-
-- a static site, at cutver.okyle.dev ([c4e5b4e](https://github.com/obillekyle/cutver/commit/c4e5b4e))
-
-    Ten pages and one `index.html` that renders them — no build step, no generator, no CDN. The markdown in `docs/` stays the single source of truth, which is what keeps it inside the reach of a test.
-
-- --tag cannot hold back `latest` on a first publish ([a6ef948](https://github.com/obillekyle/cutver/commit/a6ef948))
-
-    Measured, not assumed. `bun publish --tag beta` for 0.1.0-beta.0 produced `{"beta":"0.1.0-beta.0","latest":"0.1.0-beta.0"}` — npm requires every package to have a `latest`, so the first publish sets it regardless of the flag.
-
-- say where the evidence in the ported comments comes from ([262bb33](https://github.com/obillekyle/cutver/commit/262bb33))
-
-    The previous commit is a byte-for-byte move, so its comments still cite bakery's history as "this repo" and point at `release.ts` and `prompt.ts`, neither of which exists here. Deleting the counts would be the tidier-looking fix and would throw away the only thing that makes the rules arguable — "four of five breaking commits carry only the bang" is *why* both markers are checked. Attributed instead.
+Older releases are in the git tags and on the releases page.
