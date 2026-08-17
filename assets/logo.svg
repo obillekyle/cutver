@@ -9,16 +9,18 @@
       as they swept past the square. Rotating the clipped group instead carries
       the clip along, so nothing is ever newly clipped.
 
-      Counter-clockwise is 360deg -> 0: a decreasing angle. `both` holds the
-      start frame before it plays and the end frame after, so there is no flash
-      of the un-transformed state on a slow load.
+      Counter-clockwise is a decreasing angle: 180deg -> 0. Half a turn rather
+      than a full one — a whole revolution reads as a loading spinner, and this
+      is an entrance. `both` holds the start frame before it plays and the end
+      frame after, so there is no flash of the un-transformed state on a slow
+      load.
     */
     .spin {
       transform-origin: 248px 251.4px;
       animation: cutver-in 900ms cubic-bezier(.2, .8, .2, 1) both;
     }
     @keyframes cutver-in {
-      from { opacity: 0; transform: rotate(360deg) scale(.82); }
+      from { opacity: 0; transform: rotate(180deg) scale(.82); }
       to   { opacity: 1; transform: rotate(0deg) scale(1); }
     }
     /* Somebody who has asked their system for less motion gets the end state. */
