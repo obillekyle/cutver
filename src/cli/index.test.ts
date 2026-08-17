@@ -4,6 +4,17 @@ import { tmpdir } from 'node:os'
 import manifest from '../../package.json' with { type: 'json' }
 
 /**
+ * A git identity for every fixture here, set once — see `plan.test.ts` for why
+ * this is the environment rather than two `git config` spawns per fixture.
+ */
+Object.assign(process.env, {
+  GIT_AUTHOR_NAME: 'fixture',
+  GIT_AUTHOR_EMAIL: 'fixture@example.invalid',
+  GIT_COMMITTER_NAME: 'fixture',
+  GIT_COMMITTER_EMAIL: 'fixture@example.invalid',
+})
+
+/**
  * The CLI as a subprocess, which is the only way to see what it reports.
  *
  * `VERSION` is not exported and should not be — importing the entry runs the
@@ -188,8 +199,6 @@ describe('cutver stage, against an orphaned tag', () => {
         .exited
 
     await git('init', '-q')
-    await git('config', 'user.email', 'a@b.c')
-    await git('config', 'user.name', 't')
     await Bun.write(`${dir}/package.json`, '{"name":"p","version":"1.0.0"}')
     await git('add', '-A')
     await git('commit', '-qm', 'feat: base')
@@ -274,8 +283,6 @@ describe('cutver check, with both manifests present', () => {
         .exited
 
     await git('init', '-q')
-    await git('config', 'user.email', 'a@b.c')
-    await git('config', 'user.name', 't')
     await Bun.write(`${dir}/package.json`, '{"name":"p","version":"1.0.0"}')
     await Bun.write(
       `${dir}/Cargo.toml`,
@@ -369,8 +376,6 @@ describe('cutver stage, in a repository with no tags', () => {
         .exited
 
     await git('init', '-q')
-    await git('config', 'user.email', 'a@b.c')
-    await git('config', 'user.name', 't')
     await Bun.write(
       `${dir}/package.json`,
       `{"name":"p","version":"${version}"}`,
@@ -472,8 +477,6 @@ describe('cutver stage, crossing out of 0.x', () => {
         .exited
 
     await git('init', '-q')
-    await git('config', 'user.email', 'a@b.c')
-    await git('config', 'user.name', 't')
     await Bun.write(
       `${dir}/package.json`,
       `{"name":"p","version":"${version}"}`,
@@ -564,6 +567,114 @@ describe('cutver stage, crossing out of 0.x', () => {
 
       expect(code).toBe(0)
       expect(out).toContain('1.4.0 -> 2.0.0')
+      rmSync(dir, { recursive: true, force: true })
+    },
+    SLOW,
+  )
+})
+
+/**
+ * The refusals in `runStage` that nothing reached.
+ *
+ * **`stage.ts` exports one function, and that is right.** `target`, `preflight`
+ * and the dirty-tree guard are module-private, so a co-located unit test would
+ * mean widening the public surface purely to look at it — and every one of them
+ * is a refusal, which is only meaningful against a real tree. What was missing
+ * was coverage, not a file: `runStage` is the only path that writes a version,
+ * and three of its guards had nothing driving them.
+ */
+describe('cutver stage, the guards before the write', () => {
+  async function repo(): Promise<string> {
+    const dir = mkdtempSync(`${tmpdir()}/cutver-guard-`).replaceAll('\\', '/')
+    const git = (...args: string[]) =>
+      Bun.spawn(['git', ...args], { cwd: dir, stdout: 'pipe', stderr: 'pipe' })
+        .exited
+
+    await git('init', '-q')
+    await Bun.write(`${dir}/package.json`, '{"name":"p","version":"1.0.0"}')
+    await git('add', '-A')
+    await git('commit', '-qm', 'feat: base')
+    await git('tag', 'v1.0.0')
+    await Bun.write(`${dir}/f.txt`, 'x')
+    await git('add', '-A')
+    await git('commit', '-qm', 'fix: something')
+    return dir
+  }
+
+  test(
+    'a dirty tree is refused, and nothing is written',
+    async () => {
+      // The release would otherwise capture edits nobody reviewed — and the
+      // manifest it captured them into is the one thing that cannot be undone
+      // by re-running.
+      const dir = await repo()
+      await Bun.write(`${dir}/stray.txt`, 'unreviewed')
+
+      const { out, code } = await cutver('stage', '--offline', '--cwd', dir)
+      expect(code).toBe(1)
+      expect(out).toContain('working tree is not clean')
+
+      const manifest = await Bun.file(`${dir}/package.json`).json()
+      expect(manifest.version).toBe('1.0.0')
+
+      rmSync(dir, { recursive: true, force: true })
+    },
+    SLOW,
+  )
+
+  test(
+    'a dry run does not ask about the tree',
+    async () => {
+      // Guarded on the flag rather than the answer: nothing is written, so the
+      // answer could not be used, and asking spends a git spawn on the flag
+      // people iterate with.
+      const dir = await repo()
+      await Bun.write(`${dir}/stray.txt`, 'unreviewed')
+
+      const { out, code } = await cutver(
+        'stage',
+        '--offline',
+        '--dry-run',
+        '--cwd',
+        dir,
+      )
+      expect(code).toBe(0)
+      expect(out).not.toContain('working tree is not clean')
+
+      rmSync(dir, { recursive: true, force: true })
+    },
+    SLOW,
+  )
+
+  test(
+    'the argument is a version, a channel, or an error that says which',
+    async () => {
+      const dir = await repo()
+
+      // A leading `v` is the actual mistake, so the message is about the `v`
+      // rather than about a channel nobody was naming.
+      const v = await cutver('stage', 'v1.2.0', '--offline', '--cwd', dir)
+      expect(v.code).toBe(1)
+      expect(v.out).toContain("no leading 'v'")
+
+      // Neither shape: the message lists what this repository does have.
+      const nonsense = await cutver('stage', 'gamma', '--offline', '--cwd', dir)
+      expect(nonsense.code).toBe(1)
+      expect(nonsense.out).toContain('neither a version nor a channel')
+      expect(nonsense.out).toContain('Channels here:')
+
+      // Two of them is not a guess to make.
+      const two = await cutver(
+        'stage',
+        '1.2.0',
+        'beta',
+        '--offline',
+        '--cwd',
+        dir,
+      )
+      expect(two.code).toBe(1)
+      expect(two.out).toContain('one channel or version')
+
       rmSync(dir, { recursive: true, force: true })
     },
     SLOW,

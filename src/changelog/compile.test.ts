@@ -5,6 +5,17 @@ import { compileReleases } from './compile'
 import { write } from '../runtime'
 
 /**
+ * A git identity for every fixture here, set once — see `plan.test.ts` for why
+ * this is the environment rather than two `git config` spawns per fixture.
+ */
+Object.assign(process.env, {
+  GIT_AUTHOR_NAME: 'fixture',
+  GIT_AUTHOR_EMAIL: 'fixture@example.invalid',
+  GIT_COMMITTER_NAME: 'fixture',
+  GIT_COMMITTER_EMAIL: 'fixture@example.invalid',
+})
+
+/**
  * Which releases get a heading, and which are folded into the next one.
  *
  * **`prereleases: false` has to mean the same thing at every moment.** The tag
@@ -32,8 +43,6 @@ async function repo(): Promise<string> {
       .exited
 
   await git('init', '-q')
-  await git('config', 'user.email', 'a@b.c')
-  await git('config', 'user.name', 't')
 
   await write(`${dir}/a.txt`, '1')
   await git('add', '-A')

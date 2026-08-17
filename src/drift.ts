@@ -72,11 +72,315 @@ export function channelOf(version: string): string | null {
 }
 
 /**
+ * Whether this workflow resolves a dist-tag at all.
+ *
+ * **Not `esac`.** That was the first attempt and it matched the *other* case in
+ * the same file — the one that decides whether a tag is marked as a prerelease
+ * — so every artifacts-only Rust workspace was told its three default channels
+ * had no arms. The step's `id` and the catch-all's own wording are what
+ * actually identify a dist-tag resolver, and both err toward silence on a
+ * workflow written by hand.
+ */
+function resolvesDistTag(publish: string): boolean {
+  return (
+    publish.includes('disttag') || publish.includes('unrecognised prerelease')
+  )
+}
+
+/**
+ * A workflow that should not exist at all, which every other rule misses.
+ *
+ * The rest of them inspect the *contents* of publish.yml, so all of them are
+ * handed a file that is there and none can ask whether it belongs. Set
+ * `publish: false`, re-run `init`, and the file is simply left off the list of
+ * things to write — never rewritten, never removed. It stays triggered on
+ * `push: tags: v*`, still running a publish, while the regenerated version.yml
+ * says in a comment that there is no publish.yml to dispatch and `doctor`
+ * reports nothing wrong.
+ *
+ * A refusal rather than a warning: the config says a tag produces nothing, and
+ * the file on disk publishes a package. One of them is going to be obeyed, and
+ * it is not the config.
+ */
+function orphanedPublish(publish: string | null, publishes: boolean): Drift[] {
+  if (!publish || publishes) return []
+  return [
+    {
+      level: 'refuse',
+      message:
+        'publish.yml is still here, and this config publishes nothing.\n' +
+        '        It fires on `push: tags: v*` and runs a publish for a tag that\n' +
+        '        is meant to produce nothing at all. `cutver init --force`\n' +
+        '        removes it, or delete it by hand.',
+      docs: `${DOCS}/#/reference/config`,
+    },
+  ]
+}
+
+/** No arm for the channel being cut right now, which fails after the tag. */
+function armForThisRelease(publish: string, version: string): Drift[] {
+  const channel = channelOf(version)
+  if (!resolvesDistTag(publish) || !channel) return []
+  if (publish.includes(`*-${channel}.`)) return []
+
+  return [
+    {
+      level: 'refuse',
+      message:
+        `publish.yml has no dist-tag arm for \`${channel}\`, and this release is ` +
+        `${version}.\n` +
+        '        Its catch-all refuses an unrecognised prerelease rather than\n' +
+        '        defaulting it to `latest` — so the publish would fail after the tag\n' +
+        '        and the release commit are already public.\n' +
+        '\n' +
+        '        Add this arm above the `*-*)` line in publish.yml:\n' +
+        `          *-${channel}.*)  tag=${channel} ;;`,
+      docs: `${DOCS}/#/reference/config`,
+    },
+  ]
+}
+
+/**
+ * Channels that are declared but unnameable.
+ *
+ * Not this release's problem, and that is exactly why it is a warning: the day
+ * someone cuts one, it is.
+ */
+function armsForOtherChannels(
+  publish: string,
+  config: Config,
+  version: string,
+): Drift[] {
+  if (!resolvesDistTag(publish)) return []
+  const channel = channelOf(version)
+
+  const missing = distTagArms(config)
+    .map(arm => /\*-([a-z-]+)\./.exec(arm)?.[1])
+    .filter(
+      (c): c is string => !!c && c !== channel && !publish.includes(`*-${c}.`),
+    )
+  if (!missing.length) return []
+
+  return [
+    {
+      level: 'warn',
+      message:
+        `publish.yml has no dist-tag arm for ${missing.map(c => `\`${c}\``).join(', ')}. ` +
+        'A release in one of those channels would fail after its tag is public.\n' +
+        '        Add above the `*-*)` line in publish.yml:\n' +
+        missing.map(c => `          *-${c}.*)  tag=${c} ;;`).join('\n'),
+      docs: `${DOCS}/#/reference/config`,
+    },
+  ]
+}
+
+/**
+ * The config asks for artifacts and the workflow builds none.
+ *
+ * **Two shapes, because the generated one is not the only correct one.** `init`
+ * writes a build matrix that hands binaries to a release job through
+ * `upload-artifact`; this repository's own hand-written workflow builds and
+ * attaches in a single job with `gh release upload`. Testing only for the
+ * generated shape reported a false positive against the very project that wrote
+ * the check.
+ */
+function artifactsNotAttached(
+  publish: string,
+  config: Config,
+  adapter: 'js' | 'cargo',
+): Drift[] {
+  const attaches =
+    publish.includes('upload-artifact') || publish.includes('release upload')
+  if (!producesArtifacts(adapter, config) || attaches) return []
+
+  return [
+    {
+      level: 'warn',
+      message:
+        'the config asks a tag to produce artifacts, but publish.yml builds none, ' +
+        'so the release will carry no binaries.\n' +
+        '        The job is too long to print here — generate one into an empty\n' +
+        '        directory and copy it across, or drop `artifacts` from `publish`:\n' +
+        '          cutver init <ecosystem> --cwd /tmp/scratch --no-hook',
+      docs: `${DOCS}/#/guides/artifacts`,
+    },
+  ]
+}
+
+/**
+ * Opted in, and nothing to run it with.
+ *
+ * `changelog.summarizer: true` is the repository saying it wants a summarised
+ * body; the command that does the summarising deliberately does not live in the
+ * config, so turning the switch on is only half of it. Nothing warns you about
+ * the other half — the release simply goes out with the notes as written, which
+ * is a correct release and therefore one nobody looks twice at.
+ *
+ * A warning, never a refusal. Notes as written were always the fallback and are
+ * always publishable; refusing a release because a model is missing would make
+ * inference the most load-bearing thing in the pipeline, which is the opposite
+ * of how it is wired everywhere else.
+ *
+ * `true` means "use the command", so this fires only when the workflow has no
+ * command either. A mapping names a provider and needs nothing from the
+ * workflow but a key.
+ */
+function summariserWithoutCommand(publish: string, config: Config): Drift[] {
+  if (config.changelog?.summarizer !== true) return []
+  if (hasSummarizer(publish)) return []
+
+  return [
+    {
+      level: 'warn',
+      // **Nested under `changelog:`, and named `summarizer`.** Both halves of
+      // this were wrong in the same four lines: it reported the key as
+      // `changelog.summarize`, which this project deprecated in 2.0, and the
+      // block it told you to paste was a top-level `summarizer:`, which the
+      // loader flags as the pre-2.0 spelling. Following `doctor`'s advice
+      // produced a config `doctor` then complains about.
+      message:
+        '`changelog.summarizer` is on, but nothing is configured to do it — ' +
+        'the release body goes out as written.\n' +
+        '        Name a provider in cutver.yml:\n' +
+        '          changelog:\n' +
+        '            summarizer:\n' +
+        '              connector: gemini      # or anthropic, openai-compatible\n' +
+        '              model: gemini-3.5-flash\n' +
+        '        and set the key in your CI secrets as `CUTVER_SUMMARIZE_KEY`.\n' +
+        '        There is no key in the config: this file is committed and published.\n' +
+        '\n' +
+        '        `CUTVER_SUMMARIZE` in the environment still works and still wins —\n' +
+        '        any command reading markdown on stdin and writing it on stdout.',
+      docs: `${DOCS}/#/guides/changelog`,
+    },
+  ]
+}
+
+/**
+ * A workflow older than `cutver notes` carries the extraction itself, so it
+ * cannot pick up `changelog.summarizer` or anything else added since.
+ *
+ * **Only where a release body exists to extract.** `cutver notes` runs in the
+ * job that creates the GitHub release, which `init` writes only for
+ * `artifacts`. A registry-only workflow has no release page and no notes step,
+ * and warning that it "extracts the release body itself" told every such
+ * repository to add a step to a job that does not exist.
+ */
+function inlineReleaseBody(publish: string, config: Config): Drift[] {
+  const makesRelease = publish.includes('gh release')
+  if (!config.changelog || !makesRelease) return []
+  if (publish.includes('notes "$TAG"')) return []
+
+  return [
+    {
+      level: 'warn',
+      message:
+        'publish.yml extracts the release body itself, so changelog settings in ' +
+        'your config never reach it.\n' +
+        '        Replace that step with:\n' +
+        '          - name: Release notes\n' +
+        '            timeout-minutes: 15\n' +
+        '            continue-on-error: true\n' +
+        '            run: cutver notes "$TAG" > notes.md',
+      docs: `${DOCS}/#/guides/changelog`,
+    },
+  ]
+}
+
+/**
+ * A workflow written before 2.0 releases nothing, and says nothing.
+ *
+ * Releasing used to be the bare invocation, so every generated `version.yml`
+ * runs `cutver --if-needed`. That is now a command-less invocation: it prints
+ * the command list and exits non-zero in CI, which is loud — but a workflow
+ * with `continue-on-error`, or one whose step is `|| true`, swallows it and
+ * goes green having released nothing.
+ *
+ * Matched on `cutver` followed directly by a flag, which no correct invocation
+ * produces. `npx --yes cutver stage` does not match: the flag there precedes
+ * the word.
+ */
+function preTwoInvocation(name: string, text: string | null): Drift[] {
+  if (!text || !/cutver\s+--(?!version\b|help\b)/.test(text)) return []
+
+  // **Frozen and broken are different findings.** A workflow that fetches a
+  // pinned `releases/download/v1.*/cutver-…` and then calls the bare invocation
+  // is internally consistent: that cutver releases, and this one is reporting
+  // on a version it is not running. Worth saying, not worth failing. Anything
+  // else resolves whatever is current — `bunx cutver`, `npx cutver`, a pin at 2
+  // or above — and the bare invocation there is a step that cannot release at
+  // all.
+  const pin = /releases\/download\/v(\d+)\.\d+\.\d+[^/]*\/cutver-/.exec(text)
+  const frozen = pin !== undefined && pin !== null && Number(pin[1]) < 2
+
+  return [
+    {
+      level: frozen ? 'warn' : 'refuse',
+      message: frozen
+        ? `${name} pins cutver ${pin?.[1]}.x and calls it the pre-2.0 way, which is\n` +
+          '        consistent — but the pin is what is holding it together.\n' +
+          '        Move both together: bump the URL, and make the line\n' +
+          '        `cutver stage --if-needed …`.'
+        : `${name} runs cutver with no command, which is the pre-2.0 shape.\n` +
+          '        Releasing is `cutver stage` now, and nothing here pins an\n' +
+          '        older cutver — so that step releases nothing.\n' +
+          '        Change the line to `cutver stage --if-needed …`, or re-run\n' +
+          '          cutver init --force',
+      docs: `${DOCS}/#/getting-started/ci`,
+    },
+  ]
+}
+
+/**
+ * Branches the config claims and the workflow does not trigger on.
+ *
+ * **Parsed, not searched.** `includes(branch)` was the first attempt and it is
+ * wrong in both directions: `main` is a substring of `domain`, `beta` of
+ * `*-beta`, and — measured on this project — `**` matched a bold-markdown
+ * `**word**` inside a comment, so the check silently passed on a workflow that
+ * was genuinely missing a trigger. A workflow that will not parse is skipped
+ * rather than reported: it is not this check's business, and the release run is
+ * the wrong place to find out.
+ */
+function missingTriggers(version: string, config: Config): Drift[] {
+  const expected = branchTriggers(config)
+  const declared = triggerBranches(version)
+  const missing =
+    declared === null ? [] : expected.filter(b => !declared.includes(b))
+  if (!missing.length) return []
+
+  return [
+    {
+      level: 'warn',
+      message:
+        `version.yml does not trigger on ${missing.map(b => `\`${b}\``).join(', ')}. ` +
+        'A push to one of those releases nothing, with no error to notice.\n' +
+        '        Add under `on.push.branches` in version.yml:\n' +
+        missing
+          .map(b => `          - ${/^[*?]/.test(b) ? `'${b}'` : b}`)
+          .join('\n'),
+      docs: `${DOCS}/#/getting-started/ci`,
+    },
+  ]
+}
+
+/**
  * Findings for a release about to be cut.
  *
  * Pure, so the awkward cases are testable without a repository — and there are
  * more of them than the check looks like it has, because every one has to be
  * silent when the answer is "this repository does its CI differently".
+ *
+ * **One rule per function, in the order they are reported.** They used to be
+ * eight blocks in one 275-line scope, separated by comment headers doing work
+ * that function boundaries should — and the file is a checker, so "which rule
+ * fired" is the only question anyone brings to it. Each returns a list rather
+ * than a nullable so the composition below reads as the report it produces.
+ *
+ * No workflows at all is not drift. A repository releasing from a laptop, or
+ * from CI cutver did not generate, is a normal repository — and a tool that
+ * complained about a file it was never asked to write would be inventing a
+ * requirement.
  */
 export function inspect(
   files: Workflows,
@@ -97,261 +401,25 @@ export function inspect(
    */
   adapter: 'js' | 'cargo' = config.target === 'cargo' ? 'cargo' : 'js',
 ): Drift[] {
-  const found: Drift[] = []
-
-  // **A workflow that should not exist at all, which every rule below misses.**
-  //
-  // Everything else here inspects the *contents* of publish.yml, so all of it
-  // sits inside `if (files.publish)` and none of it can ask whether the file
-  // belongs. Set `publish: false`, re-run `init`, and the file is simply left
-  // off the list of things to write — never rewritten, never removed. It stays
-  // triggered on `push: tags: v*`, still running a publish, while the
-  // regenerated version.yml says in a comment that there is no publish.yml to
-  // dispatch and `doctor` reports nothing wrong.
-  //
-  // A refusal rather than a warning: the config says a tag produces nothing,
-  // and the file on disk publishes a package. One of them is going to be
-  // obeyed, and it is not the config.
   const publishes =
     publishesToRegistry(adapter, config) || producesArtifacts(adapter, config)
+  const publish = files.publish
 
-  if (files.publish && !publishes) {
-    found.push({
-      level: 'refuse',
-      message:
-        'publish.yml is still here, and this config publishes nothing.\n' +
-        '        It fires on `push: tags: v*` and runs a publish for a tag that\n' +
-        '        is meant to produce nothing at all. `cutver init --force`\n' +
-        '        removes it, or delete it by hand.',
-      docs: `${DOCS}/#/reference/config`,
-    })
-  }
-
-  // No workflows at all is not drift. A repository releasing from a laptop, or
-  // from CI cutver did not generate, is a normal repository — and a tool that
-  // complained about a file it was never asked to write would be inventing a
-  // requirement.
-  if (files.publish) {
-    // Only meaningful when this workflow actually resolves a dist-tag. An
-    // artifacts-only cargo release has no dist-tag at all and needs no arms.
-    //
-    // **Not `esac`.** That was the first attempt and it matched the *other*
-    // case in the same file — the one that decides whether a tag is marked as
-    // a prerelease — so every artifacts-only Rust workspace was told its three
-    // default channels had no arms. The step's `id` and the catch-all's own
-    // wording are what actually identify a dist-tag resolver, and both err
-    // toward silence on a workflow written by hand.
-    const hasCase =
-      files.publish.includes('disttag') ||
-      files.publish.includes('unrecognised prerelease')
-    const channel = channelOf(version)
-
-    if (hasCase && channel && !files.publish.includes(`*-${channel}.`)) {
-      found.push({
-        level: 'refuse',
-        message:
-          `publish.yml has no dist-tag arm for \`${channel}\`, and this release is ` +
-          `${version}.\n` +
-          '        Its catch-all refuses an unrecognised prerelease rather than\n' +
-          '        defaulting it to `latest` — so the publish would fail after the tag\n' +
-          '        and the release commit are already public.\n' +
-          '\n' +
-          '        Add this arm above the `*-*)` line in publish.yml:\n' +
-          `          *-${channel}.*)  tag=${channel} ;;`,
-        docs: `${DOCS}/#/reference/config`,
-      })
-    }
-
-    // Channels that are declared but unnameable. Not this release's problem,
-    // and that is exactly why it is a warning: the day someone cuts one, it is.
-    if (hasCase) {
-      const missing = distTagArms(config)
-        .map(arm => /\*-([a-z-]+)\./.exec(arm)?.[1])
-        .filter(
-          (c): c is string =>
-            !!c && c !== channel && !files.publish?.includes(`*-${c}.`),
-        )
-
-      if (missing.length) {
-        found.push({
-          level: 'warn',
-          message:
-            `publish.yml has no dist-tag arm for ${missing.map(c => `\`${c}\``).join(', ')}. ` +
-            'A release in one of those channels would fail after its tag is public.\n' +
-            '        Add above the `*-*)` line in publish.yml:\n' +
-            missing.map(c => `          *-${c}.*)  tag=${c} ;;`).join('\n'),
-          docs: `${DOCS}/#/reference/config`,
-        })
-      }
-    }
-
-    // **Two shapes, because the generated one is not the only correct one.**
-    // `init` writes a build matrix that hands binaries to a release job through
-    // `upload-artifact`; this repository's own hand-written workflow builds and
-    // attaches in a single job with `gh release upload`. Testing only for the
-    // generated shape reported a false positive against the very project that
-    // wrote the check.
-    const attaches =
-      files.publish.includes('upload-artifact') ||
-      files.publish.includes('release upload')
-
-    const wantsArtifacts = producesArtifacts(adapter, config)
-    if (wantsArtifacts && !attaches) {
-      found.push({
-        level: 'warn',
-        message:
-          'the config asks a tag to produce artifacts, but publish.yml builds none, ' +
-          'so the release will carry no binaries.\n' +
-          '        The job is too long to print here — generate one into an empty\n' +
-          '        directory and copy it across, or drop `artifacts` from `publish`:\n' +
-          '          cutver init <ecosystem> --cwd /tmp/scratch --no-hook',
-        docs: `${DOCS}/#/guides/artifacts`,
-      })
-    }
-
-    // **Opted in, and nothing to run it with.** `changelog.summarizer: true` is
-    // the repository saying it wants a summarised body; the command that does
-    // the summarising deliberately does not live in the config, so turning the
-    // switch on is only half of it. Nothing warns you about the other half —
-    // the release simply goes out with the notes as written, which is a correct
-    // release and therefore one nobody looks twice at.
-    //
-    // A warning, never a refusal. Notes as written were always the fallback and
-    // are always publishable; refusing a release because a model is missing
-    // would make inference the most load-bearing thing in the pipeline, which
-    // is the opposite of how it is wired everywhere else.
-    // `true` means "use the command", so this fires only when the workflow has
-    // no command either. A mapping names a provider and needs nothing from the
-    // workflow but a key.
-    if (
-      config.changelog?.summarizer === true &&
-      !hasSummarizer(files.publish)
-    ) {
-      found.push({
-        level: 'warn',
-        // **Nested under `changelog:`, and named `summarizer`.** Both halves
-        // of this were wrong in the same four lines: it reported the key as
-        // `changelog.summarize`, which this project deprecated in 2.0, and the
-        // block it told you to paste was a top-level `summarizer:`, which the
-        // loader flags as the pre-2.0 spelling. Following `doctor`'s advice
-        // produced a config `doctor` then complains about.
-        message:
-          '`changelog.summarizer` is on, but nothing is configured to do it — ' +
-          'the release body goes out as written.\n' +
-          '        Name a provider in cutver.yml:\n' +
-          '          changelog:\n' +
-          '            summarizer:\n' +
-          '              connector: gemini      # or anthropic, openai-compatible\n' +
-          '              model: gemini-3.5-flash\n' +
-          '        and set the key in your CI secrets as `CUTVER_SUMMARIZE_KEY`.\n' +
-          '        There is no key in the config: this file is committed and published.\n' +
-          '\n' +
-          '        `CUTVER_SUMMARIZE` in the environment still works and still wins —\n' +
-          '        any command reading markdown on stdin and writing it on stdout.',
-        docs: `${DOCS}/#/guides/changelog`,
-      })
-    }
-
-    // A workflow older than `cutver notes` carries the extraction itself, so it
-    // cannot pick up `changelog.summarizer` or anything else added since.
-    // **Only where a release body exists to extract.** `cutver notes` runs in
-    // the job that creates the GitHub release, which `init` writes only for
-    // `artifacts`. A registry-only workflow has no release page and no notes
-    // step, and warning that it "extracts the release body itself" told every
-    // such repository to add a step to a job that does not exist.
-    const makesRelease = files.publish.includes('gh release')
-    if (
-      config.changelog &&
-      makesRelease &&
-      !files.publish.includes('notes "$TAG"')
-    ) {
-      found.push({
-        level: 'warn',
-        message:
-          'publish.yml extracts the release body itself, so changelog settings in ' +
-          'your config never reach it.\n' +
-          '        Replace that step with:\n' +
-          '          - name: Release notes\n' +
-          '            timeout-minutes: 15\n' +
-          '            continue-on-error: true\n' +
-          '            run: cutver notes "$TAG" > notes.md',
-        docs: `${DOCS}/#/guides/changelog`,
-      })
-    }
-  }
-
-  // **A workflow written before 2.0 releases nothing, and says nothing.**
-  // Releasing used to be the bare invocation, so every generated `version.yml`
-  // runs `cutver --if-needed`. That is now a command-less invocation: it prints
-  // the command list and exits non-zero in CI, which is loud — but a workflow
-  // with `continue-on-error`, or one whose step is `|| true`, swallows it and
-  // goes green having released nothing.
-  //
-  // Matched on `cutver` followed directly by a flag, which no correct
-  // invocation produces. `npx --yes cutver stage` does not match: the flag
-  // there precedes the word.
-  for (const [name, text] of [
-    ['version.yml', files.version],
-    ['publish.yml', files.publish],
-  ] as const) {
-    if (text && /cutver\s+--(?!version\b|help\b)/.test(text)) {
-      // **Frozen and broken are different findings.** A workflow that fetches
-      // a pinned `releases/download/v1.*/cutver-…` and then calls the bare
-      // invocation is internally consistent: that cutver releases, and this
-      // one is reporting on a version it is not running. Worth saying, not
-      // worth failing. Anything else resolves whatever is current — `bunx
-      // cutver`, `npx cutver`, a pin at 2 or above — and the bare invocation
-      // there is a step that cannot release at all.
-      const pin = /releases\/download\/v(\d+)\.\d+\.\d+[^/]*\/cutver-/.exec(
-        text,
-      )
-      const frozen = pin !== undefined && pin !== null && Number(pin[1]) < 2
-
-      found.push({
-        level: frozen ? 'warn' : 'refuse',
-        message: frozen
-          ? `${name} pins cutver ${pin?.[1]}.x and calls it the pre-2.0 way, which is\n` +
-            '        consistent — but the pin is what is holding it together.\n' +
-            '        Move both together: bump the URL, and make the line\n' +
-            '        `cutver stage --if-needed …`.'
-          : `${name} runs cutver with no command, which is the pre-2.0 shape.\n` +
-            '        Releasing is `cutver stage` now, and nothing here pins an\n' +
-            '        older cutver — so that step releases nothing.\n' +
-            '        Change the line to `cutver stage --if-needed …`, or re-run\n' +
-            '          cutver init --force',
-        docs: `${DOCS}/#/getting-started/ci`,
-      })
-    }
-  }
-
-  if (files.version) {
-    // **Parsed, not searched.** `includes(branch)` was the first attempt and it
-    // is wrong in both directions: `main` is a substring of `domain`, `beta` of
-    // `*-beta`, and — measured on this project — `**` matched a bold-markdown
-    // `**word**` inside a comment, so the check silently passed on a workflow
-    // that was genuinely missing a trigger. A workflow that will not parse is
-    // skipped rather than reported: it is not this check's business, and the
-    // release run is the wrong place to find out.
-    const expected = branchTriggers(config)
-    const declared = triggerBranches(files.version)
-    const missing =
-      declared === null ? [] : expected.filter(b => !declared.includes(b))
-    if (missing.length) {
-      found.push({
-        level: 'warn',
-        message:
-          `version.yml does not trigger on ${missing.map(b => `\`${b}\``).join(', ')}. ` +
-          'A push to one of those releases nothing, with no error to notice.\n' +
-          '        Add under `on.push.branches` in version.yml:\n' +
-          missing
-            .map(b => `          - ${/^[*?]/.test(b) ? `'${b}'` : b}`)
-            .join('\n'),
-        docs: `${DOCS}/#/getting-started/ci`,
-      })
-    }
-  }
-
-  return found
+  return [
+    ...orphanedPublish(publish, publishes),
+    ...(publish
+      ? [
+          ...armForThisRelease(publish, version),
+          ...armsForOtherChannels(publish, config, version),
+          ...artifactsNotAttached(publish, config, adapter),
+          ...summariserWithoutCommand(publish, config),
+          ...inlineReleaseBody(publish, config),
+        ]
+      : []),
+    ...preTwoInvocation('version.yml', files.version),
+    ...preTwoInvocation('publish.yml', files.publish),
+    ...(files.version ? missingTriggers(files.version, config) : []),
+  ]
 }
 
 /**

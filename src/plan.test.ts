@@ -7,6 +7,26 @@ import { DEFAULT_CONFIG } from './config/schema'
 import { versionFromBranch } from './version-from-commits'
 import { run } from './run'
 
+/**
+ * A git identity for every fixture in this file, set once.
+ *
+ * CI runners have no identity configured and `git commit` refuses without one,
+ * so each fixture used to run `git config` twice before its first commit. This
+ * file builds 36 repositories, which made that 72 process spawns — and process
+ * creation is the only thing here that costs anything, at roughly 100ms each on
+ * this machine.
+ *
+ * The environment reaches the child because `runCommand` spawns without an
+ * `env` option, so the child inherits this process's. `git -c` would be the
+ * other way and is not used anywhere in this repository.
+ */
+Object.assign(process.env, {
+  GIT_AUTHOR_NAME: 'fixture',
+  GIT_AUTHOR_EMAIL: 'fixture@example.invalid',
+  GIT_COMMITTER_NAME: 'fixture',
+  GIT_COMMITTER_EMAIL: 'fixture@example.invalid',
+})
+
 const made: string[] = []
 
 afterEach(async () => {
@@ -29,10 +49,6 @@ async function repo(entries: string[]): Promise<string> {
   made.push(dir)
 
   await run(['git', 'init', '-q', '-b', 'main'], dir)
-  // Local to the fixture. CI runners have no identity configured and `git
-  // commit` refuses without one.
-  await run(['git', 'config', 'user.email', 'fixture@example.invalid'], dir)
-  await run(['git', 'config', 'user.name', 'fixture'], dir)
 
   for (const entry of entries) {
     const [subject = '', tag] = entry.split('@')

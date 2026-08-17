@@ -12,6 +12,17 @@ import {
 import { plan, PlanRefusal } from './plan'
 import { run } from './run'
 
+/**
+ * A git identity for every fixture here, set once — see `plan.test.ts` for why
+ * this is the environment rather than two `git config` spawns per fixture.
+ */
+Object.assign(process.env, {
+  GIT_AUTHOR_NAME: 'fixture',
+  GIT_AUTHOR_EMAIL: 'fixture@example.invalid',
+  GIT_COMMITTER_NAME: 'fixture',
+  GIT_COMMITTER_EMAIL: 'fixture@example.invalid',
+})
+
 const made: string[] = []
 
 afterEach(async () => {
@@ -24,8 +35,6 @@ async function repo(entries: string[]): Promise<string> {
   made.push(dir)
 
   await run(['git', 'init', '-q', '-b', 'main'], dir)
-  await run(['git', 'config', 'user.email', 'fixture@example.invalid'], dir)
-  await run(['git', 'config', 'user.name', 'fixture'], dir)
 
   for (const entry of entries) {
     const [subject = '', tag] = entry.split('@')
