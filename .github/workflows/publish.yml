@@ -102,7 +102,13 @@ jobs:
       # Run again rather than trusted from the tagged commit's earlier run: a
       # tag can be moved, a branch force-pushed. Last point anything stops.
       - run: bun run typecheck
-      - run: bun test ./src
+      # **`bun run test`, not `bun test`.** The script carries `--timeout
+      # 30000`, and the suite needs it: a dozen tests spawn git or a cutver
+      # subprocess and land within a second of bun's 5s default. Calling
+      # `bun test` directly here bypassed the one place that number is
+      # configured, so CI ran with a limit the project had already decided was
+      # wrong — a flake that only ever appeared under load.
+      - run: bun run test
 
       # The dist-tag is derived from the version, never passed in. **A
       # prerelease published without one becomes `latest`**, and then every

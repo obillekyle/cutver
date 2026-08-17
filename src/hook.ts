@@ -222,7 +222,7 @@ export async function installHook(
 
   if (!dryRun) {
     await write(path, hookScript({ runner: explicit, version }))
-    // Bun.write does not set a mode, and git skips a hook it cannot execute —
+    // `write` does not set a mode, and git skips a hook it cannot execute —
     // silently, which would make this look installed and do nothing. Windows
     // has no execute bit and git for Windows does not check for one.
     if (process.platform !== 'win32') await run(['chmod', '+x', path], root)

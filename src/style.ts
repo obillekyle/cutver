@@ -28,6 +28,33 @@
  * width, and both `%g` and `\x1b[32m` count as characters that are not on
  * screen. `pad` measures the plain text; nothing else should call `padEnd` on
  * a string that has been through here.
+ *
+ * ## What each colour means here
+ *
+ * A palette is only a cue if the same colour means the same thing everywhere,
+ * so these are assignments rather than preferences:
+ *
+ * | | |
+ * | --- | --- |
+ * | `%c` cyan | a **version**, or the count a line is about — the part that differs between two runs of the same command |
+ * | `%g` green | written, present, ok |
+ * | `%r` red | a problem, and a `major` bump — the one row that obliges somebody downstream to do work |
+ * | `%y` yellow | worth a look, nothing broken |
+ * | `%d` grey | **descriptions**: the sentence explaining a row, not the row's subject |
+ * | `%<dim>` | a second paragraph under a row somebody already chose to read |
+ * | `%<bold>` | reserved for the version being cut, which is the one unrecoverable thing printed |
+ * | *(none)* | paths and topics — the column a reader scans down |
+ *
+ * **Descriptions recede on purpose.** Every aligned report here is
+ * mark / subject / sentence, and printing all three at full brightness made
+ * them an even block with the mark — the part carrying the verdict — competing
+ * against prose. Grey is not decoration; it is what makes the subject findable.
+ *
+ * And nothing routine is left to the terminal's own idea of colour. Progress
+ * from a long regenerate goes to stderr, which Windows Terminal paints the
+ * same red it uses for failures — thirty-eight lines of alarm for a command
+ * doing exactly what was asked. Anything printed often enough to scroll is
+ * dimmed explicitly.
  */
 const env = process.env
 
@@ -108,7 +135,22 @@ export function say(text = ''): void {
   console.log(style(text))
 }
 
-/** The same, to stderr — where every refusal and every warning goes. */
+/**
+ * The same, to stderr — where every refusal and every warning goes.
+ *
+ * **Written directly, because `console.error` is not a neutral pipe under
+ * Bun.** Bun wraps everything that method prints in `\x1b[31m`…`\x1b[0m` when
+ * colour is on, so a full changelog regenerate arrived as thirty-eight lines of
+ * red for a command doing exactly what was asked — and progress that looks like
+ * failure teaches people to stop reading failures. It also overrode the colours
+ * chosen here: a refusal that dims its prose and highlights the command to
+ * paste came out uniformly red.
+ *
+ * Measured: under Bun, `console.error` is wrapped and `console.log` and
+ * `console.warn` are not. Real Node wraps none of them — so the same release
+ * looked different depending on which runtime ran it, which is the part that
+ * makes this a correctness question rather than a taste one.
+ */
 export function warn(text: string): void {
-  console.error(style(text))
+  process.stderr.write(`${style(text)}\n`)
 }

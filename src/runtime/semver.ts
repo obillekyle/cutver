@@ -48,8 +48,8 @@ function parse(version: string): { main: number[]; pre: string[] } {
  * Negative when `a` has lower precedence, positive when higher, 0 when equal.
  *
  * Matches `Bun.semver.order`'s signature and ordering, which the parity test
- * in `runtime.test.ts` checks against Bun's own answer rather than against a
- * table someone wrote out by hand.
+ * in `runtime/index.test.ts` checks against Bun's own answer rather than
+ * against a table someone wrote out by hand.
  */
 export function order(a: string, b: string): number {
   const left = parse(a)

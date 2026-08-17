@@ -25,6 +25,7 @@ import {
   type ReleaseSection,
 } from './notes'
 import { readText } from '../runtime'
+import { warn } from '../style'
 
 /** What the summariser is sent: the material, and the facts to copy through. */
 export interface RawRange {
@@ -232,8 +233,9 @@ export async function compileReleases(
   // of any kind. Widening the span is the whole of it: dropping the headings
   // alone would delete their commits from the file with nothing to say they
   // existed. Measured here, `v1.0.0` spans 2 commits from `v0.1.0-beta.12` and
-  // 33 from the last stable point — the other 31 are the beta series, and they
-  // shipped in 1.0.0 whatever the tag history says.
+  // 41 from the last stable point — the root commit, there being no stable
+  // release before it. The other 39 are the beta series, and they shipped in
+  // 1.0.0 whatever the tag history says.
   //
   // `plan.ts` already draws this distinction for a different question: any tag
   // decides *whether* to release, the last stable one decides *from what*.
@@ -285,7 +287,15 @@ export async function compileReleases(
       // Named as it goes. Regenerating walks every tag in the repository, and
       // on a project with a long history that is a silent minute — long enough
       // to wonder whether it is doing anything.
-      console.error(`  generating changelog for v${span.version}`)
+      //
+      // **Dim, and through `warn` rather than `console.error`.** Thirty-eight
+      // of these scroll past on a full regenerate, and they arrived red —
+      // Bun wraps everything `console.error` prints in `\x1b[31m`, so a
+      // command doing exactly what was asked looked like a wall of failures.
+      // `warn` writes to stderr directly for that reason. The prose recedes
+      // and the version — the only part that differs line to line — is the one
+      // thing carrying colour.
+      warn(`  %d· compiling%0 %cv${span.version}%0`)
 
       const [commits, from, to] = await Promise.all([
         commitsIn(`${span.from}..${span.to}`, root),

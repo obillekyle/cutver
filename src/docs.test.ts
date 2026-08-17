@@ -300,8 +300,7 @@ describe('what the docs tell you to run and write', () => {
    * It is onboarding now rather than a second reference, so there is little
    * surface left to rot. This covers what remains: every command it shows must
    * be one the CLI has.
-   */
-  /**
+   *
    * **Fenced `bash` blocks only.** Scanning whole files matched prose — "the
    * only input cutver reads" parses as `cutver reads` — and the install line
    * `curl -L -o cutver https://…` as `cutver https`. A command is something

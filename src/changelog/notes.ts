@@ -3,7 +3,8 @@
  *
  * **Off unless a repository asks for it, and that is not timidity.** The rest
  * of this tool argues that generated release notes are a downgrade from prose,
- * and `changelog.ts` still says so. That argument is about *subject lines*:
+ * and `changelog/index.ts` still says so. That argument is about *subject
+ * lines*:
  * `fix: stuff` in a list under a heading tells a reader nothing they could not
  * get from `git log`, and its presence makes the section look written when it
  * is not.

@@ -71,7 +71,9 @@ jobs:
       # given repository's are — so they are named here, before anything is
       # written, and a release cannot be cut from a tree that does not pass.
       - run: bun run typecheck
-      - run: bun test ./src
+      # `bun run test`, so the `--timeout` in the script applies here too —
+      # several tests spawn subprocesses and sit near bun's 5s default.
+      - run: bun run test
 
       - name: Note the version before
         id: before

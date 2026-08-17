@@ -9,9 +9,10 @@
  * and runnable only where Bun already was.
  *
  * Collected here rather than imported directly at each call site so the answer
- * to "what does cutver need from its host" is one file long. Three of these are
- * local implementations of things Node has no equivalent for — see `glob.ts`,
- * `semver.ts` and the YAML note below.
+ * to "what does cutver need from its host" is one file long. Two of these are
+ * local implementations of things Node has no equivalent for — see `glob.ts`
+ * and `semver.ts`. YAML is the exception and the only dependency: see the note
+ * on `parseYaml` below.
  */
 import { promises as fsp } from 'node:fs'
 import { parse as parseYamlText } from 'yaml'
