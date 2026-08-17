@@ -115,28 +115,6 @@ jobs:
         run: |
           git config user.name  'github-actions[bot]'
           git config user.email 'github-actions[bot]@users.noreply.github.com'
-
-          # **The version list the docs offer, written where it is known.**
-          # The docs site reads `docs/versions.json` for the version badge and
-          # the picker. Reading the tags at page load would mean GitHub's API
-          # and its 60 requests an hour per IP, shared by every reader behind
-          # one NAT; the registry has no such limit but ties the site to having
-          # published a package, which not every repository does. This job
-          # already knows every tag at the moment it writes one.
-          #
-          # The version being cut is prepended because its tag does not exist
-          # yet — it is created two lines below, and this file has to go into
-          # the same commit.
-          #
-          # `sort -Vr` places a prerelease above the release it precedes, the
-          # same way `git --sort=-v:refname` does. Cosmetic here: the picker is
-          # a convenience and `?v=` accepts any ref typed by hand.
-          { echo "$VERSION"; git tag --list 'v*' | sed 's/^v//'; } \
-            | sort -Vr -u \
-            | jq -R . \
-            | jq -s '{ latest: .[0], versions: . }' \
-            > docs/versions.json
-
           git add -A
           git commit -m "chore(release): v$VERSION"
           git tag -a "v$VERSION" -m "v$VERSION"

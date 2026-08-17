@@ -29,7 +29,7 @@ the same table this page is checked against.
 
 | | |
 | --- | --- |
-| `stage` | Work out the next version from the commits and write it into every manifest. Then stop — no commit, no tag, no publish. Takes a channel (`beta`), a version (`1.4.0`), or `release` to force a stable one whatever the branch is configured to cut. With no argument the branch decides. |
+| `stage` | Work out the next version from the commits and write it into every manifest. Then stop — no commit, no tag, no publish. Takes a channel (`beta`), a version (`1.4.0`), or `release` to force a stable one whatever the branch is configured to cut. With no argument the branch decides. Also refreshes `docs/versions.json` [where one exists](#docsversionsjson). |
 | `notes` | The release body for a tag, on stdout: the `CHANGELOG.md` section for that version, rewritten by the [summariser](config.md#the-summariser) if one is configured. A range compiles from the commits instead and never reads the changelog. Never fails over content: no changelog, no section, or a summariser that died each print why and exit 0. A missing or extra argument still exits 1. This is what the generated `publish.yml` calls. |
 | `changelog` | Two targets, because they are two jobs. `file` — the default — rebuilds `CHANGELOG.md` from the tags. `pages` writes the compiled sections onto the GitHub releases, **creating one where a tag has none**. Releases nothing either way: no manifest, no tag, no version. Needs `changelog:` set. See [the selectors](#changelog-pages). |
 | `check` | Exit 1 only if this branch may not release what its commits imply. Read-only and offline. See [the pre-push guard](../guides/hooks.md). |
@@ -260,3 +260,36 @@ A `.env` or `.env.local` supplies these locally, including to the standalone
 executables. It is read **from the directory cutver was launched in, not from
 `--cwd`** — the load happens at process startup, before a flag has been looked
 at. The symptom is `no key is set` naming variables you are sure you exported.
+
+## `docs/versions.json`
+
+A versioned docs site needs to know which versions exist. If this file is
+present, `cutver stage` rewrites it from the tags — newest first, plus the
+version being cut, whose tag does not exist yet:
+
+```json
+{
+  "latest": "2.2.0",
+  "versions": ["2.2.0", "2.1.4", "2.1.3"]
+}
+```
+
+**Its presence is the opt-in.** There is no config key: commit `[]` once and
+cutver keeps it current, or never create it and never see the feature. So `init`
+scaffolds nothing new and `doctor` has nothing new to check.
+
+`latest` is the newest tag, prerelease and all — a project living on
+`2.0.0-alpha.9` should say so rather than showing a stable release it left
+behind, which is what npm's `latest` does, being pinned on a package's first
+publish whatever `--tag` said.
+
+**Why a file rather than a lookup.** Reading the tags when the page loads means
+GitHub's tags API and its 60 unauthenticated requests an hour *per IP*, shared
+by every reader behind one corporate NAT. Reading a registry instead ties the
+site to having published a package, which a Rust workspace shipping binaries has
+not. cutver already reads these tags to work out the number, so it writes them
+down while it has them.
+
+The ordering is cutver's own comparison, not `sort -V` or
+`git --sort=-v:refname`: both of those place a prerelease *above* the release it
+precedes, so `1.0.0-beta.1` would sort over `1.0.0`.

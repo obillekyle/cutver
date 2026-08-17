@@ -14,6 +14,7 @@
  */
 import { ADAPTERS, AdapterError, type Change } from '../adapters'
 import { rollChangelog, writeChangelog } from '../changelog'
+import { writeVersions } from '../versions'
 import { compileReleases } from '../changelog/compile'
 import { loadConfig } from '../config/load'
 import {
@@ -604,7 +605,13 @@ export async function runStage(argv: string[]): Promise<void> {
           ),
         })
 
-  const all = changelog ? [...changes, changelog] : changes
+  // Kept current only where a repository keeps one — see `versions.ts` for why
+  // the file's presence is the opt-in rather than a config key.
+  const versions = await writeVersions({ root, version, dryRun: opts.dryRun })
+
+  const all = [...changes, changelog, versions].filter(
+    (c): c is Change => c !== null,
+  )
   report(all)
   const updated = all.filter(c => c.state === 'updated').length
 
