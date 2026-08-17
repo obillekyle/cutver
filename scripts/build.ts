@@ -105,7 +105,32 @@ async function bundle(): Promise<void> {
   const body = built.startsWith('#!')
     ? built.slice(built.indexOf('\n') + 1)
     : built
-  await Bun.write(path, `#!/usr/bin/env node\n${body}`)
+
+  // **`// @bun` is stripped, and it is not cosmetic.** The bundler writes that
+  // pragma to tell Bun the file is already transpiled, and Bun's fast path for
+  // it decodes the source as latin1 — so every non-ASCII character
+  // in a string literal arrives mangled. An em-dash ships as `c3 a2 c2 80 c2
+  // 94` instead of `e2 80 94`, in the help text, in every error message, and in
+  // the `## [1.0.0] — 2026-01-01` headings this tool writes into other people's
+  // changelogs. Every platform, not just Windows: measured identically on Linux
+  // Bun 1.3.14, which is what CI runs.
+  //
+  // Only text from *source literals* corrupts. Anything read at runtime — a
+  // commit subject, a manifest — is UTF-8 whatever the module decode did, which
+  // is the split that makes this hard to notice.
+  //
+  //     printf '// @bun\nconsole.log("—")\n' > t.mjs && bun t.mjs | od -c
+  //
+  // Reproduced down to that two-line file: the same program without the pragma
+  // prints the right bytes. It is Bun's bug rather than this one's, but this is
+  // the artefact that carries it — `bunx cutver` and `npx cutver` both run this
+  // file, and the compiled executables are unaffected.
+  //
+  // What the pragma buys is skipping a parse at startup, which is worth less
+  // than correct output.
+  const clean = body.replace(/^\/\/ *@bun.*\r?\n/, '')
+
+  await Bun.write(path, `#!/usr/bin/env node\n${clean}`)
   console.log('  dist/cutver.mjs  (node)')
 }
 

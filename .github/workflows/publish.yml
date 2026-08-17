@@ -156,7 +156,24 @@ jobs:
         run: |
           test -s dist/cutver.mjs
           head -1 dist/cutver.mjs | grep -qx '#!/usr/bin/env node'
-          echo "dist/cutver.mjs is present and starts with a node shebang"
+
+          # **`// @bun` must not survive the build.** Bun's fast path for that
+          # pragma decodes the source as latin1 on every platform, so non-ASCII
+          # character in a string literal ships mangled — an em-dash as
+          # `c3 a2 c2 80 c2 94` — in the help, in every error, and in the
+          # headings this writes into other people's changelogs. The build
+          # strips it; this refuses to publish if that ever stops working.
+          if grep -qx '// @bun' dist/cutver.mjs; then
+            echo "dist/cutver.mjs still has the // @bun pragma" >&2
+            exit 1
+          fi
+
+          # **Asked of Bun, not of node.** To real Node `// @bun` is an inert
+          # line comment and the loader reads UTF-8 regardless, so running this
+          # under node passes on a corrupted bundle and guards nothing. Bun is
+          # what decodes it wrongly, so Bun is what has to be asked.
+          bun dist/cutver.mjs help | head -1 | grep -q $'\xe2\x80\x94'
+          echo "dist/cutver.mjs: node shebang, no @bun pragma, UTF-8 intact"
 
       # Same idempotency, for the same reason: a re-run must not die on a
       # release that already exists. Binaries are uploaded either way, so a
