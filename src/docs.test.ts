@@ -244,6 +244,46 @@ describe('the CLI reference', () => {
     expect(html).toContain('docs/pages.json')
     expect(html).not.toContain('const NAV = [')
   })
+
+  test('versions.json is newest-first, and the shell reads it', async () => {
+    // **The version list is data now, and data has an order the shell relies
+    // on.** It used to come from the npm packument, which returns versions in
+    // publish order — so the picker reversed it. `versions.json` is written
+    // newest-first, and the leftover `.reverse()` put v2.2.0 at the top with
+    // every beta climbing underneath it. Nothing would have caught that but a
+    // person looking at the dropdown.
+    const doc = await Bun.file(`${DOCS}versions.json`).json()
+    expect(Array.isArray(doc.versions)).toBe(true)
+    expect(doc.versions.length).toBeGreaterThan(0)
+    expect(doc.latest, 'latest is not the first entry').toBe(doc.versions[0])
+
+    for (const v of doc.versions) {
+      expect(v, `${v} is not a bare semver version`).toMatch(
+        /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/,
+      )
+    }
+
+    // Newest-first, checked on the major/minor/patch triple. Prerelease
+    // ordering is the picker's cosmetic problem; a list that runs backwards is
+    // not.
+    const core = (v: string) =>
+      (v.split('-')[0] as string).split('.').map(Number)
+    for (let i = 1; i < doc.versions.length; i++) {
+      const [a, b] = [core(doc.versions[i - 1]), core(doc.versions[i])]
+      const cmp =
+        (a[0] as number) - (b[0] as number) ||
+        (a[1] as number) - (b[1] as number) ||
+        (a[2] as number) - (b[2] as number)
+      expect(
+        cmp >= 0,
+        `${doc.versions[i - 1]} sorts below ${doc.versions[i]}`,
+      ).toBe(true)
+    }
+
+    const html = await Bun.file(`${DOCS}index.html`).text()
+    expect(html).toContain("fetch('versions.json')")
+    expect(html).not.toContain('registry.npmjs.org/cutver')
+  })
 })
 
 describe('what the docs tell you to run and write', () => {
