@@ -9,10 +9,10 @@
 Works out the next version from your commit messages, writes it into every
 manifest, and stops.
 
-[![npm](https://img.shields.io/npm/v/cutver?label=npm&color=0d9488&logo=npm)](https://www.npmjs.com/package/cutver)
-[![dependencies](https://img.shields.io/badge/dependencies-0-0d9488)](https://www.npmjs.com/package/cutver?activeTab=dependencies)
-![license](https://img.shields.io/npm/l/cutver?color=0d9488)
-![stars](https://img.shields.io/github/stars/obillekyle/cutver?color=0d9488)
+[![npm](https://img.shields.io/npm/v/cutver?label=npm&color=295d8d&logo=npm)](https://www.npmjs.com/package/cutver)
+[![dependencies](https://img.shields.io/badge/dependencies-0-295d8d)](https://www.npmjs.com/package/cutver?activeTab=dependencies)
+![license](https://img.shields.io/npm/l/cutver?color=295d8d)
+![stars](https://img.shields.io/github/stars/obillekyle/cutver?color=295d8d)
 
 </div>
 

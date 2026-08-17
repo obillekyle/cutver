@@ -1,30 +1,28 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100" role="img" aria-label="cutver">
-  <title>cutver</title>
-  <desc>Scissors cutting a line of three dots — major, minor and patch.</desc>
+<svg xmlns="http://www.w3.org/2000/svg" width="497" height="503" viewBox="0 0 497 503" fill="none">
+  <style>
+    /*
+      The scissors only. The scalloped badge is the frame and holds still; the
+      subject is what moves.
 
-  <!--
-    One file for both themes.
+      **The wrapper is outside the clip on purpose.** The blades live inside a
+      340x340 `clip-path`, and rotating within it would shear the corners off
+      as they swept past the square. Rotating the clipped group instead carries
+      the clip along, so nothing is ever newly clipped.
 
-    `#0d9488` is the one stop in the brand ramp that clears contrast on white
-    and on GitHub's dark canvas alike, so this needs no `<picture>` pair and no
-    media query — which matters, because GitHub proxies README images and strips
-    the CSS a query inside the file would need.
-
-    Drawn to read at 80px, which is the only size it is used at. An earlier
-    version carried a dashed cut-line and a trailing row of small dots; both
-    disappeared at that size, so the blades take the whole box and the three
-    numbers they decide between are the only detail left.
-  -->
-  <g fill="none" stroke="#0d9488" stroke-width="8" stroke-linecap="round" stroke-linejoin="round">
-    <!-- major . minor . patch, on the line about to be cut. -->
-    <path d="M20 50h62" stroke-width="8" stroke-dasharray="0.5 17" opacity=".45"/>
-
-    <!-- Blades, crossing at the pivot. -->
-    <path d="M30 50 86 20"/>
-    <path d="M30 50 86 80"/>
-
-    <!-- Handles. -->
-    <circle cx="22" cy="31" r="11"/>
-    <circle cx="22" cy="69" r="11"/>
-  </g>
-</svg>
+      Counter-clockwise is 360deg -> 0: a decreasing angle. `both` holds the
+      start frame before it plays and the end frame after, so there is no flash
+      of the un-transformed state on a slow load.
+    */
+    .spin {
+      transform-origin: 248px 251.4px;
+      animation: cutver-in 900ms cubic-bezier(.2, .8, .2, 1) both;
+    }
+    @keyframes cutver-in {
+      from { opacity: 0; transform: rotate(360deg) scale(.82); }
+      to   { opacity: 1; transform: rotate(0deg) scale(1); }
+    }
+    /* Somebody who has asked their system for less motion gets the end state. */
+    @media (prefers-reduced-motion: reduce) {
+      .spin { animation: none; opacity: 1; }
+    }
+  </style><g filter="url(#a)"><path fill="#fff" d="M232.6 4a32 32 0 0 1 31 0l16 8.9a32 32 0 0 0 20.5 3.6l18-2.9a32 32 0 0 1 29.2 10.6l12 13.8a32 32 0 0 0 18 10.4l18 3.5A32 32 0 0 1 419 72l6.5 17a32 32 0 0 0 13.4 16l15.7 9.4a32 32 0 0 1 15.5 26.9l.3 18.2a32 32 0 0 0 7.1 19.6l11.5 14.2a32 32 0 0 1 5.4 30.5l-6 17.3a32 32 0 0 0 0 20.8l6 17.3a32 32 0 0 1-5.4 30.6l-11.5 14.1a32 32 0 0 0-7 19.6l-.4 18.3a32 32 0 0 1-15.5 26.8l-15.7 9.4a32 32 0 0 0-13.4 16l-6.5 17a32 32 0 0 1-23.8 20l-17.9 3.5a32 32 0 0 0-18 10.4l-12 13.8a32 32 0 0 1-29.2 10.6l-18-2.9a32 32 0 0 0-20.5 3.7l-16 8.8a32 32 0 0 1-31 0l-16-8.8a32 32 0 0 0-20.5-3.7l-18 2.9a32 32 0 0 1-29.2-10.6l-12-13.8a32 32 0 0 0-18-10.4l-18-3.5a32 32 0 0 1-23.7-20l-6.6-17a32 32 0 0 0-13.4-16l-15.6-9.4A32 32 0 0 1 26 361.7l-.3-18.3a32 32 0 0 0-7.2-19.6L7.1 309.7A32 32 0 0 1 1.7 279l6-17.3a32 32 0 0 0 0-20.8l-6-17.3a32 32 0 0 1 5.4-30.5L18.6 179a32 32 0 0 0 7.2-19.6l.3-18.2a32 32 0 0 1 15.5-27l15.6-9.3a32 32 0 0 0 13.4-16l6.6-17a32 32 0 0 1 23.7-20l18-3.5a32 32 0 0 0 18-10.4l12-13.8A32 32 0 0 1 178 13.6l18 2.9a32 32 0 0 0 20.6-3.6z"/></g><g class="spin"><g clip-path="url(#b)"><path fill="#45a6ff" d="M172 241.7c-3.6.1-7.4-.2-9.4-1.5s-4.4-5.2-6.9-8.3a44 44 0 0 0-50-13.8A42.5 42.5 0 0 0 81 273.4a43.5 43.5 0 0 0 79.9 2c.7-1.7 1.1-2.6 2.4-3.9s4-2 6-2.4a90 90 0 0 1 31.3-1.3l1.5-4L210 242c-10.2 0-25-.7-38-.3m-42 37.7a23.5 23.5 0 0 1-30.3-13.1 23 23 0 0 1 13.3-30c12-4.5 25.6 1.3 30.3 13.2a23 23 0 0 1-13.3 29.9m287.5-85.6c-2.6-6.5-10.4-7.2-29.8-2.2-10.5 2.6-59 17-101.3 29.7L276.3 273A8299 8299 0 0 0 397 215.2c17.6-9.3 23-15 20.4-21.4"/><path fill="#295d8d" d="M280.2 342.4c-3.4-2.1-7.6-4-9.2-6-1.5-1.8-2.2-5.5-2.5-9-1.3-17.5-5-38-4.6-46.2 0 0 29.8-151 32.8-170.5 3-19.6 1.4-27.1-5.3-29-6.8-1.8-12 4-19.6 22.3A13467 13467 0 0 0 212 267.2s34.5 13.5 29.2 65.7a13 13 0 0 1-1.8 6.1c-1.2 1.4-2 2-3.7 2.8a42.6 42.6 0 0 0 10.4 78c23 6.3 46.9-7 53.2-29.8 5.2-18.7-3.1-38-19.1-47.6m-40.4-74.9a8 8 0 0 1-5.7-9.9 8 8 0 0 1 10-5.6 8 8 0 1 1-4.3 15.5m40.3 117.3a23.4 23.4 0 0 1-28.8 16.2 23 23 0 0 1-16.4-28.4 23.4 23.4 0 0 1 45.2 12.2"/></g></g><defs><clipPath id="b"><path fill="#fff" d="M78 81.4h340v340H78z"/></clipPath><filter id="a" width="496.2" height="502.8" x="0" y="0" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feColorMatrix in="SourceAlpha" result="hardAlpha" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0"/><feOffset/><feGaussianBlur stdDeviation="4"/><feComposite in2="hardAlpha" k2="-1" k3="1" operator="arithmetic"/><feColorMatrix values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.5 0"/><feBlend in2="shape" result="effect1_innerShadow_4001_15"/></filter></defs></svg>
