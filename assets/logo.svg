@@ -20,7 +20,7 @@
       animation: cutver-in 900ms cubic-bezier(.2, .8, .2, 1) both;
     }
     @keyframes cutver-in {
-      from { opacity: 0; transform: rotate(180deg) scale(.82); }
+      from { opacity: 0; transform: rotate(180deg) scale(.5); }
       to   { opacity: 1; transform: rotate(0deg) scale(1); }
     }
     /* Somebody who has asked their system for less motion gets the end state. */
