@@ -157,6 +157,8 @@ async function syncLock(
   dirs: string[],
   version: string,
   dryRun: boolean,
+  /** Deferred writes. See `setVersion` — nothing is written until all of it parses. */
+  pending: (() => Promise<void>)[],
 ): Promise<Change> {
   const path = `${root}/bun.lock`
   const lock = await readText(path).catch(() => '')
@@ -197,7 +199,7 @@ async function syncLock(
     }
   }
 
-  if (!dryRun) await write(path, patched)
+  if (!dryRun) pending.push(() => write(path, patched))
   return {
     file: 'bun.lock',
     state: 'updated',
@@ -268,6 +270,22 @@ export const jsAdapter: Adapter = {
     const changes: Change[] = []
     const bumped: string[] = []
 
+    // **Nothing is written until everything has been read and checked.**
+    //
+    // This used to write each manifest as it went, and the check that fires
+    // last is the one most likely to fire: `syncLock` refuses a lockfile with
+    // no entry for a workspace package, which is what a repository looks like
+    // when somebody added a package and has not re-run their install. By then
+    // every manifest was already rewritten — six files bumped, the lockfile
+    // untouched, exit 1, and a tree nobody asked for.
+    //
+    // Deferring the writes moves every read, every JSON parse and that refusal
+    // in front of the first byte. It is not atomicity: a failure *during* the
+    // flush still leaves part of it written, and closing that needs
+    // temp-and-rename in the runtime layer. It closes the window that actually
+    // opens.
+    const pending: (() => Promise<void>)[] = []
+
     for (const dir of await workspaceDirs(root)) {
       const rel = `${dir}/package.json`
       const { json, text } = await readManifest(`${root}/${rel}`)
@@ -304,7 +322,8 @@ export const jsAdapter: Adapter = {
 
       const from = json.version
       json.version = version
-      if (!dryRun) await writeManifest(`${root}/${rel}`, json, text)
+      if (!dryRun)
+        pending.push(() => writeManifest(`${root}/${rel}`, json, text))
       changes.push({
         file: rel,
         state: 'updated',
@@ -326,7 +345,8 @@ export const jsAdapter: Adapter = {
         })
       } else {
         json.version = version
-        if (!dryRun) await writeManifest(`${root}/package.json`, json, text)
+        if (!dryRun)
+          pending.push(() => writeManifest(`${root}/package.json`, json, text))
         changes.push({
           file: 'package.json',
           state: 'updated',
@@ -339,8 +359,11 @@ export const jsAdapter: Adapter = {
     // whose manifest moved. The failure this guards against is precisely a
     // manifest that was already right and a lock that was not.
     if (bumped.length)
-      changes.push(await syncLock(root, bumped, version, dryRun))
+      changes.push(await syncLock(root, bumped, version, dryRun, pending))
     changes.push(...(await foreignLocks(root)))
+
+    // Everything parsed and every refusal passed. Now write.
+    for (const flush of pending) await flush()
 
     return changes
   },
