@@ -31,7 +31,7 @@ import {
 import { runCompletions } from './completions'
 import { runDoctor } from './doctor'
 import { commandNamed, help, helpFor } from './help'
-import { say, warn } from './style'
+import { say, warn } from '../style'
 import { runStage } from './stage'
 
 /**

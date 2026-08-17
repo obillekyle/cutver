@@ -7,12 +7,12 @@
  * flag added to one was a flag missing from the others, and the only thing
  * noticing was a docs test comparing two of the three.
  *
- * So the tree is data. `HELP` renders it, `cutver help <command>` renders one
- * entry of it, `completions` compiles it into a shell script, and the docs test
- * checks the reference page against it. Adding a command means adding a row.
+ * So the tree is data. `help()` renders it, `helpFor` renders one entry of it,
+ * `completions` compiles it into a shell script, and the docs test checks the
+ * reference page against it. Adding a command means adding a row.
  */
 import { ADAPTER_IDS } from '../adapters'
-import { pad, plain } from './style'
+import { pad, plain } from '../style'
 
 /** A flag, as it appears in help and in completions. */
 export interface Flag {
@@ -38,6 +38,24 @@ export const GLOBAL_FLAGS: readonly Flag[] = [
   },
 ]
 
+/**
+ * Shared, because every command that *resolves* an adapter has to be able to
+ * take one.
+ *
+ * **It was on `stage` alone, and that combination blocked pushes.** `check`,
+ * `doctor` and `explain` all call `resolveAdapter`, which refuses to guess when
+ * a repository has both a `package.json` and a `Cargo.toml` — napi-rs, Tauri,
+ * wasm-pack — and names `--adapter` as the way out. Not being in their flag
+ * lists, `flagsAllowedFor` then rejected the very flag the error asked for, so
+ * the only escape was writing a config. `check` runs from the pre-push hook,
+ * so in one of those repositories that was every push.
+ */
+const ADAPTER_FLAG: Flag = {
+  name: '--adapter',
+  takes: ADAPTER_IDS.join('|'),
+  summary: 'force the manifest adapter (default: detected)',
+}
+
 const STAGE_FLAGS: readonly Flag[] = [
   {
     name: '--dry-run',
@@ -55,11 +73,7 @@ const STAGE_FLAGS: readonly Flag[] = [
     takes: null,
     summary: 'proceed even though a package is not on the registry yet',
   },
-  {
-    name: '--adapter',
-    takes: ADAPTER_IDS.join('|'),
-    summary: 'force the manifest adapter (default: detected)',
-  },
+  ADAPTER_FLAG,
   {
     name: '--branch',
     takes: 'name',
@@ -186,6 +200,7 @@ export const COMMANDS: readonly Command[] = [
         takes: 'name',
         summary: 'branch name, for CI on a detached HEAD',
       },
+      ADAPTER_FLAG,
     ],
   },
   {
@@ -210,6 +225,7 @@ export const COMMANDS: readonly Command[] = [
         takes: 'name',
         summary: 'branch name, for CI on a detached HEAD',
       },
+      ADAPTER_FLAG,
     ],
   },
   {
@@ -226,6 +242,7 @@ export const COMMANDS: readonly Command[] = [
         takes: 'name',
         summary: 'branch name, for CI on a detached HEAD',
       },
+      ADAPTER_FLAG,
     ],
   },
   {

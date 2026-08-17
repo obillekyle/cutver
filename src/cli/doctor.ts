@@ -17,7 +17,7 @@
  * Read-only throughout. It exits 1 when it finds something that would fail or
  * refuse a release, so it is usable as a CI gate, and 0 otherwise.
  */
-import { ADAPTERS, applicableAdapters } from '../adapters'
+import { ADAPTERS } from '../adapters'
 import { loadConfig } from '../config/load'
 import {
   channelNames,
@@ -32,7 +32,7 @@ import { keyFor } from '../summarize/connectors'
 import { COMMAND_ENV } from '../summarize'
 import { parse, preScan, resolveAdapter, resolveRoot } from './args'
 import { env } from '../runtime'
-import { say as write } from './style'
+import { say as write } from '../style'
 
 /** How each line is marked. `✗` is the only one that changes the exit code. */
 type Level = 'ok' | 'note' | 'bad'
@@ -64,11 +64,20 @@ function firstLine(message: string): string {
   return message.split('\n')[0] ?? message
 }
 
+/**
+ * **Three weights, so the eye lands on the topic first.** The mark carries the
+ * verdict, the topic is the only column worth scanning down, and the detail is
+ * a sentence you read once you have found the row you wanted. Printing all
+ * three at full brightness made the report an undifferentiated block and left
+ * the mark — the part that decides the exit code — competing with prose.
+ */
 function say(f: Finding, width: number): void {
-  write(`  ${MARK[f.level]} ${f.topic.padEnd(width)}  ${f.detail}`)
+  write(`  ${MARK[f.level]} ${f.topic.padEnd(width)}  %d${f.detail}%0`)
+  // Dimmer again: `more` is the second paragraph of a row somebody has already
+  // decided to read.
   if (f.more)
     for (const line of f.more.split('\n'))
-      console.log(`      ${' '.repeat(width)}${line}`)
+      write(`      ${' '.repeat(width)}%<dim>${line}%0`)
 }
 
 /**
@@ -155,15 +164,19 @@ export async function runDoctor(argv: string[]): Promise<void> {
   if (!(await isGitRepo(root))) {
     found.push({ level: 'bad', topic: 'git', detail: 'not a git repository' })
   } else {
-    const ids = await applicableAdapters(root)
-    if (!opts.adapter && !ids.length) {
-      found.push({
-        level: 'bad',
-        topic: 'adapter',
-        detail: 'no package.json or Cargo.toml here',
-      })
-    } else {
-      const { id, from } = await resolveAdapter(root, opts, config)
+    // **Reported as a finding, never as an exit.** `doctor`'s contract is one
+    // report and an exit code derived from it; `resolveAdapter` used to `die()`
+    // here, which ended the process mid-report with nothing printed. A
+    // repository holding both manifests is exactly the case someone runs
+    // `doctor` to understand, so it has to survive long enough to say so.
+    const resolved = await resolveAdapter(root, opts, config, {
+      fatal: false,
+    }).catch((e: Error) => {
+      found.push({ level: 'bad', topic: 'adapter', detail: e.message })
+      return null
+    })
+    if (resolved) {
+      const { id, from } = resolved
       found.push({ level: 'ok', topic: 'adapter', detail: `${id} (${from})` })
 
       const branch = opts.branch ?? (await currentBranch(root))

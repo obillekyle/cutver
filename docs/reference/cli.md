@@ -59,7 +59,7 @@ of `rc`, and the version written is the canonical `-rc.N`.
 | | |
 | --- | --- |
 | `--dry-run` | (`stage`, `changelog`, `init`, `hook`) Compute and report, write nothing. Runs nothing either — no `cargo update`, no file writes — and still reports every change the real run would make. |
-| `--adapter js\|cargo` | (`stage`) Force the manifest adapter. Only needed when a repository has both manifests. |
+| `--adapter js\|cargo` | (`stage`, `check`, `doctor`, `explain`) Force the manifest adapter. Only needed when a repository has both manifests — every command that resolves one accepts it, since every one of them can be stopped by the ambiguity. |
 | `--cwd <path>` | (every command) Repository root. Defaults to the working directory. |
 | `--branch <name>` | (`stage`, `check`, `doctor`, `explain`) Branch name, for CI on a detached HEAD where git answers the literal string `HEAD`. |
 | `--if-needed` | (`stage`) Exit 0 rather than 1 when no release is warranted. What CI wants. |
@@ -155,7 +155,10 @@ repository.
    nothing to compute without them. (`init` skips this — scaffolding a tree
    that has not been initialised yet is reasonable.)
 2. **Which adapter applies.** Both manifests present and no `--adapter` is an
-   error, not a guess.
+   error, not a guess. `check`, `doctor` and `explain` report it rather than
+   failing on it — `check` runs from the pre-push hook, and a guard that fails
+   closed on an ambiguity it can describe would block every push in a
+   dual-manifest repository.
 3. **The current version**, read from the manifest.
 4. **The plan** — [the number and where it came from](../guides/versions.md).
 5. **The version is valid semver.** Including a computed one, as cheap

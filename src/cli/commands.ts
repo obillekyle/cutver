@@ -50,7 +50,7 @@ import {
   VERSION,
 } from './args'
 import { env, exists } from '../runtime'
-import { say } from './style'
+import { say } from '../style'
 
 /**
  * `--force` names the files it is about to replace, and asks.
@@ -181,7 +181,7 @@ export async function runInit(argv: string[]): Promise<void> {
     // a report.
     const mark =
       r.state === 'written' ? '%g↑%0' : r.state === 'stale' ? '%r✗%0' : '%d=%0'
-    say(`  ${mark} ${r.path.padEnd(width)}  ${r.detail}`)
+    say(`  ${mark} ${r.path.padEnd(width)}  %d${r.detail}%0`)
   }
 
   // A new devDependency and an unchanged lockfile disagree, and the generated
@@ -277,11 +277,11 @@ export async function runNotes(argv: string[]): Promise<void> {
   if (!body) return
 
   // Full bodies only where a model will read them — see `fullBodies` on why the
-  // summariser is sent more than the release shows. `body` stays the fallback:
-  // a dead model must publish the prose somebody wrote, never a raw dump of
-  // every commit body.
-  // `with_body` decides how much of each commit travels: whole bodies, which
-  // is what lets one commit become several bullets, or the rendered section.
+  // summariser is sent more than the release shows. `with_body` decides how
+  // much of each commit travels: whole bodies, which is what lets one commit
+  // become several bullets, or the rendered section. `body` stays the fallback
+  // either way — a dead model must publish the prose somebody wrote, never a
+  // raw dump of every commit body.
   const summarizer = config.changelog?.summarizer
   const withBody = summarizer === true || (summarizer?.withBody ?? true)
 
@@ -339,7 +339,10 @@ export async function runCheck(argv: string[]): Promise<void> {
       return
     }
 
-    const adapter = ADAPTERS[(await resolveAdapter(root, opts, config)).id]
+    // `fatal: false` so an unresolvable adapter reaches the catch below and
+    // leaves as "check skipped", exit 0. This is the hook's command.
+    const adapter =
+      ADAPTERS[(await resolveAdapter(root, opts, config, { fatal: false })).id]
     const branch = opts.branch ?? (await currentBranch(root))
     const decision = await plan({
       root,
@@ -418,7 +421,7 @@ export async function runExplain(argv: string[]): Promise<void> {
   try {
     const { config } = await loadConfig(root, pre.config)
     const opts = parse(argv, channelNames(config), 'explain')
-    const adapter = await resolveAdapter(root, opts, config)
+    const adapter = await resolveAdapter(root, opts, config, { fatal: false })
     const branch = opts.branch ?? (await currentBranch(root))
 
     let summary: string | null = null

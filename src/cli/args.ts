@@ -44,6 +44,7 @@ import { flagsAllowedFor, help } from './help'
  */
 import manifest from '../../package.json' with { type: 'json' }
 import { pathToFileURL } from '../runtime'
+import { style } from '../style'
 
 declare const CUTVER_VERSION: string | undefined
 
@@ -53,9 +54,21 @@ export const VERSION: string =
     ? CUTVER_VERSION
     : (manifest.version ?? 'dev')
 
-/** Print a `cutver:`-prefixed message on stderr and exit 1. Never returns. */
+/**
+ * Print a `cutver:`-prefixed message on stderr and exit 1. Never returns.
+ *
+ * **The prefix carries the alarm; the message does not.** Every refusal here is
+ * written to be acted on — most of them indent a command to paste — and under
+ * `console.error` Bun painted the whole block red, which is the worst colour to
+ * read a command out of. Red marks *that* something refused; the reader still
+ * has to read *what*.
+ *
+ * `message` deliberately never goes through `style`. It carries paths, branch
+ * names and commit subjects, and a branch called `feat/100%done` should not
+ * have `%d` read as a colour marker on its way to the screen.
+ */
 export function die(message: string): never {
-  console.error(`cutver: ${message}`)
+  process.stderr.write(`${style('%rcutver:%0')} ${message}\n`)
   process.exit(1)
 }
 
@@ -308,6 +321,16 @@ export function preScan(argv: string[]): { cwd?: string; config?: string } {
  * guess when both manifests exist — a config that answered silently would
  * remove a safety that is there for a reason.
  *
+ * **`fatal` is what keeps the diagnostics honest.** `stage` wants the refusal
+ * to end the process: it is about to write manifests, and guessing which
+ * ecosystem owns them is exactly the mistake worth stopping for. `check`,
+ * `doctor` and `explain` promise the opposite — they exit 0 whatever they find,
+ * because `check` runs from the pre-push hook and a diagnostic that fails
+ * closed blocks every push in the repository. `die()` exits the process, so it
+ * walked straight past their error handling and made that promise false in any
+ * repository holding both manifests. Throwing instead lets each caller keep its
+ * own posture.
+ *
  * @returns the adapter id, and which of the three settled it. `explain` prints
  *          the provenance, which is the only reason it is returned at all.
  */
@@ -315,14 +338,20 @@ export async function resolveAdapter(
   root: string,
   opts: { adapter?: AdapterId },
   config: Config,
+  { fatal = true }: { fatal?: boolean } = {},
 ): Promise<{ id: AdapterId; from: 'flag' | 'config' | 'detected' }> {
   if (opts.adapter) return { id: opts.adapter, from: 'flag' }
   if (config.target) return { id: ADAPTER_FOR[config.target], from: 'config' }
 
+  const refuse = (message: string): never => {
+    if (fatal) die(message)
+    throw new Error(message)
+  }
+
   const available = await applicableAdapters(root)
-  if (!available.length) die(`no package.json or Cargo.toml in ${root}`)
+  if (!available.length) refuse(`no package.json or Cargo.toml in ${root}`)
   if (available.length > 1) {
-    die(
+    refuse(
       `${root} has ${available.map(id => ADAPTERS[id].manifest).join(' and ')}.\n` +
         `        Say which one this release is about: --adapter ${available.join('|')},\n` +
         '        or set `target` in your config.',
