@@ -50,7 +50,12 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    --brand: #e8974a; --brand-soft: #f0a962;
+    /* Must match `:root[data-theme="dark"]` above. These were #e8974a/#f0a962
+       — bakery's orange, carried over when this shell was adapted from that
+       project's and never re-themed. The explicit toggle was right, so the bug
+       only showed for a reader whose OS is dark and who never touched the
+       control: the whole site in another project's brand colour. */
+    --brand: #5eead4; --brand-soft: #2dd4bf;
     --bg: #1b1b1f; --bg-alt: #202127; --bg-code: #161618;
     --text: #c9c9cc; --text-strong: #ffffff; --text-mute: #8e8e93;
     --border: #2e2e32;
@@ -633,6 +638,66 @@ function requestedRef() {
 }
 
 /**
+ * The ref a visitor who asked for nothing gets: the latest **stable** release.
+ *
+ * **Pages serves `docs/` from the default branch, and that is not the same as
+ * the released documentation.** A project developing 2.0 on `main` publishes a
+ * site describing 2.0 while every reader who has not opted in is running 1.2.3
+ * — so the default landing page documents features they do not have, and the
+ * badge over it names a version the page is not about.
+ *
+ * Only the markdown moves. The shell, `versions.json` and this file are always
+ * the default branch's, because that is what Pages serves; the ref decides
+ * where the *pages* are read from.
+ */
+let DEFAULT_REF = null
+
+/** What to read, whether or not anybody asked. */
+function effectiveRef() {
+  return requestedRef() ?? DEFAULT_REF
+}
+
+/**
+ * Resolve it once, before the first route.
+ *
+ * **Probed rather than assumed, because a tag has to be able to serve itself.**
+ * `pages.json` is newer than most tags in every repository that has one — the
+ * sidebar used to be a literal in this file — so pointing at a release that
+ * predates it would fetch a 404, fall back to *this* shell's sidebar, and list
+ * pages that version does not have. Every link would then land on an apology.
+ *
+ * So the tag is used only when it carries its own sidebar, and the default is
+ * the branch until then. That is wrong in the safe direction, and it corrects
+ * itself the first time a project releases after adopting the file.
+ */
+async function resolveDefaultRef() {
+  const KEY = 'cutver-docs-default-ref'
+  const cached = sessionStorage.getItem(KEY)
+  if (cached !== null) {
+    DEFAULT_REF = cached || null
+    return
+  }
+
+  try {
+    const res = await fetch('versions.json')
+    if (!res.ok) return
+    const { latest } = await res.json()
+    if (typeof latest !== 'string' || !latest) return
+
+    const ref = refFor(latest)
+    const probe = await fetch(
+      `${RAW}/${encodeURIComponent(ref)}/docs/pages.json`,
+      { method: 'HEAD' },
+    )
+    DEFAULT_REF = probe.ok ? latest : null
+  } catch {
+    // Offline, blocked, or no such file. The branch is a working answer.
+  }
+
+  sessionStorage.setItem(KEY, DEFAULT_REF ?? '')
+}
+
+/**
  * The git ref for what someone typed.
  *
  * A bare `1.2.0` means the tag `v1.2.0` — that is how versions are written in
@@ -663,7 +728,7 @@ function refFor(v) {
  * broken site today.
  */
 async function loadNav() {
-  const ref = requestedRef()
+  const ref = effectiveRef()
 
   if (ref) {
     try {
@@ -686,7 +751,7 @@ async function loadNav() {
 /* ------------------------------------------------------------------- routing */
 const cache = new Map()
 async function load(page) {
-  const ref = requestedRef()
+  const ref = effectiveRef()
   const key = `${ref ?? ''}:${page}`
 
   if (!cache.has(key)) {
@@ -1093,9 +1158,18 @@ function fillPicker(latest, versions = []) {
     if (typeof version !== 'string' || !version) return
     const versions = Array.isArray(doc.versions) ? doc.versions : []
 
-    sessionStorage.setItem(CACHE, version)
+    // **The badge names what is being served, not what was hoped for.**
+    // `latest` is the newest stable, and that is the default *when its tag can
+    // serve itself* — a tag predating `pages.json` cannot, so the default falls
+    // back to the branch. Labelling that fallback `v1.2.3` while showing the
+    // branch's unreleased pages is the disagreement the default was meant to
+    // remove, so the label follows the ref that actually won.
+    await resolveDefaultRef()
+    const serving = DEFAULT_REF ?? versions[0] ?? version
+
+    sessionStorage.setItem(CACHE, serving)
     sessionStorage.setItem(LIST, JSON.stringify(versions))
-    fillPicker(version, versions)
+    fillPicker(serving, versions)
   } catch {
     // Offline or blocked. The control keeps the cached list, or stays hidden —
     // no version at all is true, and a guessed one is a lie.
@@ -1110,6 +1184,8 @@ addEventListener('scroll', syncAside, { passive: true })
 // empty nav renders a page with no highlight and no pager, and nothing would
 // come back to fix it. One fetch of a local file is not a delay worth a bug.
 ;(async () => {
+  // Before the nav, because the nav is fetched from whatever ref this settles.
+  await resolveDefaultRef()
   setNav(await loadNav())
   renderSidebar()
   route()

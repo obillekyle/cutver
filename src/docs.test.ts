@@ -255,7 +255,12 @@ describe('the CLI reference', () => {
     const doc = await Bun.file(`${DOCS}versions.json`).json()
     expect(Array.isArray(doc.versions)).toBe(true)
     expect(doc.versions.length).toBeGreaterThan(0)
-    expect(doc.latest, 'latest is not the first entry').toBe(doc.versions[0])
+    // `latest` is the newest **stable**, so it is the first entry only while no
+    // prerelease is newer than it. Both are true of a project sitting on a
+    // stable release; only the second survives cutting a beta.
+    expect(doc.versions, 'latest is not in the list').toContain(doc.latest)
+    const stable = doc.versions.filter((v: string) => !v.includes('-'))
+    if (stable.length) expect(doc.latest).toBe(stable[0])
 
     for (const v of doc.versions) {
       expect(v, `${v} is not a bare semver version`).toMatch(

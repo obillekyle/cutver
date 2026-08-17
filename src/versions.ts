@@ -38,12 +38,18 @@ interface Doc {
 }
 
 /**
- * `latest` is the newest tag, prerelease and all.
+ * `latest` is the newest **stable** release.
  *
- * Not "the newest stable". A project living on `2.0.0-alpha.9` should say so
- * rather than showing a release it left behind — which is the case npm's
- * `latest` gets wrong, since it is pinned on a package's first publish whatever
- * `--tag` said.
+ * What the badge shows is what an unpinned reader should be reading, and that
+ * is the last thing released to everyone. A prerelease is a step toward one:
+ * `latest` never pointed at `2.1.0-beta.3`, nobody installed it on purpose, and
+ * documenting it as current would send every reader to notes for a version they
+ * do not have.
+ *
+ * **Until there is no stable release at all**, which is not an edge case — it
+ * is every project before its 1.0, and every project living on a long alpha.
+ * There the newest prerelease *is* the state of the project, and showing
+ * nothing would be worse than showing the alpha.
  */
 export function buildVersions(tags: string[], cutting?: string): Doc {
   const versions = [...new Set([...(cutting ? [cutting] : []), ...tags])]
@@ -52,7 +58,8 @@ export function buildVersions(tags: string[], cutting?: string): Doc {
     // which `git --sort=-v:refname` and `sort -V` both get wrong.
     .sort((a, b) => semverOrder(b, a))
 
-  return { latest: versions[0] ?? null, versions }
+  const stable = versions.find(v => !v.includes('-'))
+  return { latest: stable ?? versions[0] ?? null, versions }
 }
 
 /**

@@ -50,11 +50,23 @@ describe('buildVersions', () => {
     expect(doc.versions).toEqual(['2.0.0-alpha.10', '2.0.0-alpha.9'])
   })
 
-  test('latest is the newest tag, prerelease or not', () => {
-    // Not "the newest stable". A project on `2.0.0-alpha.9` should say so
-    // rather than showing the release it left behind — the case npm's `latest`
-    // gets wrong, being pinned on first publish whatever `--tag` said.
-    expect(buildVersions(['2.0.0-alpha.9', '1.4.0']).latest).toBe(
+  test('latest is the newest stable, not the newest tag', () => {
+    // The badge says what an unpinned reader should be reading, and that is the
+    // last thing released to everyone. `latest` never pointed at the beta.
+    expect(buildVersions(['2.1.0-beta.3', '2.0.0', '1.4.0']).latest).toBe(
+      '2.0.0',
+    )
+    // And the list still leads with the newest thing that exists, so the beta
+    // is reachable — it is just not what the badge claims.
+    expect(buildVersions(['2.1.0-beta.3', '2.0.0']).versions[0]).toBe(
+      '2.1.0-beta.3',
+    )
+  })
+
+  test('with no stable release, the newest prerelease is the state of things', () => {
+    // Not an edge case: every project before its 1.0, and every project living
+    // on a long alpha. Showing nothing would be worse than showing the alpha.
+    expect(buildVersions(['2.0.0-alpha.9', '2.0.0-alpha.8']).latest).toBe(
       '2.0.0-alpha.9',
     )
   })
