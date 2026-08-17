@@ -8,9 +8,19 @@ is only ever as good as the commits — which is the point.
 explanation in the commit body, where it is also visible in `git log`, in a
 pull request, and on the release page.
 
+## [2.1.2] — 2026-08-17
+
+<sub>diff: [df84d95...8d0d98b](https://github.com/obillekyle/cutver/compare/df84d95...8d0d98b)</sub>
+
+### Fixes
+
+- **notes:** unwrap a release body the model returned inside a code fence ([8d0d98b](https://github.com/obillekyle/cutver/commit/8d0d98b))
+
+    v2.1.0 published as one grey box with a copy button — every heading and link showing as literal source — because the model answered with ```markdown around the whole body. Asked for markdown, it returned markdown as a code sample.
+
 ## [2.1.1] — 2026-08-17
 
-<sub>diff: [2a4e37e...90be517](https://github.com/obillekyle/cutver/compare/2a4e37e...90be517)</sub>
+<sub>diff: [2a4e37e...df84d95](https://github.com/obillekyle/cutver/compare/2a4e37e...df84d95)</sub>
 
 ### Fixes
 
@@ -153,15 +163,5 @@ pull request, and on the release page.
 - `publish` decides what a tag produces ([fbf66bb](https://github.com/obillekyle/cutver/commit/fbf66bb))
 
     A list rather than a choice, because these were never alternatives. cutver's own release publishes to npm *and* attaches five standalone executables — a repository with no JavaScript runtime still needs a way to run a version bump — so an enum would have made this project's own release shape unrepresentable.
-
-## [1.0.1] — 2026-08-15
-
-<sub>diff: [6ef5e9e...f74270c](https://github.com/obillekyle/cutver/compare/6ef5e9e...f74270c)</sub>
-
-### Fixes
-
-- report the real version when installed from npm ([5f7946f](https://github.com/obillekyle/cutver/commit/5f7946f))
-
-    `CUTVER_VERSION` is injected by `bun build --compile --define`, but the npm package's `bin` points straight at `src/cli.ts`, where nothing defines it. Only the compiled executable ever knew its own version; every install from beta.0 onward answered `dev`.
 
 Older releases are in the git tags and on the releases page.
