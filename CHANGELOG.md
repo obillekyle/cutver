@@ -8,9 +8,67 @@ is only ever as good as the commits — which is the point.
 explanation in the commit body, where it is also visible in `git log`, in a
 pull request, and on the release page.
 
+## [2.2.0] — 2026-08-17
+
+<sub>diff: [776a521...a6f5515](https://github.com/obillekyle/cutver/compare/776a521...a6f5515)</sub>
+
+### New Features
+
+- **stage:** the first release is the version the manifest already names ([c26124b](https://github.com/obillekyle/cutver/commit/c26124b))
+
+    A repository with no tags has never released anything, so the number in its manifest is not a record — it is a statement of what the first release should be. cutver shipped past it instead, which is how `npm init`'s default made a brand-new project's first ever release 1.1.0, with 1.0.0 skipped and missing from the tag list for good. The same held at any starting number: 0.1.0 opened at 0.2.0.
+
+### Fixes
+
+- **test:** the fixtures never had the identity they were given ([a6f5515](https://github.com/obillekyle/cutver/commit/a6f5515))
+
+    The previous commit replaced two `git config` spawns per fixture with an assignment to `process.env`. That works for the files spawning through `run()` and does nothing for the two using `Bun.spawn`: **Bun snapshots the environment at startup and does not see later mutations**, where `node:child_process` does. Measured directly — a variable set after start is `undefined` to `Bun.spawn` and present to `node:child_process.spawn`.
+
+- **style:** escape text that did not know `%` meant something ([73549d5](https://github.com/obillekyle/cutver/commit/73549d5))
+
+    A commit subject reading `feat: cache hit rate now 100%done and 50%green` printed as `feat: cache hit rate now 100one and 50reen`. `%d` and `%g` were read as colour markers and took the letter after them. Under NO_COLOR too, since `plain` strips known markers whether or not it emits codes — so it was never a colour bug, it was an escaping one.
+
+- **style:** colour that distinguishes, and Bun's red over all of it ([1deb97b](https://github.com/obillekyle/cutver/commit/1deb97b))
+
+    A full changelog regenerate arrived as thirty-eight lines of red for a command doing exactly what was asked. Not the terminal: Bun wraps everything `console.error` prints in `\x1b[31m` when colour is on. `console.log` and `console.warn` are untouched and real Node wraps none of them, so the same release looked different depending on which runtime ran it — which makes it a correctness question rather than a taste one. `warn` writes to stderr directly now.
+
+- **config:** diagnostics that teach a spelling the loader deprecates ([423f97c](https://github.com/obillekyle/cutver/commit/423f97c))
+
+    Three places named `changelog.summarize` as current. It is the pre-2.0 spelling and load.ts warns about it twenty lines from where the message was written.
+
+- **init:** a private package is scaffolded to tag and stop ([0df24a8](https://github.com/obillekyle/cutver/commit/0df24a8))
+
+    `private: true` is npm's own refusal to publish, and cutver trusted it everywhere except the one place it decided anything. adapters/js.ts uses it to skip the registry lookup, to leave a package's version alone, and to answer what would reach the registry at all; init never read it. So an application scaffolded `publish: true` and got a publish.yml carrying `id-token: write` and an `npm publish` the registry would reject — and `doctor` then reported nothing wrong, because the package it would have checked had been filtered out for being private. A bad default with a diagnostic certifying it.
+
+- **cli:** the flag every diagnostic demands is one they all refused ([c6c1f7c](https://github.com/obillekyle/cutver/commit/c6c1f7c))
+
+    `--adapter` was declared on `stage` alone, and `check`, `doctor` and `explain` all call `resolveAdapter` — which refuses to guess when a repository holds both a package.json and a Cargo.toml, and names `--adapter` as the way out. `flagsAllowedFor` then rejected it for not being in their lists.
+
+- **stage:** leaving 0.x is asked, not computed ([f93c065](https://github.com/obillekyle/cutver/commit/f93c065))
+
+    A `feat!` on a 0.x project took it straight to 1.0.0, and `version.yml` runs `stage --if-needed` unattended and then commits, tags and pushes — so a first breaking change shipped 1.0.0 to a registry with nobody in the loop. npm never gives a number back.
+
+- **js:** read and check everything before writing the first manifest ([a3437b4](https://github.com/obillekyle/cutver/commit/a3437b4))
+
+    `setVersion` wrote each manifest as it walked, and the check that fires last is the one most likely to fire: `syncLock` refuses a lockfile with no entry for a workspace package, which is exactly what a repository looks like when somebody added a package and has not re-run their install. By then every manifest was already rewritten — so the failure left six files bumped, the lockfile untouched, exit 1, and a tree nobody asked for.
+
+- **init:** a publish workflow the config un-generated is removed, and refused ([25edb40](https://github.com/obillekyle/cutver/commit/25edb40))
+
+    Set `publish: false` and re-run `init`: publish.yml drops off the list of files to write, so it is never rewritten — and never removed either. It stays on disk firing on `push: tags: v*`, still running a publish, for a repository whose config says a tag produces nothing. Meanwhile the regenerated version.yml says in a comment that there is no publish.yml to dispatch, and `doctor` reports "nothing wrong here". Three statements about one file, two of them wrong, and the file is the one that reaches a registry.
+
+- **build:** strip `// @bun`, which shipped every non-ASCII character mangled ([35f4ab3](https://github.com/obillekyle/cutver/commit/35f4ab3))
+
+    The bundler writes that pragma to say the file is already transpiled, and Bun's fast path for it decodes the source as latin1. So every string literal in the published bundle arrived mangled: an em-dash as `c3 a2 c2 80 c2 94` rather than `e2 80 94`, in the help banner, in every error message, and in the `## [1.0.0] — 2026-01-01` headings this tool writes into other people's changelogs.
+
+### Refactor
+
+- **drift:** one rule per function, and a cheaper fixture ([012877c](https://github.com/obillekyle/cutver/commit/012877c))
+
+    `inspect` was 275 lines: eight independent rules appending to one `found[]` in one scope, separated by comment headers doing the work function boundaries should. Each rule was individually clear; holding eight of them at once was the cost, in the one file whose entire job is answering "which rule fired".
+
 ## [2.1.4] — 2026-08-17
 
-<sub>diff: [6251d93...c401fcb](https://github.com/obillekyle/cutver/compare/6251d93...c401fcb)</sub>
+<sub>diff: [6251d93...776a521](https://github.com/obillekyle/cutver/compare/6251d93...776a521)</sub>
 
 ### Performance
 
@@ -151,15 +209,5 @@ pull request, and on the release page.
 - rewrite the README and reference for 2.0 ([7d6e8be](https://github.com/obillekyle/cutver/commit/7d6e8be))
 
     - The README was 374 lines duplicating `docs/`, and taught `cutver [version]` with `stage` as a prerelease flag — the inverse of how 2.0 works. It is 110 lines of onboarding that link out. - The quickstart told you to run `bunx cutver`, which now prints help. - The two config reference pages are one; the stale one documented `artifacts.enabled`, a key the loader rejects. - New page on writing the commits, since the body becomes the release note. - Two guards: every documented config example is loaded through `parseConfig`, and the README is checked against the command table.
-
-## [1.2.0] — 2026-08-15
-
-<sub>diff: [8aadce9...5fc74d2](https://github.com/obillekyle/cutver/compare/8aadce9...5fc74d2)</sub>
-
-### New Features
-
-- **init:** name the matrix rows that will need a setup step ([4ccf863](https://github.com/obillekyle/cutver/commit/4ccf863))
-
-    cutver knows which binaries a cargo workspace declares — the collect step asks cargo rather than naming them. It cannot know what they *link against*, because the thing that stops a build is a system library and system libraries appear in no manifest. `fuser` needs libfuse; nothing in any Cargo.toml says so.
 
 Older releases are in the git tags and on the releases page.
