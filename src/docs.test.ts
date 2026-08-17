@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import { allFlags, COMMANDS } from './cli/help'
-import { parseConfig } from './config/load'
+import { parseConfig, TOP_LEVEL } from './config/load'
 import { Glob } from 'bun'
 
 /**
@@ -259,15 +259,7 @@ describe('what the docs tell you to run and write', () => {
    * and still catches the case that matters, since a wrong *sub*-key always
    * sits under a right top-level one.
    */
-  const TOP_LEVEL = [
-    'schema',
-    'target',
-    'publish',
-    'artifacts',
-    'changelog',
-    'summarizer',
-    'channels',
-  ]
+  // The loader's own set, so a new key is recognised here without an edit.
 
   async function configBlocks(
     page: string,
@@ -283,7 +275,7 @@ describe('what the docs tell you to run and write', () => {
         continue // the YAML test above owns this failure
       }
       if (!doc || typeof doc !== 'object' || Array.isArray(doc)) continue
-      if (!Object.keys(doc).some(k => TOP_LEVEL.includes(k))) continue
+      if (!Object.keys(doc).some(k => TOP_LEVEL.has(k))) continue
       out.push({ text: body as string, doc })
     }
     return out

@@ -32,7 +32,10 @@ import { readdirSync, readFileSync, existsSync } from 'node:fs'
  * symbol, a file — has to resolve to something.
  */
 
-const ROOT = new URL('..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')
+const ROOT = new URL('..', import.meta.url).pathname.replace(
+  /^\/([A-Za-z]:)/,
+  '$1',
+)
 
 /**
  * Names that are real but live outside this repository.
@@ -194,7 +197,9 @@ describe('what the comments name', () => {
     const mentioned = new Set(refs.map(r => r.id))
     const unused = [...EXTERNAL].filter(id => !mentioned.has(id))
 
-    expect(unused, `EXTERNAL entries nothing mentions: ${unused.join(', ')}`)
-      .toEqual([])
+    expect(
+      unused,
+      `EXTERNAL entries nothing mentions: ${unused.join(', ')}`,
+    ).toEqual([])
   })
 })

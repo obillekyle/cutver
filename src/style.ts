@@ -125,6 +125,29 @@ export function plain(text: string): string {
   })
 }
 
+/**
+ * Make text safe to interpolate into a styled template.
+ *
+ * **Anything that came from outside this process has to go through here.** A
+ * commit subject, a path, a branch name, a tag, git's own error text — none of
+ * them know that `%` means something to `style`, and every one of them can
+ * contain it. `feat: cache hit rate now 100%done` printed as
+ * `feat: cache hit rate now 100one`: `%d` was read as the grey marker and the
+ * `d` went with it. Under `NO_COLOR` too, since `plain` strips known markers
+ * whether or not it emits codes.
+ *
+ * `die` already refuses to style its message for exactly this reason, naming a
+ * branch called `feat/100%done` — the argument was right and only half applied,
+ * because the path that *prints* commit subjects never got it. So the escape
+ * exists as a function now rather than as a rule to remember.
+ *
+ * `%%` is the escape `style` and `plain` both already understood; nothing here
+ * could produce one until now.
+ */
+export function esc(text: string): string {
+  return text.replaceAll('%', '%%')
+}
+
 /** Pad to `width` by what will be on screen, then expand. */
 export function pad(text: string, width: number): string {
   return style(text) + ' '.repeat(Math.max(0, width - plain(text).length))

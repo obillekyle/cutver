@@ -50,7 +50,7 @@ import {
   VERSION,
 } from './args'
 import { env, exists } from '../runtime'
-import { say } from '../style'
+import { esc, pad, say } from '../style'
 
 /**
  * `--force` names the files it is about to replace, and asks.
@@ -181,7 +181,7 @@ export async function runInit(argv: string[]): Promise<void> {
     // a report.
     const mark =
       r.state === 'written' ? '%g↑%0' : r.state === 'stale' ? '%r✗%0' : '%d=%0'
-    say(`  ${mark} ${r.path.padEnd(width)}  %d${r.detail}%0`)
+    say(`  ${mark} ${pad(esc(r.path), width)}  %d${esc(r.detail)}%0`)
   }
 
   // A new devDependency and an unchanged lockfile disagree, and the generated
@@ -816,13 +816,13 @@ async function overwriteReleases(
           : result.state === 'skipped'
             ? '%d·%0'
             : '%d=%0'
-    say(`  ${mark} ${tag.padEnd(width)}  ${result.detail}`)
+    say(`  ${mark} ${pad(esc(tag), width)}  %d${esc(result.detail)}%0`)
 
     // **Said per page, because it is per page.** Every summariser failure falls
     // back to the compiled section, which is publishable — so without this a
     // page that hit a rate limit reports `replaced` and reads as a success,
     // while sitting there in a different voice from the four around it.
-    if (note) say(`    %d${note}%0`)
+    if (note) say(`    %d${esc(note)}%0`)
   }
 }
 

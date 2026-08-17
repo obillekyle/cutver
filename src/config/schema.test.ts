@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { parseConfig } from './load'
+import { parseConfig, TOP_LEVEL } from './load'
 import {
   ConfigError,
   ECOSYSTEMS,
@@ -67,18 +67,12 @@ describe('docs/cutver.schema.json', () => {
   })
 
   test('allows exactly the top-level keys the loader does', () => {
+    // **Against the loader, not against a literal here.** This compared the
+    // schema to its own hardcoded copy, which cannot fail when a key is added
+    // to `load.ts` alone — the case it exists for.
     const declared = Object.keys(schema.properties).sort()
     expect(schema.additionalProperties).toBe(false)
-    expect(declared).toEqual([
-      '$schema',
-      'artifacts',
-      'changelog',
-      'channels',
-      'publish',
-      'schema',
-      'summarizer',
-      'target',
-    ])
+    expect(declared).toEqual([...TOP_LEVEL].sort())
   })
 
   test('offers exactly the changelog sections that exist', () => {

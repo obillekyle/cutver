@@ -248,8 +248,10 @@ describe('payload', () => {
 
     const renderable = new Set(Object.values(SECTIONS))
     for (const heading of authorised) {
-      expect(renderable, `\`${heading}\` is not a section cutver writes`)
-        .toContain(heading)
+      expect(
+        renderable,
+        `\`${heading}\` is not a section cutver writes`,
+      ).toContain(heading)
     }
     expect(PROMPT).toContain('Invent none')
   })

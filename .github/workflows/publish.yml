@@ -102,6 +102,9 @@ jobs:
       # Run again rather than trusted from the tagged commit's earlier run: a
       # tag can be moved, a branch force-pushed. Last point anything stops.
       - run: bun run typecheck
+      # The formatter is configured and was not enforced anywhere, so it drifted
+      # on four files. Cheaper as a red check than as a review comment.
+      - run: bun run format:check
       # **`bun run test`, not `bun test`.** The script carries `--timeout
       # 30000`, and the suite needs it: a dozen tests spawn git or a cutver
       # subprocess and land within a second of bun's 5s default. Calling

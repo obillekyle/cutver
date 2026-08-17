@@ -51,7 +51,7 @@ import {
   type Options,
 } from './args'
 import { runChangelog } from './commands'
-import { say, style, warn } from '../style'
+import { esc, pad, say, style, warn } from '../style'
 
 /**
  * The minor bump inside 0.x, for the advice line.
@@ -98,7 +98,11 @@ function report(changes: Change[]): void {
   for (const c of changes) {
     // The path is the anchor; the detail is a note about it. Same three
     // weights the doctor report uses, for the same reason.
-    say(`  ${MARK[c.state]} ${c.file.padEnd(width)}  %d${c.detail}%0`)
+    //
+    // `pad` rather than `padEnd`, because an escaped `%` is two characters and
+    // one column — measuring the escaped string would misalign every row below
+    // a path containing one.
+    say(`  ${MARK[c.state]} ${pad(esc(c.file), width)}  %d${esc(c.detail)}%0`)
   }
 }
 
@@ -110,20 +114,21 @@ function report(changes: Change[]): void {
  * touching nothing but its argument.
  */
 function reportSurvey(survey: Survey): void {
-  say(`cutver: %c${survey.total}%0 %dcommit(s) since ${survey.since}%0`)
+  say(`cutver: %c${survey.total}%0 %dcommit(s) since ${esc(survey.since)}%0`)
   for (const { level, subjects } of survey.tally) {
     say(`  ${BUMP[level] ?? '%d'}${level.padEnd(5)}%0 %c${subjects.length}%0`)
     // Show the work. A computed version nobody can check is worse than a typed
     // one: the reason for a major has to be visible before it is tagged.
-    for (const s of subjects.slice(0, 3)) say(`        %d${s}%0`)
+    //
+    // **`esc`, because these are commit subjects.** Styling them without it
+    // printed `feat: … 100%done` as `feat: … 100one`, the `%d` eaten as a
+    // colour marker — on the one line whose whole job is to show the evidence
+    // for a version number.
+    for (const s of subjects.slice(0, 3)) say(`        %d${esc(s)}%0`)
     if (subjects.length > 3)
       say(`        %<dim>… and ${subjects.length - 3} more%0`)
   }
 
-  // The two ranges, when they differ. Without this line the output shows a
-  // single `fix:` and then announces a major, with nothing on screen saying
-  // where the major came from — and an unexplained number is the one thing
-  // showing the work is supposed to prevent.
   // **Counted for nothing, and that used to be invisible.** An unrecognised
   // subject raises no version and lands in no changelog section, so a run over
   // ten commits where six are `wip` reports a patch bump with nothing saying
@@ -134,10 +139,15 @@ function reportSurvey(survey: Survey): void {
     say(
       `  %dnone%0  %y${n}%0 %dnot conventional — no version, no changelog entry%0`,
     )
-    for (const s of survey.unconventional.slice(0, 3)) say(`        %d${s}%0`)
+    for (const s of survey.unconventional.slice(0, 3))
+      say(`        %d${esc(s)}%0`)
     if (n > 3) say(`        %<dim>… and ${n - 3} more%0`)
   }
 
+  // The two ranges, when they differ. Without this line the output shows a
+  // single `fix:` and then announces a major, with nothing on screen saying
+  // where the major came from — and an unexplained number is the one thing
+  // showing the work is supposed to prevent.
   if (survey.base) {
     console.log(
       `  base  ${survey.base.bump} across ${survey.base.total} commit(s) since ` +
@@ -636,7 +646,11 @@ export async function runStage(argv: string[]): Promise<void> {
     // Not fatal. The version is correct and the manifests are right; a tag is
     // one command, and dying here would strand a release over the easiest part
     // of it to do by hand.
-    warn(`\ncutver: could not create ${tag} — ${opened}\n        git tag ${tag}`)
+    // `opened` is git's own words, which nothing here controls.
+    warn(
+      `\ncutver: could not create ${tag} — ${esc(opened)}\n` +
+        `        git tag ${tag}`,
+    )
   }
 
   const tagged = opened === null

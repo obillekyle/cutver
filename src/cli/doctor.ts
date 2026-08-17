@@ -32,7 +32,7 @@ import { keyFor } from '../summarize/connectors'
 import { COMMAND_ENV } from '../summarize'
 import { parse, preScan, resolveAdapter, resolveRoot } from './args'
 import { env } from '../runtime'
-import { say as write } from '../style'
+import { esc, pad, say as write } from '../style'
 
 /** How each line is marked. `✗` is the only one that changes the exit code. */
 type Level = 'ok' | 'note' | 'bad'
@@ -72,12 +72,15 @@ function firstLine(message: string): string {
  * the mark — the part that decides the exit code — competing with prose.
  */
 function say(f: Finding, width: number): void {
-  write(`  ${MARK[f.level]} ${f.topic.padEnd(width)}  %d${f.detail}%0`)
+  // Every field here can carry a path, a branch name or git's own words, so all
+  // of them are escaped. `pad` measures what will be on screen, which an
+  // escaped `%` is one column of and two characters.
+  write(`  ${MARK[f.level]} ${pad(esc(f.topic), width)}  %d${esc(f.detail)}%0`)
   // Dimmer again: `more` is the second paragraph of a row somebody has already
   // decided to read.
   if (f.more)
     for (const line of f.more.split('\n'))
-      write(`      ${' '.repeat(width)}%<dim>${line}%0`)
+      write(`      ${' '.repeat(width)}%<dim>${esc(line)}%0`)
 }
 
 /**
@@ -140,7 +143,7 @@ export async function runDoctor(argv: string[]): Promise<void> {
   if (loaded instanceof Error) {
     // Nothing below can be asked without it, so this is the one early exit.
     console.log(`cutver: ${root}`)
-    write(`  ${MARK.bad} config  ${firstLine(loaded.message)}`)
+    write(`  ${MARK.bad} config  ${esc(firstLine(loaded.message))}`)
     process.exit(1)
   }
 

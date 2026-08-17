@@ -65,78 +65,106 @@ async function cutver(
 }
 
 describe('cutver notes', () => {
-  test('a tag prints its changelog section', async () => {
-    // Run against this repository, whose changelog is the fixture — a temp repo
-    // with one fake tag would test the plumbing and none of the parsing.
-    //
-    // **The tag is read out of the file rather than written in here.** Pinning
-    // `v1.1.1` coupled this to a section `keep: 10` will eventually trim, so it
-    // was set to fail on the eleventh stable release for a reason that has
-    // nothing to do with the code. The newest heading is always present by
-    // definition.
-    const changelog = await Bun.file(
-      new URL('../../CHANGELOG.md', import.meta.url),
-    ).text()
-    const newest = /^## \[([^\]]+)\]/m.exec(changelog)?.[1]
-    expect(newest, 'no release heading in CHANGELOG.md').toBeTruthy()
+  test(
+    'a tag prints its changelog section',
+    async () => {
+      // Run against this repository, whose changelog is the fixture — a temp repo
+      // with one fake tag would test the plumbing and none of the parsing.
+      //
+      // **The tag is read out of the file rather than written in here.** Pinning
+      // `v1.1.1` coupled this to a section `keep: 10` will eventually trim, so it
+      // was set to fail on the eleventh stable release for a reason that has
+      // nothing to do with the code. The newest heading is always present by
+      // definition.
+      const changelog = await Bun.file(
+        new URL('../../CHANGELOG.md', import.meta.url),
+      ).text()
+      const newest = /^## \[([^\]]+)\]/m.exec(changelog)?.[1]
+      expect(newest, 'no release heading in CHANGELOG.md').toBeTruthy()
 
-    const { out, code } = await cutver('notes', `v${newest}`)
-    expect(code).toBe(0)
-    // Its own body, and not the one under it: a section that ran on would take
-    // the next heading with it.
-    expect(out.length).toBeGreaterThan(0)
-    const rest = [...changelog.matchAll(/^## \[([^\]]+)\]/gm)]
-      .map(m => m[1])
-      .slice(1)
-    for (const older of rest)
-      expect(out, `ran on into ${older}`).not.toContain(`## [${older}]`)
-  }, SLOW)
+      const { out, code } = await cutver('notes', `v${newest}`)
+      expect(code).toBe(0)
+      // Its own body, and not the one under it: a section that ran on would take
+      // the next heading with it.
+      expect(out.length).toBeGreaterThan(0)
+      const rest = [...changelog.matchAll(/^## \[([^\]]+)\]/gm)]
+        .map(m => m[1])
+        .slice(1)
+      for (const older of rest)
+        expect(out, `ran on into ${older}`).not.toContain(`## [${older}]`)
+    },
+    SLOW,
+  )
 
-  test('a range compiles from the commits instead', async () => {
-    const { out, code } = await cutver('notes', 'v1.1.0', 'v1.1.1')
-    expect(code).toBe(0)
-    expect(out).toContain('diff:')
-    expect(out).toMatch(/^### /m)
-  }, SLOW)
+  test(
+    'a range compiles from the commits instead',
+    async () => {
+      const { out, code } = await cutver('notes', 'v1.1.0', 'v1.1.1')
+      expect(code).toBe(0)
+      expect(out).toContain('diff:')
+      expect(out).toMatch(/^### /m)
+    },
+    SLOW,
+  )
 
-  test('a version nobody tagged is not an error', async () => {
-    // **Always exit 0.** This runs in a publish job that has already tagged and
-    // already built; failing over release notes would strand a release that is
-    // otherwise finished.
-    const { out, code } = await cutver('notes', 'v99.99.99')
-    expect(code).toBe(0)
-    expect(out).toContain('releasing without a body')
-  }, SLOW)
+  test(
+    'a version nobody tagged is not an error',
+    async () => {
+      // **Always exit 0.** This runs in a publish job that has already tagged and
+      // already built; failing over release notes would strand a release that is
+      // otherwise finished.
+      const { out, code } = await cutver('notes', 'v99.99.99')
+      expect(code).toBe(0)
+      expect(out).toContain('releasing without a body')
+    },
+    SLOW,
+  )
 
-  test('no argument is refused, since there is nothing to guess', async () => {
-    const { code } = await cutver('notes')
-    expect(code).toBe(1)
-  }, SLOW)
+  test(
+    'no argument is refused, since there is nothing to guess',
+    async () => {
+      const { code } = await cutver('notes')
+      expect(code).toBe(1)
+    },
+    SLOW,
+  )
 })
 
 describe('the version it reports', () => {
-  test('is the manifest version, not `dev`', async () => {
-    const { out, code } = await cutver('--version')
-    expect(code).toBe(0)
-    expect(out.trim()).toBe(manifest.version)
-  }, SLOW)
+  test(
+    'is the manifest version, not `dev`',
+    async () => {
+      const { out, code } = await cutver('--version')
+      expect(code).toBe(0)
+      expect(out.trim()).toBe(manifest.version)
+    },
+    SLOW,
+  )
 
-  test('appears in --help too', async () => {
-    // `help()` is handed the same version, and it is what a person reads
-    // before `--version` occurs to them.
-    const { out } = await cutver('--help')
-    expect(out).toContain(`cutver ${manifest.version}`)
-    expect(out).not.toContain('cutver dev')
-  }, SLOW)
+  test(
+    'appears in --help too',
+    async () => {
+      // `help()` is handed the same version, and it is what a person reads
+      // before `--version` occurs to them.
+      const { out } = await cutver('--help')
+      expect(out).toContain(`cutver ${manifest.version}`)
+      expect(out).not.toContain('cutver dev')
+    },
+    SLOW,
+  )
 
-  test('is a version the download URLs can be built from', async () => {
-    // The consequence, stated as its own assertion: `downloadBase` and `init`'s
-    // pin both treat `dev` as "no version", so a CLI reporting it silently
-    // degrades both. Anything semver-shaped is enough — this is about the
-    // string reaching them at all.
-    const { out } = await cutver('--version')
-    expect(out.trim()).toMatch(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/)
-  }, SLOW)
+  test(
+    'is a version the download URLs can be built from',
+    async () => {
+      // The consequence, stated as its own assertion: `downloadBase` and `init`'s
+      // pin both treat `dev` as "no version", so a CLI reporting it silently
+      // degrades both. Anything semver-shaped is enough — this is about the
+      // string reaching them at all.
+      const { out } = await cutver('--version')
+      expect(out.trim()).toMatch(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/)
+    },
+    SLOW,
+  )
 })
 
 /**
@@ -181,37 +209,45 @@ describe('cutver stage, against an orphaned tag', () => {
     return dir
   }
 
-  test('refuses, names the repair, and writes nothing', async () => {
-    const dir = await repo()
-    const { out, code } = await cutver('stage', '--offline', '--cwd', dir)
+  test(
+    'refuses, names the repair, and writes nothing',
+    async () => {
+      const dir = await repo()
+      const { out, code } = await cutver('stage', '--offline', '--cwd', dir)
 
-    expect(code).toBe(1)
-    expect(out).toContain('v1.0.1 already exists as a tag')
-    expect(out).toContain('git merge --no-ff v1.0.1')
+      expect(code).toBe(1)
+      expect(out).toContain('v1.0.1 already exists as a tag')
+      expect(out).toContain('git merge --no-ff v1.0.1')
 
-    // The half that matters. A refusal after the manifest is written is the
-    // failure this replaces, not an improvement on it.
-    const manifest = await Bun.file(`${dir}/package.json`).json()
-    expect(manifest.version).toBe('1.0.0')
+      // The half that matters. A refusal after the manifest is written is the
+      // failure this replaces, not an improvement on it.
+      const manifest = await Bun.file(`${dir}/package.json`).json()
+      expect(manifest.version).toBe('1.0.0')
 
-    rmSync(dir, { recursive: true, force: true })
-  }, SLOW)
+      rmSync(dir, { recursive: true, force: true })
+    },
+    SLOW,
+  )
 
-  test('--if-needed does not soften it', async () => {
-    // That flag means "no release was warranted". This is the opposite: one is
-    // warranted and cannot be cut, so going green would hide it.
-    const dir = await repo()
-    const { code } = await cutver(
-      'stage',
-      '--offline',
-      '--if-needed',
-      '--cwd',
-      dir,
-    )
+  test(
+    '--if-needed does not soften it',
+    async () => {
+      // That flag means "no release was warranted". This is the opposite: one is
+      // warranted and cannot be cut, so going green would hide it.
+      const dir = await repo()
+      const { code } = await cutver(
+        'stage',
+        '--offline',
+        '--if-needed',
+        '--cwd',
+        dir,
+      )
 
-    expect(code).toBe(1)
-    rmSync(dir, { recursive: true, force: true })
-  }, SLOW)
+      expect(code).toBe(1)
+      rmSync(dir, { recursive: true, force: true })
+    },
+    SLOW,
+  )
 })
 
 /**
@@ -250,48 +286,70 @@ describe('cutver check, with both manifests present', () => {
     return dir
   }
 
-  test('exits 0 and names the way out, rather than blocking the push', async () => {
-    const dir = await repo()
-    const { out, code } = await cutver('check', '--cwd', dir)
+  test(
+    'exits 0 and names the way out, rather than blocking the push',
+    async () => {
+      const dir = await repo()
+      const { out, code } = await cutver('check', '--cwd', dir)
 
-    expect(code).toBe(0)
-    expect(out).toContain('package.json and Cargo.toml')
-    expect(out).toContain('--adapter js|cargo')
+      expect(code).toBe(0)
+      expect(out).toContain('package.json and Cargo.toml')
+      expect(out).toContain('--adapter js|cargo')
 
-    rmSync(dir, { recursive: true, force: true })
-  }, SLOW)
+      rmSync(dir, { recursive: true, force: true })
+    },
+    SLOW,
+  )
 
-  test('accepts the flag its own error advises', async () => {
-    const dir = await repo()
-    const { out, code } = await cutver('check', '--adapter', 'js', '--cwd', dir)
+  test(
+    'accepts the flag its own error advises',
+    async () => {
+      const dir = await repo()
+      const { out, code } = await cutver(
+        'check',
+        '--adapter',
+        'js',
+        '--cwd',
+        dir,
+      )
 
-    expect(code).toBe(0)
-    expect(out).not.toContain('does not take --adapter')
-    expect(out).toContain('check ok')
+      expect(code).toBe(0)
+      expect(out).not.toContain('does not take --adapter')
+      expect(out).toContain('check ok')
 
-    rmSync(dir, { recursive: true, force: true })
-  }, SLOW)
+      rmSync(dir, { recursive: true, force: true })
+    },
+    SLOW,
+  )
 
-  test('explain keeps its own promise too', async () => {
-    const dir = await repo()
-    const { code } = await cutver('explain', '--cwd', dir)
+  test(
+    'explain keeps its own promise too',
+    async () => {
+      const dir = await repo()
+      const { code } = await cutver('explain', '--cwd', dir)
 
-    expect(code).toBe(0)
-    rmSync(dir, { recursive: true, force: true })
-  }, SLOW)
+      expect(code).toBe(0)
+      rmSync(dir, { recursive: true, force: true })
+    },
+    SLOW,
+  )
 
-  test('doctor reports it instead of dying mid-report', async () => {
-    // Exit 1 is right here — it is a real problem and `doctor` grades on
-    // findings. What matters is that the rest of the report still printed.
-    const dir = await repo()
-    const { out, code } = await cutver('doctor', '--offline', '--cwd', dir)
+  test(
+    'doctor reports it instead of dying mid-report',
+    async () => {
+      // Exit 1 is right here — it is a real problem and `doctor` grades on
+      // findings. What matters is that the rest of the report still printed.
+      const dir = await repo()
+      const { out, code } = await cutver('doctor', '--offline', '--cwd', dir)
 
-    expect(code).toBe(1)
-    expect(out).toContain('package.json and Cargo.toml')
-    expect(out).toContain('channels')
+      expect(code).toBe(1)
+      expect(out).toContain('package.json and Cargo.toml')
+      expect(out).toContain('channels')
 
-    rmSync(dir, { recursive: true, force: true })
-  }, SLOW)
+      rmSync(dir, { recursive: true, force: true })
+    },
+    SLOW,
+  )
 })
 
 /**
@@ -313,7 +371,10 @@ describe('cutver stage, in a repository with no tags', () => {
     await git('init', '-q')
     await git('config', 'user.email', 'a@b.c')
     await git('config', 'user.name', 't')
-    await Bun.write(`${dir}/package.json`, `{"name":"p","version":"${version}"}`)
+    await Bun.write(
+      `${dir}/package.json`,
+      `{"name":"p","version":"${version}"}`,
+    )
     await git('add', '-A')
     await git('commit', '-qm', subject)
     return dir
@@ -324,58 +385,70 @@ describe('cutver stage, in a repository with no tags', () => {
     return (await new Response(p.stdout).text()).trim()
   }
 
-  test('ships the manifest version and tags it', async () => {
-    // `npm init` writes 1.0.0. Before this, the first release of a brand-new
-    // project was 1.1.0 — 1.0.0 skipped, and unavailable to anyone reading the
-    // tag list later.
-    const dir = await repo('1.0.0', 'feat: the library view')
-    const { out, code } = await cutver('stage', '--offline', '--cwd', dir)
+  test(
+    'ships the manifest version and tags it',
+    async () => {
+      // `npm init` writes 1.0.0. Before this, the first release of a brand-new
+      // project was 1.1.0 — 1.0.0 skipped, and unavailable to anyone reading the
+      // tag list later.
+      const dir = await repo('1.0.0', 'feat: the library view')
+      const { out, code } = await cutver('stage', '--offline', '--cwd', dir)
 
-    expect(code).toBe(0)
-    expect(out).toContain('1.0.0 -> 1.0.0')
-    expect(out).toContain('first release')
-    expect(await tags(dir)).toBe('v1.0.0')
+      expect(code).toBe(0)
+      expect(out).toContain('1.0.0 -> 1.0.0')
+      expect(out).toContain('first release')
+      expect(await tags(dir)).toBe('v1.0.0')
 
-    // The manifest is left exactly as it was: it already said the right thing,
-    // which is the whole reason the tag can go on HEAD.
-    const manifest = await Bun.file(`${dir}/package.json`).json()
-    expect(manifest.version).toBe('1.0.0')
+      // The manifest is left exactly as it was: it already said the right thing,
+      // which is the whole reason the tag can go on HEAD.
+      const manifest = await Bun.file(`${dir}/package.json`).json()
+      expect(manifest.version).toBe('1.0.0')
 
-    rmSync(dir, { recursive: true, force: true })
-  }, SLOW)
+      rmSync(dir, { recursive: true, force: true })
+    },
+    SLOW,
+  )
 
-  test('does not tag when the manifest had to change', async () => {
-    // `0.0.0` is a placeholder rather than an intended release, so the commits
-    // decide and the manifest moves — which leaves the bump uncommitted. A tag
-    // on HEAD would name a commit whose manifest still says 0.0.0.
-    const dir = await repo('0.0.0', 'feat: the library view')
-    const { out, code } = await cutver('stage', '--offline', '--cwd', dir)
+  test(
+    'does not tag when the manifest had to change',
+    async () => {
+      // `0.0.0` is a placeholder rather than an intended release, so the commits
+      // decide and the manifest moves — which leaves the bump uncommitted. A tag
+      // on HEAD would name a commit whose manifest still says 0.0.0.
+      const dir = await repo('0.0.0', 'feat: the library view')
+      const { out, code } = await cutver('stage', '--offline', '--cwd', dir)
 
-    expect(code).toBe(0)
-    expect(out).toContain('0.0.0 -> 0.1.0')
-    expect(await tags(dir), 'tagged a commit that predates the bump').toBe('')
-    expect(out).toContain('commit, tag v0.1.0')
+      expect(code).toBe(0)
+      expect(out).toContain('0.0.0 -> 0.1.0')
+      expect(await tags(dir), 'tagged a commit that predates the bump').toBe('')
+      expect(out).toContain('commit, tag v0.1.0')
 
-    rmSync(dir, { recursive: true, force: true })
-  }, SLOW)
+      rmSync(dir, { recursive: true, force: true })
+    },
+    SLOW,
+  )
 
-  test('a dry run says it would tag, and creates nothing', async () => {
-    const dir = await repo('2.3.1', 'fix: a race')
-    const { out, code } = await cutver(
-      'stage',
-      '--offline',
-      '--dry-run',
-      '--cwd',
-      dir,
-    )
+  test(
+    'a dry run says it would tag, and creates nothing',
+    async () => {
+      const dir = await repo('2.3.1', 'fix: a race')
+      const { out, code } = await cutver(
+        'stage',
+        '--offline',
+        '--dry-run',
+        '--cwd',
+        dir,
+      )
 
-    expect(code).toBe(0)
-    expect(out).toContain('2.3.1 -> 2.3.1')
-    expect(out).toContain('would also create v2.3.1')
-    expect(await tags(dir)).toBe('')
+      expect(code).toBe(0)
+      expect(out).toContain('2.3.1 -> 2.3.1')
+      expect(out).toContain('would also create v2.3.1')
+      expect(await tags(dir)).toBe('')
 
-    rmSync(dir, { recursive: true, force: true })
-  }, SLOW)
+      rmSync(dir, { recursive: true, force: true })
+    },
+    SLOW,
+  )
 })
 
 /**
@@ -415,68 +488,84 @@ describe('cutver stage, crossing out of 0.x', () => {
     return dir
   }
 
-  test('refuses, writes nothing, and names both ways out', async () => {
-    const dir = await repo('0.2.0', 'feat(core)!: a breaking change')
-    const { out, code } = await cutver('stage', '--offline', '--cwd', dir)
-
-    expect(code).toBe(1)
-    expect(out).toContain('cutver stage 1.0.0')
-    // The conventional reading below 1.0.0, offered rather than applied —
-    // cutver does not get to pick which of the two a project meant.
-    expect(out).toContain('cutver stage 0.3.0')
-
-    const manifest = await Bun.file(`${dir}/package.json`).json()
-    expect(manifest.version).toBe('0.2.0')
-
-    rmSync(dir, { recursive: true, force: true })
-  }, SLOW)
-
-  test('--if-needed does not soften it', async () => {
-    // That flag means no release was warranted. Here one is, and cannot be
-    // cut for you — which is the whole reason to stop.
-    const dir = await repo('0.2.0', 'feat(core)!: a breaking change')
-    const { code } = await cutver(
-      'stage',
-      '--offline',
-      '--if-needed',
-      '--cwd',
-      dir,
-    )
-
-    expect(code).toBe(1)
-    rmSync(dir, { recursive: true, force: true })
-  }, SLOW)
-
-  test('an explicit version is obeyed, either way', async () => {
-    for (const asked of ['1.0.0', '0.3.0']) {
+  test(
+    'refuses, writes nothing, and names both ways out',
+    async () => {
       const dir = await repo('0.2.0', 'feat(core)!: a breaking change')
+      const { out, code } = await cutver('stage', '--offline', '--cwd', dir)
+
+      expect(code).toBe(1)
+      expect(out).toContain('cutver stage 1.0.0')
+      // The conventional reading below 1.0.0, offered rather than applied —
+      // cutver does not get to pick which of the two a project meant.
+      expect(out).toContain('cutver stage 0.3.0')
+
+      const manifest = await Bun.file(`${dir}/package.json`).json()
+      expect(manifest.version).toBe('0.2.0')
+
+      rmSync(dir, { recursive: true, force: true })
+    },
+    SLOW,
+  )
+
+  test(
+    '--if-needed does not soften it',
+    async () => {
+      // That flag means no release was warranted. Here one is, and cannot be
+      // cut for you — which is the whole reason to stop.
+      const dir = await repo('0.2.0', 'feat(core)!: a breaking change')
+      const { code } = await cutver(
+        'stage',
+        '--offline',
+        '--if-needed',
+        '--cwd',
+        dir,
+      )
+
+      expect(code).toBe(1)
+      rmSync(dir, { recursive: true, force: true })
+    },
+    SLOW,
+  )
+
+  test(
+    'an explicit version is obeyed, either way',
+    async () => {
+      for (const asked of ['1.0.0', '0.3.0']) {
+        const dir = await repo('0.2.0', 'feat(core)!: a breaking change')
+        const { out, code } = await cutver(
+          'stage',
+          asked,
+          '--offline',
+          '--dry-run',
+          '--cwd',
+          dir,
+        )
+
+        expect(code, asked).toBe(0)
+        expect(out, asked).toContain(`0.2.0 -> ${asked}`)
+        rmSync(dir, { recursive: true, force: true })
+      }
+    },
+    SLOW,
+  )
+
+  test(
+    '1.x is untouched — the promise is already made',
+    async () => {
+      const dir = await repo('1.4.0', 'feat(core)!: a breaking change')
       const { out, code } = await cutver(
         'stage',
-        asked,
         '--offline',
         '--dry-run',
         '--cwd',
         dir,
       )
 
-      expect(code, asked).toBe(0)
-      expect(out, asked).toContain(`0.2.0 -> ${asked}`)
+      expect(code).toBe(0)
+      expect(out).toContain('1.4.0 -> 2.0.0')
       rmSync(dir, { recursive: true, force: true })
-    }
-  }, SLOW)
-
-  test('1.x is untouched — the promise is already made', async () => {
-    const dir = await repo('1.4.0', 'feat(core)!: a breaking change')
-    const { out, code } = await cutver(
-      'stage',
-      '--offline',
-      '--dry-run',
-      '--cwd',
-      dir,
-    )
-
-    expect(code).toBe(0)
-    expect(out).toContain('1.4.0 -> 2.0.0')
-    rmSync(dir, { recursive: true, force: true })
-  }, SLOW)
+    },
+    SLOW,
+  )
 })

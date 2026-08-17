@@ -30,7 +30,6 @@ export type Ecosystem = (typeof ECOSYSTEMS)[number]
  * in 3.0, and this constant goes with them.
  */
 export const PUBLISH_TARGETS = ['registry', 'artifacts'] as const
-export type PublishTarget = (typeof PUBLISH_TARGETS)[number]
 
 /**
  * The default when the config says nothing, keyed by adapter rather than

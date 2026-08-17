@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { coloured, pad, plain, style } from './style'
+import { coloured, esc, pad, plain, style } from './style'
 
 /**
  * The markers, and the two ways they go wrong.
@@ -38,6 +38,42 @@ describe('style', () => {
     // A typo should be seen, not swallowed. `%<yelow>` disappearing silently
     // is how a line ends up half-coloured with nobody knowing why.
     expect(style('%<yelow>careful%0')).toBe('%<yelow>careful')
+  })
+
+  test('esc survives every marker this module knows', () => {
+    // **Measured, and shipped for one release.** A commit subject reading
+    // `100%done and 50%green` printed as `100one and 50reen` — `%d` and `%g`
+    // eaten as colour markers, taking the letter after them. Under `NO_COLOR`
+    // too, because `plain` strips known markers whether or not codes are
+    // emitted, so the bug was not a colour bug.
+    //
+    // Every marker is exercised rather than a couple: the failure was not
+    // "`%d` is special", it was "any letter can be", and a test naming two of
+    // them would pass while a third stayed broken.
+    const hazards = [
+      '100%done and 50%green',
+      '%r%g%b%c%m%y%w%0',
+      'feat/100%done',
+      '%<bold>not a marker%<reset>',
+      'a literal %% pair',
+      '%',
+    ]
+    for (const raw of hazards) {
+      expect(plain(esc(raw)), raw).toBe(raw)
+      // And with codes on, the text is unchanged once the codes are stripped —
+      // which is what `plain` measures and what alignment depends on.
+      expect(style(esc(raw)).replace(/\x1b\[[0-9;]*m/g, ''), raw).toBe(raw)
+    }
+  })
+
+  test('esc keeps a padded column honest', () => {
+    // An escaped `%` is two characters and one column. `padEnd` on the escaped
+    // string would indent every row below a path containing one.
+    //
+    // Asserted on `pad`'s output directly — it has already expanded, and
+    // running `plain` over it again would strip the `%d` this is about.
+    expect(pad(esc('a%db'), 8)).toBe('a%db    ')
+    expect(pad(esc('a%db'), 8)).toHaveLength(8)
   })
 
   test('nothing that looks like a marker survives a real message', () => {

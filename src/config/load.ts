@@ -38,7 +38,18 @@ import { exists, parseYaml, readText } from '../runtime'
 /** Tried in this order; more than one existing is an error, not a preference. */
 const NAMES = ['cutver.json', 'cutver.yml', 'cutver.yaml'] as const
 
-const TOP_LEVEL = new Set([
+/**
+ * Exported so the schema and the docs are held to *this* list.
+ *
+ * It was written out four times — here, in `docs/cutver.schema.json`, and as a
+ * hardcoded literal in each of two tests — and only two of the four were
+ * compared with each other. `schema.test.ts` checked the published schema
+ * against its own copy rather than against the loader, so adding a key here
+ * left the schema stale with every test green: an editor would underline a
+ * config cutver accepts, which is the exact failure that test says it exists to
+ * prevent.
+ */
+export const TOP_LEVEL = new Set([
   '$schema',
   'schema',
   'target',
