@@ -10,7 +10,7 @@ pull request, and on the release page.
 
 ## [2.3.0] — 2026-08-17
 
-<sub>diff: [56a9f96...469afbc](https://github.com/obillekyle/cutver/compare/56a9f96...469afbc)</sub>
+<sub>diff: [56a9f96...bd4ef31](https://github.com/obillekyle/cutver/compare/56a9f96...bd4ef31)</sub>
 
 ### New Features
 
