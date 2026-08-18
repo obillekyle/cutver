@@ -811,6 +811,13 @@ async function route() {
   if (isLog) startChangelogFeed(content, split.entries, page, anchor)
   document.title = `${content.querySelector('h1')?.textContent || 'cutver'} | cutver`
 
+  // The title is the one link in the static shell rather than in generated
+  // markup, so it is the one `routeHref` never got to build. Left as written it
+  // sends a reader pinned to an old version back to the current release without
+  // saying so — the same silent unpinning the query-string scheme exists to
+  // prevent everywhere else.
+  document.querySelector('.brand')?.setAttribute('href', routeHref('README'))
+
   // on-page contents
   const aside = document.getElementById('aside')
 
