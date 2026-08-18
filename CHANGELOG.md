@@ -8,6 +8,22 @@ is only ever as good as the commits — which is the point.
 explanation in the commit body, where it is also visible in `git log`, in a
 pull request, and on the release page.
 
+## [2.4.0] — 2026-08-18
+
+<sub>diff: [bd4ef31...169b0d8](https://github.com/obillekyle/cutver/compare/bd4ef31...169b0d8)</sub>
+
+### New Features
+
+- **docs:** a command that scaffolds the documentation site, and keeps it current ([5c441bd](https://github.com/obillekyle/cutver/commit/5c441bd))
+
+    The shell was being copied between repositories by hand, and copies rot. This one carried the proof: the dark palette is stated in three CSS blocks that have to agree, and for a while two of them held another project's orange, because the file had been adapted from that project's and only half re-themed. Every reader whose OS was dark and who never touched the toggle saw the wrong brand. Invisible to whoever made the copy, since their own explicit choice masked it.
+
+### Docs
+
+- one terminal, centred ([fa8008b](https://github.com/obillekyle/cutver/commit/fa8008b))
+
+    The screenshot and the fenced block under it were the same command twice — the same survey, the same version line, the same file report — so the page opened with forty lines of terminal before a sentence of prose. The fence goes.
+
 ## [2.3.0] — 2026-08-17
 
 <sub>diff: [56a9f96...bd4ef31](https://github.com/obillekyle/cutver/compare/56a9f96...bd4ef31)</sub>
@@ -199,15 +215,5 @@ pull request, and on the release page.
 - **release:** attach the Node bundle alongside the executables ([52b1b16](https://github.com/obillekyle/cutver/commit/52b1b16))
 
     `artifacts:` named only `dist/cutver-*`, so the bundle went to npm and never onto the release page. A machine with Node and no package manager was left fetching 90 MB of embedded Bun runtime to bump a version number.
-
-## [2.0.1] — 2026-08-16
-
-<sub>diff: [9a2fd30...627f047](https://github.com/obillekyle/cutver/compare/9a2fd30...627f047)</sub>
-
-### Fixes
-
-- **npm:** run on Node, and bring the docs to the 2.0 CLI ([8c27864](https://github.com/obillekyle/cutver/commit/8c27864))
-
-    `bin` pointed at a TypeScript entry behind a `#!/usr/bin/env bun` shebang, so the package installed everywhere and ran only where Bun was on PATH. The `node` workflow `init` generates hit the same wall.
 
 Older releases are in the git tags and on the releases page.
