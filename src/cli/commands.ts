@@ -448,7 +448,10 @@ export async function runDocs(argv: string[]): Promise<void> {
       const short = await githubRepo(root)
       const name =
         short?.split('/')[1] ??
-        root.replace(/[\\/]+$/, '').split(/[\\/]/).pop() ??
+        root
+          .replace(/[\\/]+$/, '')
+          .split(/[\\/]/)
+          .pop() ??
         'docs'
       site = defaultSite(name, short ? `https://github.com/${short}` : '')
     }

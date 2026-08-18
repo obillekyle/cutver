@@ -320,7 +320,8 @@ export const COMMANDS: readonly Command[] = [
       {
         name: '--force',
         takes: null,
-        summary: 'install: rewrite site.json and versions.json, never the content',
+        summary:
+          'install: rewrite site.json and versions.json, never the content',
       },
       {
         name: '--dry-run',
