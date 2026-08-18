@@ -30,6 +30,9 @@ import {
   createTag,
   currentBranch,
   isGitRepo,
+  lastStableTag,
+  newestStableTag,
+  sharedWith,
   remoteUrl,
   status,
   tagExists,
@@ -429,6 +432,53 @@ export async function runStage(argv: string[]): Promise<void> {
       process.exit(0)
     }
     die(`${nothing}\n        Pass a version explicitly to override.`)
+  }
+
+  // **A branch that cannot see the newest stable release, but contains what it
+  // shipped.**
+  //
+  // The version is measured from the last tag *reachable* from HEAD, and the
+  // bump commit a release leaves behind lives on the branch that cut it. So a
+  // channel branch that has not merged from the stable line cannot see its tag,
+  // counts every commit that release already shipped a second time, and cuts a
+  // prerelease whose notes repeat the stable one's.
+  //
+  // Seen on alloyfs: `main` released v0.7.0 over five commits; `alpha` held the
+  // same five plus one of its own, could only see v0.6.0, and so proposed
+  // 1.0.0-alpha.0 for six commits instead of one — a prerelease numbered above
+  // the stable line, describing work that had already shipped under it.
+  //
+  // **Narrow on purpose.** The test is not "a newer tag exists somewhere",
+  // which would refuse every maintenance branch on an older line — those are
+  // meant to release without the newest stable. It is "a newer tag exists and
+  // this branch already contains what it released", which only a branch that
+  // has fallen behind its own line can be true of.
+  const newestStable = await newestStableTag(root)
+  const reachableStable = await lastStableTag(root)
+  if (newestStable && newestStable !== reachableStable) {
+    // The overlap, not the tag's parent. A parent test reads as true whenever a
+    // tag sits directly on a content commit rather than on a bump — the parent
+    // is shared history then, and every branch has it, including the 1.x line
+    // this rule must leave alone.
+    const shipped = (await sharedWith(root, reachableStable, newestStable)) > 0
+    if (shipped) {
+      const behind =
+        `${newestStable} is released and this branch cannot see it, but has\n` +
+        `        its commits. Everything ${newestStable} shipped would be counted and\n` +
+        '        released again here.\n\n' +
+        `        Merge it first:\n` +
+        `          git merge ${newestStable}`
+
+      // `--if-needed` means no release was warranted, and none is: this work is
+      // already out. Green, so a channel branch left behind does not turn CI
+      // red on every push until somebody notices.
+      if (opts.ifNeeded) {
+        console.log(`cutver: ${behind.split('\n\n')[0]}`)
+        console.log('cutver: --if-needed, so nothing was written.')
+        process.exit(0)
+      }
+      die(behind)
+    }
   }
 
   const { version } = decision

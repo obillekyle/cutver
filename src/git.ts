@@ -48,6 +48,55 @@ export async function lastStableTag(
 }
 
 /**
+ * The newest stable tag in the repository, reachable from HEAD or not.
+ *
+ * `lastStableTag` asks what this branch has released. This asks what the
+ * project has, which is a different question and only interesting when the two
+ * disagree: a branch that cannot see the newest stable is one whose commits may
+ * already have shipped under it.
+ */
+export async function newestStableTag(root: string): Promise<string | null> {
+  const { out } = await run(
+    ['git', 'tag', '--list', 'v*', '--sort=-v:refname'],
+    root,
+  )
+  return out.split('\n').find(t => /^v\d+\.\d+\.\d+$/.test(t.trim())) ?? null
+}
+
+/**
+ * How many of the commits `to` released are already on `rev`.
+ *
+ * The question behind it is whether a branch would re-release work that another
+ * tag has shipped, and the obvious tests do not answer it. "Is a newer tag
+ * reachable" is true of every maintenance branch. "Is the tag's parent an
+ * ancestor" is true whenever a tag sits directly on a content commit, since the
+ * parent is then shared history — measured, by a maintenance-branch fixture that
+ * tripped a guard meant for the opposite case.
+ *
+ * So it counts the overlap: the commits in `from..to`, minus those `rev` cannot
+ * reach. A release cut on this line leaves only its own bump commit outside a
+ * branch that has the work; a release cut on another line leaves all of them.
+ */
+export async function sharedWith(
+  root: string,
+  from: string | null,
+  to: string,
+  rev = 'HEAD',
+): Promise<number> {
+  const range = from ? `${from}..${to}` : to
+  const count = async (...extra: string[]) => {
+    const { ok, out } = await run(
+      ['git', 'rev-list', '--count', range, ...extra],
+      root,
+    )
+    return ok ? Number(out.trim()) || 0 : 0
+  }
+  const all = await count()
+  const elsewhere = await count(`^${rev}`)
+  return Math.max(0, all - elsewhere)
+}
+
+/**
  * The newest tag of **any** kind reachable from HEAD — prereleases included.
  *
  * The counterpart to `lastStableTag`, and the two answer different questions.

@@ -788,3 +788,207 @@ describe('cutver stage, the guards before the write', () => {
     SLOW,
   )
 })
+
+/**
+ * A branch that cannot see the newest stable release, but contains what it
+ * shipped.
+ *
+ * The version is measured from the last tag *reachable* from HEAD, and the bump
+ * commit a release leaves behind lives on the branch that cut it. So a channel
+ * branch that has not merged from the stable line counts every commit that
+ * release already shipped a second time.
+ *
+ * Seen on alloyfs: `main` released v0.7.0 over five commits, `alpha` held the
+ * same five plus one of its own and could only see v0.6.0, so it proposed a
+ * prerelease numbered above the stable line describing work already out under
+ * it.
+ */
+describe('cutver stage, on a branch behind the stable line', () => {
+  /** `main` at `stable`, a channel branch holding its commits but not its tag. */
+  async function repos(): Promise<string> {
+    const dir = mkdtempSync(`${tmpdir()}/cutver-behind-`).replaceAll('\\', '/')
+    const git = async (...args: string[]) => {
+      const p = Bun.spawn(['git', ...args], {
+        cwd: dir,
+        env: GIT_ENV,
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      if ((await p.exited) !== 0) {
+        throw new Error(
+          `git ${args.join(' ')}: ${await new Response(p.stderr).text()}`,
+        )
+      }
+    }
+
+    await git('init', '-q', '-b', 'main')
+    await Bun.write(`${dir}/package.json`, '{"name":"p","version":"0.6.0"}')
+    await Bun.write(
+      `${dir}/cutver.yml`,
+      'schema: 1\nchannels:\n  release:\n    - main\n  alpha:\n    - alpha\n',
+    )
+    await git('add', '-A')
+    await git('commit', '-qm', 'feat: base')
+    await git('tag', 'v0.6.0')
+
+    // Work done on the channel, then taken into main and released there.
+    await git('checkout', '-qb', 'alpha')
+    await Bun.write(`${dir}/a.txt`, 'a')
+    await git('add', '-A')
+    await git('commit', '-qm', 'feat(x): shared work')
+
+    await git('checkout', '-q', 'main')
+    await git('merge', '-q', 'alpha')
+    await Bun.write(`${dir}/r.txt`, 'r')
+    await git('add', '-A')
+    await git('commit', '-qm', 'chore(release): v0.7.0')
+    await git('tag', 'v0.7.0')
+
+    // The channel carries on, still blind to the tag.
+    await git('checkout', '-q', 'alpha')
+    await Bun.write(`${dir}/b.txt`, 'b')
+    await git('add', '-A')
+    await git('commit', '-qm', 'fix(y): alpha only')
+
+    return dir
+  }
+
+  test(
+    'refuses, and says which release to merge',
+    async () => {
+      const dir = await repos()
+      const { out, code } = await cutver(
+        'stage',
+        '--offline',
+        '--branch',
+        'alpha',
+        '--cwd',
+        dir,
+      )
+
+      expect(code).toBe(1)
+      expect(out).toContain('v0.7.0 is released and this branch cannot see it')
+      expect(out).toContain('git merge v0.7.0')
+
+      const manifest = await Bun.file(`${dir}/package.json`).json()
+      expect(manifest.version).toBe('0.6.0')
+
+      rmSync(dir, { recursive: true, force: true })
+    },
+    SLOW,
+  )
+
+  test(
+    '--if-needed makes it green, since the work is already released',
+    async () => {
+      // A channel branch left behind must not turn CI red on every push until
+      // somebody notices — nothing is warranted here, which is what that flag
+      // is for.
+      const dir = await repos()
+      const { code } = await cutver(
+        'stage',
+        '--offline',
+        '--if-needed',
+        '--branch',
+        'alpha',
+        '--cwd',
+        dir,
+      )
+
+      expect(code).toBe(0)
+      rmSync(dir, { recursive: true, force: true })
+    },
+    SLOW,
+  )
+
+  test(
+    'merging the release in clears it, and only new work is counted',
+    async () => {
+      const dir = await repos()
+      const merge = Bun.spawn(['git', 'merge', '-q', '--no-edit', 'v0.7.0'], {
+        cwd: dir,
+        env: GIT_ENV,
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      expect(await merge.exited).toBe(0)
+
+      const { out, code } = await cutver(
+        'stage',
+        '--offline',
+        '--dry-run',
+        '--branch',
+        'alpha',
+        '--cwd',
+        dir,
+      )
+
+      expect(code).toBe(0)
+      expect(out).toContain('since v0.7.0')
+      expect(out).not.toContain('cannot see it')
+
+      rmSync(dir, { recursive: true, force: true })
+    },
+    SLOW,
+  )
+
+  test(
+    'a maintenance branch on an older line still releases',
+    async () => {
+      // The narrow half of the rule. A 1.x branch is *meant* to release without
+      // the newest stable, and shares none of what it shipped — so a test of
+      // "a newer tag exists" alone would refuse every backport.
+      const dir = mkdtempSync(`${tmpdir()}/cutver-maint-`).replaceAll('\\', '/')
+      const git = async (...args: string[]) => {
+        const p = Bun.spawn(['git', ...args], {
+          cwd: dir,
+          env: GIT_ENV,
+          stdout: 'pipe',
+          stderr: 'pipe',
+        })
+        if ((await p.exited) !== 0) {
+          throw new Error(`git ${args.join(' ')}`)
+        }
+      }
+
+      await git('init', '-q', '-b', 'main')
+      await Bun.write(`${dir}/package.json`, '{"name":"p","version":"1.5.0"}')
+      await Bun.write(
+        `${dir}/cutver.yml`,
+        'schema: 1\nchannels:\n  release:\n    - main\n    - "1.x"\n',
+      )
+      await git('add', '-A')
+      await git('commit', '-qm', 'feat: base')
+      await git('tag', 'v1.5.0')
+
+      await git('checkout', '-qb', '1.x')
+      await git('checkout', '-q', 'main')
+      await Bun.write(`${dir}/n.txt`, 'n')
+      await git('add', '-A')
+      await git('commit', '-qm', 'feat!: the 2.0 line')
+      await git('tag', 'v2.0.0')
+
+      await git('checkout', '-q', '1.x')
+      await Bun.write(`${dir}/f.txt`, 'f')
+      await git('add', '-A')
+      await git('commit', '-qm', 'fix(core): backport a fix')
+
+      const { out, code } = await cutver(
+        'stage',
+        '--offline',
+        '--dry-run',
+        '--branch',
+        '1.x',
+        '--cwd',
+        dir,
+      )
+
+      expect(code).toBe(0)
+      expect(out).toContain('1.5.0 -> 1.5.1')
+      expect(out).not.toContain('cannot see it')
+
+      rmSync(dir, { recursive: true, force: true })
+    },
+    SLOW,
+  )
+})
