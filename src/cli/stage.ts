@@ -469,10 +469,23 @@ export async function runStage(argv: string[]): Promise<void> {
   // answers to the same question. A refusal spends nothing and names both ways
   // out. `--if-needed` does not soften it: that flag means no release was
   // warranted, and this is one that is warranted and cannot be cut for you.
+  //
+  // **A prerelease is not the promise this guards, so it goes through.** The
+  // rule used to catch `1.0.0-alpha.0` as well, which broke the one workflow
+  // that most needed to work: a project at 0.x with a channel branch, pushing a
+  // `feat!` to it. Every push failed, and the escape the message offered was
+  // `cutver stage 1.0.0` — the stable release this exists to prevent being cut
+  // unattended. A channel is where a major is staged before anyone commits to
+  // it, and `-alpha.0` is semver's way of saying exactly that.
+  //
+  // The stable that follows is still asked for, once the project is back on
+  // 0.x. It is not asked again after an alpha has been cut, because by then it
+  // has been: naming a branch for the next major and pushing a breaking change
+  // to it is the decision, made by hand, in the loop.
   if (
     !explicit &&
     current.startsWith('0.') &&
-    /^1\.0\.0(?:$|[-+])/.test(version)
+    /^1\.0\.0(?:\+|$)/.test(version)
   ) {
     die(
       `these commits imply ${version}, and this project is at ${current}.\n` +
