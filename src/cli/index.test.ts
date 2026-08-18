@@ -583,6 +583,53 @@ describe('cutver stage, crossing out of 0.x', () => {
   )
 
   test(
+    'a prerelease goes through, because it is not the promise',
+    async () => {
+      // The workflow this used to break: a 0.x project with a channel branch,
+      // taking a `feat!`. Every push failed, and the only escape the message
+      // named was `cutver stage 1.0.0` — the stable release the guard exists to
+      // stop being cut unattended.
+      const dir = await repo('0.2.0', 'feat(core)!: a breaking change')
+      await Bun.write(
+        `${dir}/cutver.yml`,
+        'schema: 1\nchannels:\n  release:\n    - main\n  alpha:\n    - alpha\n',
+      )
+
+      const { out, code } = await cutver(
+        'stage',
+        '--offline',
+        '--dry-run',
+        '--branch',
+        'alpha',
+        '--cwd',
+        dir,
+      )
+
+      expect(code).toBe(0)
+      expect(out).toContain('0.2.0 -> 1.0.0-alpha.0')
+      expect(out).not.toContain('Leaving 0.x')
+
+      rmSync(dir, { recursive: true, force: true })
+    },
+    SLOW,
+  )
+
+  test(
+    'the stable it leads to is still asked for',
+    async () => {
+      // Same commits with no channel: the decision is still a decision.
+      const dir = await repo('0.2.0', 'feat(core)!: a breaking change')
+      const { out, code } = await cutver('stage', '--offline', '--cwd', dir)
+
+      expect(code).toBe(1)
+      expect(out).toContain('Leaving 0.x')
+
+      rmSync(dir, { recursive: true, force: true })
+    },
+    SLOW,
+  )
+
+  test(
     'an explicit version is obeyed, either way',
     async () => {
       for (const asked of ['1.0.0', '0.3.0']) {
