@@ -8,9 +8,19 @@ is only ever as good as the commits — which is the point.
 explanation in the commit body, where it is also visible in `git log`, in a
 pull request, and on the release page.
 
+## [2.4.1] — 2026-08-18
+
+<sub>diff: [bc8e48a...a489fba](https://github.com/obillekyle/cutver/compare/bc8e48a...a489fba)</sub>
+
+### Fixes
+
+- **docs:** turn Jekyll off, which was serving the markdown instead of the site ([a489fba](https://github.com/obillekyle/cutver/commit/a489fba))
+
+    GitHub Pages runs Jekyll unless told not to, and it renders every markdown file under docs/ into a standalone page. Measured against the live deployment, /guides/commits answered 200 with a bare themed page — no sidebar, no search, no version picker, none of the shell — and that is what Google had to index.
+
 ## [2.4.0] — 2026-08-18
 
-<sub>diff: [bd4ef31...169b0d8](https://github.com/obillekyle/cutver/compare/bd4ef31...169b0d8)</sub>
+<sub>diff: [bd4ef31...bc8e48a](https://github.com/obillekyle/cutver/compare/bd4ef31...bc8e48a)</sub>
 
 ### New Features
 
@@ -205,15 +215,5 @@ pull request, and on the release page.
 - **stage:** refuse a version whose tag already exists, and rate a dead workflow as broken ([36b6f32](https://github.com/obillekyle/cutver/commit/36b6f32))
 
     Two gaps found integrating cutver into two repositories, both of which were one push away from the first.
-
-## [2.0.2] — 2026-08-16
-
-<sub>diff: [627f047...8c7f569](https://github.com/obillekyle/cutver/compare/627f047...8c7f569)</sub>
-
-### Fixes
-
-- **release:** attach the Node bundle alongside the executables ([52b1b16](https://github.com/obillekyle/cutver/commit/52b1b16))
-
-    `artifacts:` named only `dist/cutver-*`, so the bundle went to npm and never onto the release page. A machine with Node and no package manager was left fetching 90 MB of embedded Bun runtime to bump a version number.
 
 Older releases are in the git tags and on the releases page.
