@@ -1,6 +1,6 @@
 {
   "name": "cutver",
-  "version": "2.4.2",
+  "version": "2.4.3",
   "description": "Work out the next semver from conventional commits and write it into every manifest. Stops before publishing.",
   "author": "obillekyle",
   "license": "MIT",

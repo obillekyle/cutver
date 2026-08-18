@@ -8,9 +8,19 @@ is only ever as good as the commits — which is the point.
 explanation in the commit body, where it is also visible in `git log`, in a
 pull request, and on the release page.
 
+## [2.4.3] — 2026-08-18
+
+<sub>diff: [b2f8190...c246388](https://github.com/obillekyle/cutver/compare/b2f8190...c246388)</sub>
+
+### Fixes
+
+- **stage:** refuse to re-release what a stable tag already shipped ([c246388](https://github.com/obillekyle/cutver/commit/c246388))
+
+    A version is measured from the last tag reachable from HEAD, and the bump commit a release leaves behind lives on the branch that cut it. So a channel branch that has not merged from the stable line cannot see its tag, counts every commit that release already shipped a second time, and cuts a prerelease whose notes repeat the stable one's.
+
 ## [2.4.2] — 2026-08-18
 
-<sub>diff: [1f8cc5e...3b94ba0](https://github.com/obillekyle/cutver/compare/1f8cc5e...3b94ba0)</sub>
+<sub>diff: [1f8cc5e...b2f8190](https://github.com/obillekyle/cutver/compare/1f8cc5e...b2f8190)</sub>
 
 ### Fixes
 
@@ -187,33 +197,5 @@ pull request, and on the release page.
 - **notes:** cutver owns the `diff:` line, and sets it as a footnote ([90be517](https://github.com/obillekyle/cutver/commit/90be517))
 
     It was in the prompt as a fact to copy exactly, and the shape showed it on the line directly above the opening sentence — so markdown folded the two into one paragraph and every summarised release page read as a link with prose glued to it. The other half of that instruction was worse: a sha altered by one character resolves to nothing, and nothing checked.
-
-## [2.1.0] — 2026-08-17
-
-<sub>diff: [c2c3bc3...2a4e37e](https://github.com/obillekyle/cutver/compare/c2c3bc3...2a4e37e)</sub>
-
-### New Features
-
-- **cli:** colour the terminal output, with bakery's `%<code>` markers ([8f24725](https://github.com/obillekyle/cutver/commit/8f24725))
-
-    Same convention as bakery's logger, deliberately: `%<green>` and the one-letter aliases, `%0` to reset, `%%` for a literal percent. Two projects read by the same person should not have two spellings for one idea, and the markers read as the line they produce — `` `%g↑%0 ${file}` `` rather than a sentence about producing it.
-
-- **changelog:** `file` and `pages` targets, and `changelog.file: false` ([848e11c](https://github.com/obillekyle/cutver/commit/848e11c))
-
-    Three changes, all of them the same realisation: the file and the release pages are two jobs, and `--overwrite` was a second command wearing a flag's clothes.
-
-- **changelog:** `--overwrite` creates a release page when the tag has none ([1dcd8ea](https://github.com/obillekyle/cutver/commit/1dcd8ea))
-
-    The command exists to catch release pages up with a changelog, and it could not help the repository most in need of it: one that tagged for a year and adopted `changelog:` last week has a good file and an empty Releases tab. Nine tags, nine "no GitHub release for this tag", nothing written.
-
-### Fixes
-
-- **changelog:** a prerelease being cut gets no heading when prereleases are off ([07a3880](https://github.com/obillekyle/cutver/commit/07a3880))
-
-    The tag filter and the release being cut are two paths to the same list, and only the tags were filtered. So with `prereleases: false` a beta got a heading the moment it was cut, and lost it on the next regeneration when that version arrived as a tag — an entry that exists between one release and the next rebuild is worse than either answer.
-
-- **init:** retry the cutver download in the generated Cargo workflow ([dc78ed6](https://github.com/obillekyle/cutver/commit/dc78ed6))
-
-    It is the one step in a release job with no second chance. Every other download there is a package manager that retries on its own; this is a bare curl, and it failed a real release on `curl: (35) Recv failure: Connection reset by peer` with the asset answering 200 thirty seconds later.
 
 Older releases are in the git tags and on the releases page.
