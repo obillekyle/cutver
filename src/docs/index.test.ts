@@ -207,6 +207,7 @@ describe('docsFiles', () => {
       'docs/index.html',
       'docs/docs.css',
       'docs/404.html',
+      'docs/.nojekyll',
       'docs/docs.js',
     ])
   })

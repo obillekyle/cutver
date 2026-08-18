@@ -59,6 +59,24 @@ export const JS_FILE = `${DOCS_DIR}/docs.js`
 export const NOT_FOUND_FILE = `${DOCS_DIR}/404.html`
 
 /**
+ * Turns Jekyll off, which GitHub Pages otherwise runs over everything here.
+ *
+ * **Without it the markdown is the site, and the site is not.** Jekyll renders
+ * every `docs/**` markdown file into a standalone page and serves it — measured
+ * against a live deployment, `/guides/commits` answered **200** with a bare
+ * themed page: no sidebar, no search, no version picker, none of the shell.
+ * Google indexes those, and a reader who lands on one has no way back into the
+ * actual documentation.
+ *
+ * It also quietly disabled `404.html`. That file only runs when Pages has
+ * nothing to serve, and Jekyll had made something to serve for every path a
+ * markdown file happened to sit at.
+ *
+ * The file is empty; its presence is the whole instruction.
+ */
+export const NOJEKYLL_FILE = `${DOCS_DIR}/.nojekyll`
+
+/**
  * The per-project parts of the shell.
  *
  * Everything else about the site is the same in every repository, which is why
@@ -541,6 +559,7 @@ export function docsFiles(site: SiteConfig, tags: string[] = []): DocsFile[] {
     { path: `${DOCS_DIR}/index.html`, contents: rendered.html, own: 'generated' },
     { path: CSS_FILE, contents: rendered.css, own: 'generated' },
     { path: NOT_FOUND_FILE, contents: NOT_FOUND_PAGE(site), own: 'generated' },
+    { path: NOJEKYLL_FILE, contents: '', own: 'generated' },
     { path: JS_FILE, contents: rendered.js, own: 'generated' },
     /**
      * The version picker in the shell fetches this file, so a site scaffolded
