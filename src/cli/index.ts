@@ -24,6 +24,7 @@ import {
   runCheck,
   runConfig,
   runExplain,
+  runDocs,
   runHook,
   runInit,
   runNotes,
@@ -114,6 +115,8 @@ async function main(): Promise<void> {
       return runConfig(rest)
     case 'init':
       return runInit(rest)
+    case 'docs':
+      return runDocs(rest)
     case 'hook':
       return runHook(rest)
     case 'completions':

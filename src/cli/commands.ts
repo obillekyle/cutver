@@ -24,6 +24,14 @@ import {
   updateRelease,
   type ReleaseUpdate,
 } from '../changelog/releases'
+import {
+  defaultSite,
+  installDocs,
+  readSite,
+  SITE_FILE,
+  updateDocs,
+  type SiteConfig,
+} from '../docs'
 import { loadConfig } from '../config/load'
 import { channelNames, producesArtifacts, type Config } from '../config/schema'
 import { explainReport } from '../explain'
@@ -404,6 +412,74 @@ export async function runHook(argv: string[]): Promise<void> {
       '\n  It refuses a push to a release branch whose name promises a lower\n' +
         '  version than its commits justify. Everything else it lets through —\n' +
         '  including its own failures. `git push --no-verify` bypasses it.',
+    )
+  }
+}
+
+/**
+ * `cutver docs install|update`.
+ *
+ * Two verbs rather than one idempotent command, because they answer different
+ * questions. `install` asks "does this repository have a docs site", and leaves
+ * every answer it finds alone. `update` asks "is the shell the current one",
+ * which is the question that has no good answer while the file is being copied
+ * between repositories by hand.
+ */
+export async function runDocs(argv: string[]): Promise<void> {
+  const action = argv[0]
+  if (action !== 'install' && action !== 'update') {
+    die('docs takes `install` or `update`')
+  }
+
+  const opts = parse(argv.slice(1), undefined, 'docs')
+  const root = resolveRoot(opts.cwd)
+
+  let site: SiteConfig
+  try {
+    const found = await readSite(root)
+    if (found) site = found
+    else if (action === 'update') {
+      die(`no ${SITE_FILE} — run \`cutver docs install\` first`)
+    } else {
+      // Nothing to ask for. The remote names both the project and its URL, and
+      // it does so for a Cargo repository as readily as an npm one — where a
+      // manifest would need an adapter to read and a workspace has several.
+      // A repository with no remote falls back to the directory it is in.
+      const short = await githubRepo(root)
+      const name =
+        short?.split('/')[1] ??
+        root.replace(/[\\/]+$/, '').split(/[\\/]/).pop() ??
+        'docs'
+      site = defaultSite(name, short ? `https://github.com/${short}` : '')
+    }
+  } catch (error) {
+    // A typo in hand-written JSON, reported where it is rather than as a
+    // stack trace over a half-written site.
+    return die((error as Error).message)
+  }
+
+  const results =
+    action === 'install'
+      ? await installDocs(root, site, {
+          dryRun: opts.dryRun,
+          force: opts.force,
+          tags: (await releaseTags(root).catch(() => [])).map(t => t.version),
+        })
+      : await updateDocs(root, site, { dryRun: opts.dryRun })
+
+  const MARK = { written: '↑', skipped: '=', unchanged: '=' } as const
+  for (const r of results) {
+    console.log(
+      `cutver: ${MARK[r.state]} ${esc(r.path)}  ${esc(r.detail)}` +
+        (opts.dryRun ? ' (dry run)' : ''),
+    )
+  }
+
+  if (action === 'install') {
+    console.log(
+      `\n  Edit ${esc(SITE_FILE)} for the name, icon, description and colours,\n` +
+        '  then `cutver docs update` to re-render. The markdown and pages.json\n' +
+        '  are yours; index.html is generated and replaced on every update.',
     )
   }
 }

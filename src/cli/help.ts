@@ -300,6 +300,37 @@ export const COMMANDS: readonly Command[] = [
     values: ['cargo', 'node', 'bun'],
   },
   {
+    name: 'docs',
+    args: 'install|update',
+    summary: 'scaffold the documentation site, or re-render its shell',
+    detail: [
+      '`install` writes the site and keeps anything already there. `update` ' +
+        're-renders `docs/index.html` from this version of cutver and touches ' +
+        'nothing else.',
+      'The shell is generated, which is the point: it used to be copied ' +
+        'between repositories, and a copy cannot be fixed once it has been ' +
+        'made. The markdown, `pages.json` and `site.json` are yours and are ' +
+        'never replaced.',
+      'Name, description, icon, repository and colours come from ' +
+        '`docs/site.json`. Anything under `theme.light` or `theme.dark` is a ' +
+        'CSS custom property on the shell, written without its leading dashes, ' +
+        'so a project that only wants its own accent sets one.',
+    ],
+    flags: [
+      {
+        name: '--force',
+        takes: null,
+        summary: 'install: rewrite site.json and versions.json, never the content',
+      },
+      {
+        name: '--dry-run',
+        takes: null,
+        summary: 'report what would be written, write nothing',
+      },
+    ],
+    values: ['install', 'update'],
+  },
+  {
     name: 'hook',
     args: 'install|uninstall',
     summary: 'install or remove the pre-push guard that runs check',

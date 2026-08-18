@@ -235,11 +235,11 @@ describe('the CLI reference', () => {
     }
   })
 
-  test('index.html reads the nav from pages.json, not from a literal', async () => {
+  test('the shell reads the nav from pages.json, not from a literal', async () => {
     // The pair of checks above is only meaningful if the site reads the same
     // file they do. A literal reintroduced in the shell would leave them
     // passing while the sidebar came from somewhere else entirely.
-    const html = await Bun.file(`${DOCS}index.html`).text()
+    const html = await Bun.file(`${DOCS}docs.js`).text()
     expect(html).toContain("fetch('pages.json')")
     expect(html).toContain('docs/pages.json')
     expect(html).not.toContain('const NAV = [')
@@ -285,7 +285,7 @@ describe('the CLI reference', () => {
       ).toBe(true)
     }
 
-    const html = await Bun.file(`${DOCS}index.html`).text()
+    const html = await Bun.file(`${DOCS}docs.js`).text()
     expect(html).toContain("fetch('versions.json')")
     expect(html).not.toContain('registry.npmjs.org/cutver')
   })

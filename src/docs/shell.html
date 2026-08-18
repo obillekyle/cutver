@@ -3,21 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>cutver</title>
-<meta name="description" content="Work out the next version from your commit messages, write it into every manifest, and stop. A release tool for npm, Bun and Cargo repositories.">
-<link rel="canonical" href="https://cutver.okyle.dev/">
-<meta property="og:type" content="website">
-<meta property="og:site_name" content="cutver">
-<meta property="og:title" content="cutver">
-<meta property="og:description" content="Work out the next version from your commit messages, write it into every manifest, and stop. A release tool for npm, Bun and Cargo repositories.">
-<meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="cutver">
-<meta name="twitter:description" content="Work out the next version from your commit messages, write it into every manifest, and stop. A release tool for npm, Bun and Cargo repositories.">
-<meta property="og:url" content="https://cutver.okyle.dev/">
-<meta property="og:image" content="https://cutver.okyle.dev/logo.svg">
-<meta name="twitter:image" content="https://cutver.okyle.dev/logo.svg">
-<meta property="og:image:alt" content="The cutver logo">
-<link rel="icon" href="logo.svg">
+<title>{{name}}</title>
+<meta name="description" content="{{description}}">
+{{meta}}{{favicon}}
 <link rel="stylesheet" href="docs.css">
 </head>
 <body>
@@ -26,7 +14,7 @@
   <button type="button" class="icon-btn" id="menu-btn" aria-label="Open navigation" title="Menu">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
   </button>
-  <a class="brand" href="#/"><img src="logo.svg" alt=""> cutver</a>
+  <a class="brand" href="#/">{{brandIcon}} {{name}}</a>
   <!-- Beside the title, where the version badge used to be, but outside the
        link: a `<select>` inside an `<a>` is interactive content nested in a
        link, which no browser handles the way either element promises. The nav
@@ -49,7 +37,7 @@
   <!-- href is set from REPO below; hardcoding it here is what left this button
        pointing at the pre-rename bun-server URL while every generated link in
        the page had already moved. One constant, one place. -->
-  <a class="icon-btn gh-link" id="gh-link" href="https://github.com/obillekyle/cutver" target="_blank" rel="noopener" aria-label="GitHub repository" title="GitHub">
+  <a class="icon-btn gh-link" id="gh-link" href="{{repo}}" target="_blank" rel="noopener" aria-label="GitHub repository" title="GitHub">
     <svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 2-.27c.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
   </a>
 </nav>

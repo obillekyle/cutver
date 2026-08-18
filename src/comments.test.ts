@@ -54,6 +54,11 @@ const EXTERNAL = new Set([
   // Node, Bun and JavaScript itself.
   'ExperimentalWarning',
   'toLocaleDateString', // named to say it is deliberately *not* used
+  'HTMLBundle', // Bun's own type for `*.html`, which `src/docs` has to work around
+  'localStorage',
+  // The browser, in the docs shell the `docs` command renders.
+  'prefers-color-scheme',
+  'localhost',
   // git, GitHub and registry vocabulary.
   'versionsort.suffix',
   'target_commitish',

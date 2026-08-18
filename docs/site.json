@@ -1,0 +1,17 @@
+{
+  "name": "cutver",
+  "description": "Work out the next version from your commit messages, write it into every manifest, and stop. A release tool for npm, Bun and Cargo repositories.",
+  "icon": "logo.svg",
+  "repo": "https://github.com/obillekyle/cutver",
+  "url": "https://cutver.okyle.dev",
+  "theme": {
+    "light": {
+      "brand": "#295d8d",
+      "brand-soft": "#357cb8"
+    },
+    "dark": {
+      "brand": "#45a6ff",
+      "brand-soft": "#7cc2ff"
+    }
+  }
+}

@@ -10,6 +10,7 @@ cutver doctor                                   one read-only report of everythi
 cutver explain                                  which rule claims this branch
 cutver config                                   the effective configuration
 cutver init [<ecosystem>]                       write version.yml + publish.yml
+cutver docs install|update                      scaffold or re-render the docs site
 cutver hook install|uninstall                   the pre-push guard
 cutver completions <bash|zsh|fish>              a completion script
 cutver help [command]                           this, or one command in full
@@ -37,6 +38,7 @@ the same table this page is checked against.
 | `explain` | Which rule claims this branch, and every rule that was tried and did not fire. Read-only, offline, always exits 0. See [Configuration](config.md). |
 | `config` | The configuration as cutver resolved it, with every default merged in and every channel normalised — so a key ignored because it was misspelt is visible by its absence. JSON on stdout, which is a format cutver also reads. |
 | `init` | Set the repository up to release: both workflows, a `CHANGELOG.md` stub, a commented `cutver.yml`, cutver pinned as a devDependency, and the pre-push guard. The ecosystem is detected when omitted. Two of those change behaviour — see [Set up CI](../getting-started/ci.md#what-that-changed-besides-the-workflows). |
+| `docs` | Scaffold this documentation site into a repository, or re-render its shell. `install` writes the site and keeps whatever is already there; `update` rewrites `docs/index.html` only. The shell is generated so that a fix reaches every project that runs the command, rather than the one repository somebody remembered to paste into. See [the docs site](#the-docs-site). |
 | `hook` | Install or remove a `pre-push` hook that runs `check`. |
 | `completions` | A completion script for bash, zsh or fish, on stdout. Nothing is installed for you. |
 | `help` | The list above, or the long form for one command — the same text `cutver` bare prints. |
@@ -65,7 +67,7 @@ of `rc`, and the version written is the canonical `-rc.N`.
 | `--if-needed` | (`stage`) Exit 0 rather than 1 when no release is warranted. What CI wants. |
 | `--offline` | (`stage`, `doctor`) Skip the registry lookups entirely. |
 | `--allow-first-publish` | (`stage`) Proceed even though a package is not on the registry yet. |
-| `--force` | (`init`, `hook`, `changelog`) Replace files that are already there. Never replaces `CHANGELOG.md`, and never a `pre-push` hook cutver did not write. With `changelog --overwrite` it replaces written release bodies too — see below. |
+| `--force` | (`init`, `hook`, `changelog`, `docs`) Replace files that are already there. Never replaces `CHANGELOG.md`, and never a `pre-push` hook cutver did not write. With `changelog --overwrite` it replaces written release bodies too — see below. |
 | `--rev <commit>` | (`check`) The commit to judge, default `HEAD`. The hook passes the sha of the ref being pushed, which is not always the one checked out. |
 | `--runner <cmd>` | (`hook`) Pin how the hook invokes cutver, instead of detecting it at run time. |
 | `--no-hook` | (`init`) Do not install the pre-push guard. Everything else is written as usual. |
@@ -260,6 +262,84 @@ A `.env` or `.env.local` supplies these locally, including to the standalone
 executables. It is read **from the directory cutver was launched in, not from
 `--cwd`** — the load happens at process startup, before a flag has been looked
 at. The symptom is `no key is set` naming variables you are sure you exported.
+
+## The docs site
+
+```bash
+cutver docs install
+```
+
+Writes `docs/index.html`, `docs/site.json`, a starter `pages.json` and two
+markdown pages, skipping anything already there. Re-runnable: a repository that
+has the site already gets only whatever is missing.
+
+```bash
+cutver docs update
+```
+
+Re-renders `docs/index.html`, and nothing else.
+
+**The shell is generated, and that is the feature.** It used to be copied
+between repositories, which meant a fix reached whichever one somebody
+remembered to paste into. It also meant a copy could be wrong in ways nobody
+saw: this site once served another project's brand colour to every reader whose
+OS was dark and who had never touched the theme control, because the palette is
+stated in three CSS blocks and only two of them were re-themed. All three come
+from one value now.
+
+| File | Whose |
+| --- | --- |
+| `docs/index.html` | cutver's. Replaced on every `update`, so nothing edited here survives. |
+| `docs/site.json` | cutver format, your values. Name, description, icon, repository, colours. |
+| `docs/versions.json` | cutver format, your data. Seeded from the tags at install, refreshed by `stage`. |
+| `docs/pages.json` | Yours. The sidebar. Never replaced. |
+| The markdown | Yours. The pages. Never replaced. |
+
+```json
+{
+  "name": "cutver",
+  "description": "Work out the next version from your commit messages.",
+  "icon": "✂️",
+  "repo": "https://github.com/obillekyle/cutver",
+  "theme": {
+    "light": { "brand": "#0f766e" },
+    "dark": { "brand": "#5eead4" }
+  }
+}
+```
+
+`name`, `description`, `icon` and `repo` are required; `theme` is not.
+
+**`icon` takes an emoji or the URL of an image**, and the two render
+differently rather than one being converted into the other. An emoji is drawn
+into an SVG `<text>` for the favicon and stays a character in the header. A URL
+is handed to the browser as it is — `<link rel="icon" href="…">` and an `<img>`
+— so an existing mark can be used without tracing it:
+
+```json
+{ "icon": "assets/logo.svg" }
+```
+
+Absolute, root-relative and relative URLs all work, the last resolving against
+`docs/`. Anything containing `/` or `:`, or ending in an image extension, is
+taken as a URL; everything else is an emoji. The image is sized in `em`, so it
+tracks the wordmark beside it rather than arriving at its intrinsic size.
+
+`theme.light` and `theme.dark` set CSS custom properties on the shell, written
+without their leading dashes. Anything the shell defines can be set, and
+anything left out keeps its default — a project that only wants its own accent
+writes one line rather than a palette. Storage keys are namespaced from `name`,
+so two sites served from one origin do not read each other's theme and pinned
+version.
+
+**Only `install` accepts `--force`, and it stops at the content.** It rewrites
+`site.json` and `versions.json` in the current schema, keeping the values in
+them — so adopting a new field does not mean hand-editing every project. It does not touch the markdown or
+`pages.json` whatever is passed, because those are the site and a scaffolder
+has no undo. `update` needs no such flag: replacing the shell is all it does.
+
+`--dry-run` reports every one of those decisions and writes nothing, which is
+the way to see what `--force` would reset before running it.
 
 ## `docs/versions.json`
 
