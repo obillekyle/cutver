@@ -8,9 +8,19 @@ is only ever as good as the commits — which is the point.
 explanation in the commit body, where it is also visible in `git log`, in a
 pull request, and on the release page.
 
+## [2.4.2] — 2026-08-18
+
+<sub>diff: [1f8cc5e...3b94ba0](https://github.com/obillekyle/cutver/compare/1f8cc5e...3b94ba0)</sub>
+
+### Fixes
+
+- **stage:** let a channel cut a prerelease of 1.0.0 from 0.x ([103389a](https://github.com/obillekyle/cutver/commit/103389a))
+
+    The guard that stops a 0.x project auto-shipping 1.0.0 matched the prerelease too, so a project at 0.x with a channel branch could not release at all. Seen on alloyfs: at 0.6.0 with a `feat(config)!` on its `alpha` branch, every push failed on `0.6.0 -> 1.0.0-alpha.0`, and the only escape the message offered was `cutver stage 1.0.0` — the stable release the guard exists to stop being cut unattended.
+
 ## [2.4.1] — 2026-08-18
 
-<sub>diff: [bc8e48a...a489fba](https://github.com/obillekyle/cutver/compare/bc8e48a...a489fba)</sub>
+<sub>diff: [bc8e48a...1f8cc5e](https://github.com/obillekyle/cutver/compare/bc8e48a...1f8cc5e)</sub>
 
 ### Fixes
 
@@ -205,15 +215,5 @@ pull request, and on the release page.
 - **init:** retry the cutver download in the generated Cargo workflow ([dc78ed6](https://github.com/obillekyle/cutver/commit/dc78ed6))
 
     It is the one step in a release job with no second chance. Every other download there is a package manager that retries on its own; this is a bare curl, and it failed a real release on `curl: (35) Recv failure: Connection reset by peer` with the asset answering 200 thirty seconds later.
-
-## [2.0.3] — 2026-08-16
-
-<sub>diff: [8c7f569...c2c3bc3](https://github.com/obillekyle/cutver/compare/8c7f569...c2c3bc3)</sub>
-
-### Fixes
-
-- **stage:** refuse a version whose tag already exists, and rate a dead workflow as broken ([36b6f32](https://github.com/obillekyle/cutver/commit/36b6f32))
-
-    Two gaps found integrating cutver into two repositories, both of which were one push away from the first.
 
 Older releases are in the git tags and on the releases page.
