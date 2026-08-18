@@ -8,9 +8,19 @@ is only ever as good as the commits — which is the point.
 explanation in the commit body, where it is also visible in `git log`, in a
 pull request, and on the release page.
 
+## [2.4.4] — 2026-08-18
+
+<sub>diff: [bee302d...150a9e9](https://github.com/obillekyle/cutver/compare/bee302d...150a9e9)</sub>
+
+### Fixes
+
+- **docs:** the title went to `#/`, which the query router only appended ([150a9e9](https://github.com/obillekyle/cutver/commit/150a9e9))
+
+    Clicking the site title on any page produced `?/guides/mounting#/` instead of going home. The shell's brand link still carried the fragment form from before routing moved into the query string, and the click handler only intercepts hrefs starting with `?/` — so the browser was left to handle it, and setting a fragment on a URL that already has a query does exactly what it looks like: appends one.
+
 ## [2.4.3] — 2026-08-18
 
-<sub>diff: [b2f8190...c246388](https://github.com/obillekyle/cutver/compare/b2f8190...c246388)</sub>
+<sub>diff: [b2f8190...bee302d](https://github.com/obillekyle/cutver/compare/b2f8190...bee302d)</sub>
 
 ### Fixes
 
@@ -187,15 +197,5 @@ pull request, and on the release page.
 - **notes:** unwrap a release body the model returned inside a code fence ([8d0d98b](https://github.com/obillekyle/cutver/commit/8d0d98b))
 
     v2.1.0 published as one grey box with a copy button — every heading and link showing as literal source — because the model answered with ```markdown around the whole body. Asked for markdown, it returned markdown as a code sample.
-
-## [2.1.1] — 2026-08-17
-
-<sub>diff: [2a4e37e...df84d95](https://github.com/obillekyle/cutver/compare/2a4e37e...df84d95)</sub>
-
-### Fixes
-
-- **notes:** cutver owns the `diff:` line, and sets it as a footnote ([90be517](https://github.com/obillekyle/cutver/commit/90be517))
-
-    It was in the prompt as a fact to copy exactly, and the shape showed it on the line directly above the opening sentence — so markdown folded the two into one paragraph and every summarised release page read as a link with prose glued to it. The other half of that instruction was worse: a sha altered by one character resolves to nothing, and nothing checked.
 
 Older releases are in the git tags and on the releases page.
