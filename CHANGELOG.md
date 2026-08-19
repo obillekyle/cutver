@@ -8,9 +8,19 @@ is only ever as good as the commits — which is the point.
 explanation in the commit body, where it is also visible in `git log`, in a
 pull request, and on the release page.
 
+## [2.4.5] — 2026-08-19
+
+<sub>diff: [2f88091...e03c7bf](https://github.com/obillekyle/cutver/compare/2f88091...e03c7bf)</sub>
+
+### Fixes
+
+- **docs:** make the version escape links work again ([e03c7bf](https://github.com/obillekyle/cutver/commit/e03c7bf))
+
+    `Read it in the current release` and `Switch to the current release` both point at the page being read, minus `?v=`. The click handler decides between re-rendering and merely scrolling by comparing the page, and the page had not changed — so it dropped the version out of the URL and left the old ref's markdown on screen, banner and all. Clicking either did visibly nothing.
+
 ## [2.4.4] — 2026-08-18
 
-<sub>diff: [bee302d...150a9e9](https://github.com/obillekyle/cutver/compare/bee302d...150a9e9)</sub>
+<sub>diff: [bee302d...2f88091](https://github.com/obillekyle/cutver/compare/bee302d...2f88091)</sub>
 
 ### Fixes
 
@@ -187,15 +197,5 @@ pull request, and on the release page.
 - **changelog:** `pages` lost the `diff:` footnote ([d59d1de](https://github.com/obillekyle/cutver/commit/d59d1de))
 
     The prompt now tells the model not to write one, because cutver restores it from the fact it already holds. `notes` passes that fact; `pages` never did — it handed over the compiled section and nothing else, so the model obeyed, cutver had nothing to restore, and every page came out with no footnote at all. Measured by regenerating two repositories and reading the result.
-
-## [2.1.2] — 2026-08-17
-
-<sub>diff: [df84d95...13f569f](https://github.com/obillekyle/cutver/compare/df84d95...13f569f)</sub>
-
-### Fixes
-
-- **notes:** unwrap a release body the model returned inside a code fence ([8d0d98b](https://github.com/obillekyle/cutver/commit/8d0d98b))
-
-    v2.1.0 published as one grey box with a copy button — every heading and link showing as literal source — because the model answered with ```markdown around the whole body. Asked for markdown, it returned markdown as a code sample.
 
 Older releases are in the git tags and on the releases page.
