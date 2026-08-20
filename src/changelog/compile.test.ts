@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, test } from 'bun:test'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { compileReleases } from './compile'
+import { compileReleases, sectionOrCompile } from './compile'
 import { write } from '../runtime'
 
 /**
@@ -143,5 +143,122 @@ describe('compileReleases with prereleases on', () => {
       '1.1.0-beta.1',
       '1.0.0',
     ])
+  })
+})
+
+/**
+ * What a release measures from, when the changelog has no section for it.
+ *
+ * `sectionOrCompile` falls back to compiling a tag's own range, and that range
+ * used to start at the neighbour by `creatordate` whatever channel it belonged
+ * to. Promoting a channel is where it fell over.
+ */
+describe('the range a tag compiles from', () => {
+  /** A repository, built commit by commit, so each fixture states its history. */
+  async function build(
+    steps: [subject: string, tag?: string][],
+    branches?: (git: (...a: string[]) => Promise<void>) => Promise<void>,
+  ): Promise<{ dir: string; git: (...a: string[]) => Promise<void> }> {
+    const dir = mkdtempSync(`${tmpdir()}/cutver-span-`).replaceAll('\\', '/')
+    roots.push(dir)
+
+    const git = async (...args: string[]) => {
+      const p = Bun.spawn(['git', ...args], {
+        cwd: dir,
+        env: GIT_ENV,
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      if ((await p.exited) !== 0) {
+        throw new Error(
+          `git ${args.join(' ')}: ${await new Response(p.stderr).text()}`,
+        )
+      }
+    }
+
+    await git('init', '-q', '-b', 'main')
+    await write(`${dir}/package.json`, '{"name":"p","version":"0.0.0"}')
+
+    for (const [subject, tag] of steps) {
+      await write(`${dir}/f.txt`, subject)
+      await git('add', '-A')
+      await git('commit', '-qm', subject)
+      if (tag) await git('tag', tag)
+    }
+
+    if (branches) await branches(git)
+    return { dir, git }
+  }
+
+  const config = { changelog: { sections: SECTIONS } } as never
+
+  test('a stable release measures from the last stable, not the last alpha', async () => {
+    // The reported bug. An alpha is cut on its own branch, merged to main, and
+    // the stable cut after it — so by date the tag before 1.0.0 is the alpha,
+    // and the range collapsed to whatever landed after the merge.
+    const { dir, git } = await build([['feat: base', 'v0.7.0']])
+
+    await git('checkout', '-qb', 'alpha')
+    for (const s of ['feat(a): first alpha', 'fix(b): alpha fix']) {
+      await write(`${dir}/f.txt`, s)
+      await git('add', '-A')
+      await git('commit', '-qm', s)
+    }
+    await git('tag', 'v1.0.0-alpha.0')
+
+    await git('checkout', '-q', 'main')
+    await git('merge', '-q', '--no-ff', '-m', 'Merge alpha', 'alpha')
+    await write(`${dir}/z.txt`, 'z')
+    await git('add', '-A')
+    await git('commit', '-qm', 'fix(d): after the merge')
+    await git('tag', 'v1.0.0')
+
+    const notes = await sectionOrCompile(dir, 'v1.0.0', config)
+
+    // Everything the stable ships, including what the alpha shipped first.
+    expect(notes).toContain('first alpha')
+    expect(notes).toContain('alpha fix')
+    expect(notes).toContain('after the merge')
+  })
+
+  test('a prerelease measures from the last tag in its own channel', async () => {
+    // A beta cut between two alphas must not truncate the second alpha.
+    const { dir } = await build([
+      ['feat: base', 'v1.0.0'],
+      ['feat(one): first', 'v1.1.0-alpha.0'],
+      ['feat(two): a beta thing', 'v1.1.0-beta.0'],
+      ['feat(three): back on alpha', 'v1.1.0-alpha.1'],
+    ])
+
+    const notes = await sectionOrCompile(dir, 'v1.1.0-alpha.1', config)
+
+    expect(notes).toContain('back on alpha')
+    // Between the two alphas, so it belongs to this range.
+    expect(notes).toContain('a beta thing')
+    // Before the previous alpha, so it does not.
+    expect(notes).not.toContain('first')
+  })
+
+  test('the first release of a channel falls back to whatever came last', async () => {
+    const { dir } = await build([
+      ['feat: base', 'v1.0.0'],
+      ['feat(one): after the stable', 'v1.1.0-alpha.0'],
+    ])
+
+    const notes = await sectionOrCompile(dir, 'v1.1.0-alpha.0', config)
+    expect(notes).toContain('after the stable')
+    expect(notes).not.toContain('base')
+  })
+
+  test('the first release of all measures from the root commit', async () => {
+    // Two commits, because `root..tag` excludes the root itself — a repository
+    // whose only commit carries the tag has an empty range by definition.
+    const { dir } = await build([
+      ['chore: repository created'],
+      ['feat: the very first thing', 'v0.1.0'],
+    ])
+
+    const notes = await sectionOrCompile(dir, 'v0.1.0', config)
+    expect(notes).toContain('the very first thing')
   })
 })

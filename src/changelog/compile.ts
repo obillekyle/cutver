@@ -14,7 +14,15 @@
  * empty and a person who finds out on the release page.
  */
 import type { Config } from '../config/schema'
-import { commitsIn, releaseTags, remoteUrl, rootCommit, shortSha } from '../git'
+import {
+  commitsIn,
+  isAncestor,
+  releaseTags,
+  remoteUrl,
+  rootCommit,
+  shortSha,
+  type ReleaseTag,
+} from '../git'
 import { normaliseRepo } from '../registry'
 import {
   DEFAULT_SECTIONS,
@@ -26,6 +34,30 @@ import {
 } from './notes'
 import { readText } from '../runtime'
 import { warn } from '../style'
+
+/**
+ * A version carrying a prerelease component: `1.0.0-alpha.0`, not `1.0.0`.
+ *
+ * One definition because two callers depend on it agreeing with itself —
+ * `compileReleases` uses it to decide which tags get a heading, and `channelOf`
+ * to decide which of them are the same kind of release.
+ */
+const isPrerelease = (version: string) => version.includes('-')
+
+/**
+ * Which channel a version was cut in, read from the version itself.
+ *
+ * `1.0.0-alpha.0` is `alpha`, `1.2.0-rc.2` is `rc`, and anything without a
+ * prerelease component is `release`. Read from the version rather than from the
+ * config, because a tag outlives the branch that cut it: a channel renamed or
+ * removed a year ago still has releases in the history, and they still have to
+ * be grouped with their own.
+ */
+function channelOf(version: string): string {
+  if (!isPrerelease(version)) return 'release'
+  const identifier = version.split('-').slice(1).join('-').split('.')[0]
+  return identifier || 'release'
+}
 
 /** What the summariser is sent: the material, and the facts to copy through. */
 export interface RawRange {
@@ -84,7 +116,47 @@ async function spanStart(root: string, tag: string): Promise<string | null> {
     t => t.tag === tag || t.version === tag.replace(/^v/, ''),
   )
   if (at === -1) return null
-  return tags[at + 1]?.tag ?? (await rootCommit(root))
+
+  const describing = tags[at] as ReleaseTag
+  const older = tags.slice(at + 1)
+
+  /**
+   * Reachable, not merely older.
+   *
+   * Two channels running at once interleave by date, so the tag before this one
+   * can sit on a branch this one does not contain — and a range between two
+   * branches reports whatever they do not share rather than what this release
+   * added.
+   */
+  const behind = async (candidate: ReleaseTag) =>
+    isAncestor(root, candidate.tag, describing.tag)
+
+  // **The previous release *in this channel*.**
+  //
+  // `tags[at + 1]` was the neighbour by date whatever channel it belonged to,
+  // and promoting a channel is where that fell over: cut 1.0.0-alpha.0 on
+  // `alpha`, merge it to `main`, cut 1.0.0, and the range became
+  // alpha.0..1.0.0 — the single commit made after the merge. Measured on a
+  // fixture, the notes for 1.0.0 listed one fix and none of the three features
+  // it shipped.
+  //
+  // Stable is a channel like any other here, so this states in one rule what
+  // the file already does by hand: a stable release measures from the last
+  // stable, because it contains its own prereleases. And an alpha measures from
+  // the last alpha, so a beta cut in between does not truncate it.
+  const mine = channelOf(describing.version)
+  for (const candidate of older) {
+    if (channelOf(candidate.version) !== mine) continue
+    if (await behind(candidate)) return candidate.tag
+  }
+
+  // No previous release in this channel: the first alpha of a line measures
+  // from whatever came last, which is the stable it is building on.
+  for (const candidate of older) {
+    if (await behind(candidate)) return candidate.tag
+  }
+
+  return await rootCommit(root)
 }
 
 /**
@@ -239,7 +311,6 @@ export async function compileReleases(
   //
   // `plan.ts` already draws this distinction for a different question: any tag
   // decides *whether* to release, the last stable one decides *from what*.
-  const isPrerelease = (version: string) => version.includes('-')
   const listed = prereleases ? tags : tags.filter(t => !isPrerelease(t.version))
 
   // **The release being cut is filtered by the same rule as the tags.**

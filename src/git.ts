@@ -63,6 +63,19 @@ export async function newestStableTag(root: string): Promise<string | null> {
   return out.split('\n').find(t => /^v\d+\.\d+\.\d+$/.test(t.trim())) ?? null
 }
 
+/** Whether `rev` is in `of`'s history. The exit code is the whole answer. */
+export async function isAncestor(
+  root: string,
+  rev: string,
+  of: string,
+): Promise<boolean> {
+  const { ok } = await run(
+    ['git', 'merge-base', '--is-ancestor', rev, of],
+    root,
+  )
+  return ok
+}
+
 /**
  * How many of the commits `to` released are already on `rev`.
  *
