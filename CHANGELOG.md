@@ -8,9 +8,19 @@ is only ever as good as the commits — which is the point.
 explanation in the commit body, where it is also visible in `git log`, in a
 pull request, and on the release page.
 
+## [2.4.6] — 2026-08-20
+
+<sub>diff: [6cda633...a15b626](https://github.com/obillekyle/cutver/compare/6cda633...a15b626)</sub>
+
+### Fixes
+
+- **changelog:** span a release from the last tag in its own channel ([a15b626](https://github.com/obillekyle/cutver/commit/a15b626))
+
+    The fallback that compiles a tag's range started at the neighbour by creatordate, whatever channel that neighbour belonged to. Promoting a channel is where it broke: cut 1.0.0-alpha.0 on `alpha`, merge to `main`, cut 1.0.0, and the range became alpha.0..1.0.0 — the single commit made after the merge. Measured on a fixture, the notes for 1.0.0 listed one fix and none of the three features it shipped.
+
 ## [2.4.5] — 2026-08-19
 
-<sub>diff: [2f88091...e03c7bf](https://github.com/obillekyle/cutver/compare/2f88091...e03c7bf)</sub>
+<sub>diff: [2f88091...6cda633](https://github.com/obillekyle/cutver/compare/2f88091...6cda633)</sub>
 
 ### Fixes
 
@@ -187,15 +197,5 @@ pull request, and on the release page.
 - **changelog:** decide which pages need writing before compiling any ([c401fcb](https://github.com/obillekyle/cutver/commit/c401fcb))
 
     `cutver changelog pages v2.1.0` read thirty-eight release sections to write one, and printed the proof: two full passes of `generating changelog for …`, one for the file's list and one for the every-tag list, before filtering to a single entry.
-
-## [2.1.3] — 2026-08-17
-
-<sub>diff: [13f569f...6251d93](https://github.com/obillekyle/cutver/compare/13f569f...6251d93)</sub>
-
-### Fixes
-
-- **changelog:** `pages` lost the `diff:` footnote ([d59d1de](https://github.com/obillekyle/cutver/commit/d59d1de))
-
-    The prompt now tells the model not to write one, because cutver restores it from the fact it already holds. `notes` passes that fact; `pages` never did — it handed over the compiled section and nothing else, so the model obeyed, cutver had nothing to restore, and every page came out with no footnote at all. Measured by regenerating two repositories and reading the result.
 
 Older releases are in the git tags and on the releases page.
