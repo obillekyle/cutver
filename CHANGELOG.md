@@ -8,9 +8,19 @@ is only ever as good as the commits — which is the point.
 explanation in the commit body, where it is also visible in `git log`, in a
 pull request, and on the release page.
 
+## [2.4.7] — 2026-08-20
+
+<sub>diff: [560ceae...5f0d2ed](https://github.com/obillekyle/cutver/compare/560ceae...5f0d2ed)</sub>
+
+### Fixes
+
+- **docs:** the version picker learns releases the deployed file cannot see ([5f0d2ed](https://github.com/obillekyle/cutver/commit/5f0d2ed))
+
+    versions.json is written by the branch that releases and the site is served from one branch, so a channel shipping alphas leaves the deployed copy behind: alloyfs's main still said 0.6.0 while alpha was thirty-one releases into its 1.0.0 line, and none of them could be picked. The changelog cache, keyed on the same file, had no reason to refresh either.
+
 ## [2.4.6] — 2026-08-20
 
-<sub>diff: [6cda633...a15b626](https://github.com/obillekyle/cutver/compare/6cda633...a15b626)</sub>
+<sub>diff: [6cda633...560ceae](https://github.com/obillekyle/cutver/compare/6cda633...560ceae)</sub>
 
 ### Fixes
 
@@ -187,15 +197,5 @@ pull request, and on the release page.
 - **drift:** one rule per function, and a cheaper fixture ([012877c](https://github.com/obillekyle/cutver/commit/012877c))
 
     `inspect` was 275 lines: eight independent rules appending to one `found[]` in one scope, separated by comment headers doing the work function boundaries should. Each rule was individually clear; holding eight of them at once was the cost, in the one file whose entire job is answering "which rule fired".
-
-## [2.1.4] — 2026-08-17
-
-<sub>diff: [6251d93...776a521](https://github.com/obillekyle/cutver/compare/6251d93...776a521)</sub>
-
-### Performance
-
-- **changelog:** decide which pages need writing before compiling any ([c401fcb](https://github.com/obillekyle/cutver/commit/c401fcb))
-
-    `cutver changelog pages v2.1.0` read thirty-eight release sections to write one, and printed the proof: two full passes of `generating changelog for …`, one for the file's list and one for the every-tag list, before filtering to a single entry.
 
 Older releases are in the git tags and on the releases page.
