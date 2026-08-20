@@ -343,6 +343,14 @@ the way to see what `--force` would reset before running it.
 
 ## `docs/versions.json`
 
+> **The file cannot see other branches, and the site knows it.** `stage` writes
+> it on the branch that releases, and the site serves one branch — so a channel
+> shipping alphas leaves the deployed copy behind. The shell tops the picker up
+> from the releases API with a conditional request: a stored `ETag` makes the
+> answer free whenever nothing changed (GitHub does not count `304`s against
+> the rate limit), so the API is only ever charged at the moment a release has
+> actually appeared. Offline or rate-limited, the file's answer stands.
+
 A versioned docs site needs to know which versions exist. If this file is
 present, `cutver stage` rewrites it from the tags — newest first, plus the
 version being cut, whose tag does not exist yet:
