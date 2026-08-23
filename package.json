@@ -34,7 +34,7 @@
     "bun"
   ],
   "scripts": {
-    "test": "bun test ./src --timeout 30000",
+    "test": "bun test ./src --timeout 30000 --parallel",
     "typecheck": "tsc --noEmit",
     "build": "bun run scripts/build.ts",
     "cutver": "bun run src/cli/index.ts",

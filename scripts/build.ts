@@ -27,6 +27,19 @@ const { version } = (await Bun.file(
 ).json()) as { version: string }
 
 /**
+ * The define, quotes included, built in JavaScript rather than in the shell.
+ *
+ * The quotes are load-bearing twice over: `--define`'s value is a JS
+ * expression, so a bare `2.4.7` is a syntax error, and where they are written
+ * decides whether they survive. Bun Shell 1.4 strips quotes the way POSIX
+ * does — 1.3 passed them through — so `CUTVER_VERSION="${'${version}'}"`
+ * written in the *template* built fine for eleven releases and then failed on
+ * a runtime upgrade. In an interpolated value the shell has no say: whatever
+ * the string holds arrives as one argument, verbatim, under either behaviour.
+ */
+const VERSION_DEFINE = `CUTVER_VERSION=${JSON.stringify(version)}`
+
+/**
  * The targets a release ships.
  *
  * `-baseline` variants exist for pre-2013 x64 CPUs without AVX2; the default
@@ -69,7 +82,7 @@ async function compile(out: string, target?: string): Promise<void> {
     '--sourcemap',
     ...(target ? [`--target=${target}`] : []),
     `--define`,
-    `CUTVER_VERSION="${version}"`,
+    VERSION_DEFINE,
   ]
 
   console.log(`  ${out}${target ? `  (${target})` : ''}`)
@@ -92,7 +105,7 @@ async function compile(out: string, target?: string): Promise<void> {
  * to a command run once a release.
  */
 async function bundle(): Promise<void> {
-  await $`bun build ./src/cli/index.ts --target=node --outfile dist/cutver.mjs --define CUTVER_VERSION="${version}"`.quiet()
+  await $`bun build ./src/cli/index.ts --target=node --outfile dist/cutver.mjs --define ${VERSION_DEFINE}`.quiet()
 
   // **Replaced, not added.** The bundler carries the entry's shebang through,
   // and the entry says `#!/usr/bin/env bun` because that is how it is run from
