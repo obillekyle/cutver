@@ -279,10 +279,24 @@ function metaTags(site: SiteConfig): string {
     tag('name', 'twitter:description', description),
   ]
 
+  // **No canonical here, and that is the fix rather than an omission.**
+  //
+  // One file answers every route, so any canonical written into it names one
+  // URL and calls the other thirty duplicates of it. Google agreed: every
+  // `?/` route came back from Search Console as "Alternate page with proper
+  // canonical tag — not indexed", because the page it fetched said so. The tag
+  // meant to help indexing was the only thing preventing it.
+  //
+  // The script sets it per route instead, against `location`, which is the one
+  // source that knows which page this actually is. Google renders JavaScript
+  // and reads the canonical from the rendered DOM. A crawler that does not
+  // render now sees no canonical, which is the honest answer — better than a
+  // wrong one, since a missing canonical lets a page be judged on its merits
+  // and a wrong one rules it out.
+  //
+  // `og:url` goes the same way and for the same reason.
   if (url) {
     const absolute = escapeHtml(url)
-    out.unshift(`<link rel="canonical" href="${absolute}/">`)
-    out.push(tag('property', 'og:url', `${absolute}/`))
 
     // Only a real file can be a preview image. An emoji favicon is a data URI
     // built in the page, which nothing crawling the head can fetch.

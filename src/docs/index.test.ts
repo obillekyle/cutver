@@ -38,7 +38,8 @@ describe('render', () => {
     const html = render(SITE)
     expect(html).toContain('<title>Example</title>')
     expect(html).toContain('> Example</a>')
-    expect(renderSite(SITE).js).toContain("|| 'Example'} | Example`")
+    expect(renderSite(SITE).js).toContain("|| 'Example'")
+    expect(renderSite(SITE).js).toContain("{heading} | Example`")
   })
 
   test('carries the description and the repository', () => {
@@ -300,5 +301,45 @@ describe('the seeded version list', () => {
       latest: null,
       versions: [],
     })
+  })
+})
+
+/**
+ * What the served file may claim about which page it is.
+ *
+ * One file answers every route, so a canonical written into it names one URL
+ * and calls every other route a duplicate of that one. Google agreed: every
+ * `?/` route came back from Search Console as "Alternate page with proper
+ * canonical tag — not indexed". The tag added to help indexing was the only
+ * thing preventing it.
+ */
+describe('the head of a file that serves every route', () => {
+  const site: SiteConfig = {
+    ...SITE,
+    url: 'https://example.dev',
+    icon: 'logo.svg',
+  }
+
+  test('claims no canonical, since it cannot know which page it is', () => {
+    expect(render(site)).not.toContain('rel="canonical"')
+  })
+
+  test('claims no og:url either, for the same reason', () => {
+    expect(render(site)).not.toContain('og:url')
+  })
+
+  test('still carries what is true of the whole site', () => {
+    const html = render(site)
+    expect(html).toContain('og:site_name')
+    expect(html).toContain('og:image')
+  })
+
+  test('the shell sets both per route instead', () => {
+    const js = renderSite(site).js
+    expect(js).toContain('function canonicalUrl')
+    expect(js).toContain('rel="canonical"')
+    // Without `?v=`: a pinned version is a variation of the page, and folding
+    // it into the current release is what a canonical is for.
+    expect(js).toMatch(/canonicalUrl[\s\S]{0,400}location\.pathname/)
   })
 })
