@@ -8,9 +8,19 @@ is only ever as good as the commits — which is the point.
 explanation in the commit body, where it is also visible in `git log`, in a
 pull request, and on the release page.
 
+## [2.4.9] — 2026-08-24
+
+<sub>diff: [e85ee9a...596b727](https://github.com/obillekyle/cutver/compare/e85ee9a...596b727)</sub>
+
+### Fixes
+
+- **docs:** stop the shell telling Google every page is a copy of the front page ([596b727](https://github.com/obillekyle/cutver/commit/596b727))
+
+    One file answers every route, so the canonical written into it named one URL and called the other thirty duplicates of that one. Search Console reported it back exactly: every ?/ route listed under 'Alternate page with proper canonical tag — these pages aren't indexed'. Eight pages, none indexed, and the tag added to help indexing was the only thing preventing it.
+
 ## [2.4.8] — 2026-08-23
 
-<sub>diff: [46bc4b2...dc7489d](https://github.com/obillekyle/cutver/compare/46bc4b2...dc7489d)</sub>
+<sub>diff: [46bc4b2...e85ee9a](https://github.com/obillekyle/cutver/compare/46bc4b2...e85ee9a)</sub>
 
 ### Fixes
 
@@ -103,51 +113,5 @@ pull request, and on the release page.
 - one terminal, centred ([fa8008b](https://github.com/obillekyle/cutver/commit/fa8008b))
 
     The screenshot and the fenced block under it were the same command twice — the same survey, the same version line, the same file report — so the page opened with forty lines of terminal before a sentence of prose. The fence goes.
-
-## [2.3.0] — 2026-08-17
-
-<sub>diff: [56a9f96...bd4ef31](https://github.com/obillekyle/cutver/compare/56a9f96...bd4ef31)</sub>
-
-### New Features
-
-- **stage:** keep docs/versions.json current, where a repository keeps one ([e32fbcf](https://github.com/obillekyle/cutver/commit/e32fbcf))
-
-    The previous commit put this in `version.yml` as a shell step: `git tag --list` piped through `jq`. Wrong layer three times over. It is a third copy of the tag list to keep in step, it adds a `jq` dependency to a workflow, and the moment it went into the generated template it would land in every repository cutver scaffolds — most of which have no `docs/` at all.
-
-- **docs:** the version list comes from the tags, committed ([c47f180](https://github.com/obillekyle/cutver/commit/c47f180))
-
-    The picker read the npm packument. That works and it ties a docs site to having published a package — which a Rust workspace shipping binaries has not — and it inherits npm's idea of `latest`, which is pinned on a package's first publish whatever `--tag` said, so a project that opened with a prerelease shows a stable release it left behind.
-
-### Fixes
-
-- **docs:** the badge names the version being read, and the dark theme is ours ([97fe44b](https://github.com/obillekyle/cutver/commit/97fe44b))
-
-    Three things, all found by porting this shell to two other repositories.
-
-### Docs
-
-- one line each in the centred block, because GitHub breaks the others ([469afbc](https://github.com/obillekyle/cutver/commit/469afbc))
-
-    Rendering the README through GitHub's own markdown API showed two faults that reading the source could not.
-
-- open the scissors from half size ([20971e8](https://github.com/obillekyle/cutver/commit/20971e8))
-
-    `scale(.5)` rather than `.82`. The eased curve spends most of its travel early, so the smaller start reads as the blades opening into place rather than a nudge — and it gives the half-turn something to carry.
-
-- half a turn, not a full one ([124289f](https://github.com/obillekyle/cutver/commit/124289f))
-
-    A whole revolution reads as a loading spinner; this is an entrance. 180deg to 0 — still counter-clockwise, since the angle decreases — alongside the fade and the 0.82 scale, all three easing out together over the same 900ms.
-
-- the logo, and the scissors turn as it arrives ([4b70dc8](https://github.com/obillekyle/cutver/commit/4b70dc8))
-
-    Replaces the placeholder. Blue rather than the docs site's teal, so the badges follow the logo — it is the identity, and `#295d8d` is the stop that carries white badge text at readable contrast where `#45a6ff` does not.
-
-- a header, and a badge that cannot lie ([3d10891](https://github.com/obillekyle/cutver/commit/3d10891))
-
-    Centred block, logo, tagline, badges — the shape that works in the components README, borrowed because it works.
-
-- show what cutver prints, in the colours it prints it ([1a38d7a](https://github.com/obillekyle/cutver/commit/1a38d7a))
-
-    The README described the output and showed it in a monochrome fence — all of the information and none of the design. The colours are load-bearing: grey for the sentence explaining a row, cyan for the version, red for a `major` because it is the one row that obliges somebody downstream to do work.
 
 Older releases are in the git tags and on the releases page.
