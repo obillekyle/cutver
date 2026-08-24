@@ -8,9 +8,19 @@ is only ever as good as the commits — which is the point.
 explanation in the commit body, where it is also visible in `git log`, in a
 pull request, and on the release page.
 
+## [2.4.10] — 2026-08-24
+
+<sub>diff: [08a7033...4a3e05a](https://github.com/obillekyle/cutver/compare/08a7033...4a3e05a)</sub>
+
+### Fixes
+
+- **stage:** a branch with commits releases them ([4a3e05a](https://github.com/obillekyle/cutver/commit/4a3e05a))
+
+    A guard here refused to release from a branch that could not see the newest stable tag but contained its commits, on the grounds that the release would re-count what that tag shipped. It cost more than it saved. A backmerge is ordinary, and being behind is not a reason to withhold a branch's own work: a channel carrying a genuine unreleased feat went green having released nothing, which in a workflow is indistinguishable from success.
+
 ## [2.4.9] — 2026-08-24
 
-<sub>diff: [e85ee9a...596b727](https://github.com/obillekyle/cutver/compare/e85ee9a...596b727)</sub>
+<sub>diff: [e85ee9a...08a7033](https://github.com/obillekyle/cutver/compare/e85ee9a...08a7033)</sub>
 
 ### Fixes
 
@@ -97,21 +107,5 @@ pull request, and on the release page.
 - **docs:** turn Jekyll off, which was serving the markdown instead of the site ([a489fba](https://github.com/obillekyle/cutver/commit/a489fba))
 
     GitHub Pages runs Jekyll unless told not to, and it renders every markdown file under docs/ into a standalone page. Measured against the live deployment, /guides/commits answered 200 with a bare themed page — no sidebar, no search, no version picker, none of the shell — and that is what Google had to index.
-
-## [2.4.0] — 2026-08-18
-
-<sub>diff: [bd4ef31...bc8e48a](https://github.com/obillekyle/cutver/compare/bd4ef31...bc8e48a)</sub>
-
-### New Features
-
-- **docs:** a command that scaffolds the documentation site, and keeps it current ([5c441bd](https://github.com/obillekyle/cutver/commit/5c441bd))
-
-    The shell was being copied between repositories by hand, and copies rot. This one carried the proof: the dark palette is stated in three CSS blocks that have to agree, and for a while two of them held another project's orange, because the file had been adapted from that project's and only half re-themed. Every reader whose OS was dark and who never touched the toggle saw the wrong brand. Invisible to whoever made the copy, since their own explicit choice masked it.
-
-### Docs
-
-- one terminal, centred ([fa8008b](https://github.com/obillekyle/cutver/commit/fa8008b))
-
-    The screenshot and the fenced block under it were the same command twice — the same survey, the same version line, the same file report — so the page opened with forty lines of terminal before a sentence of prose. The fence goes.
 
 Older releases are in the git tags and on the releases page.
