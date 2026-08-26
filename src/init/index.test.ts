@@ -97,6 +97,33 @@ describe('the generated workflows', () => {
     expect(JSON.stringify(npm.jobs)).toContain('npm publish')
   })
 
+  test('the npm publish covers every workspace package, not the root alone', () => {
+    // The template packed the root and stopped. On a workspace that meant
+    // `stage` bumped every member and the publish shipped one tarball — the
+    // members' new numbers existed nowhere but git, with nothing red anywhere.
+    // Measured on a two-member fixture before this list was runtime-derived.
+    for (const eco of ['bun', 'node'] as const) {
+      const doc = Bun.YAML.parse(initFiles(eco)[1]?.contents as string) as any
+      const publish = doc.jobs.publish.steps.find(
+        (s: any) => s.name === 'Publish',
+      )
+
+      // The list comes from npm at run time, so adding a package needs no
+      // regenerate — and the private filter is what lets a root opt out.
+      expect(publish.run, eco).toContain('npm query .workspace')
+      expect(publish.run, eco).toContain('select(.private != true)')
+
+      // The per-package probe replaced the root-level `exists` gate; a step
+      // still holding an `if:` on it would never run at all.
+      expect(publish.if, eco).toBeUndefined()
+      expect(JSON.stringify(doc.jobs), eco).not.toContain('steps.exists')
+
+      // Bun packs so `workspace:^` is rewritten; npm-land packs itself.
+      if (eco === 'bun') expect(publish.run).toContain('bun pm pack')
+      else expect(publish.run).toContain('npm publish --tag')
+    }
+  })
+
   test('a cargo tag builds executables rather than claiming ten crate names', () => {
     // The default that costs the least to be wrong about. `cargo publish`
     // **reserves the crate name permanently**, for every workspace member, and

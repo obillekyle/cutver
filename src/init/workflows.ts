@@ -119,22 +119,12 @@ const READ_VERSION: Record<Ecosystem, string> = {
   cargo: `sed -n 's/^version *= *"\\(.*\\)"/\\1/p' Cargo.toml | head -1`,
 }
 
-/**
- * The package name, per ecosystem, for exactly the reason `READ_VERSION` is a
- * record and not a string.
- *
- * **The registry probe hardcoded `bun -e` while the version beside it
- * dispatched properly.** The npm arm generates for `bun` and `node` alike, and
- * a `node` workflow sets up `actions/setup-node` and runs `npm ci` — there is
- * no Bun on the runner. Steps run under `bash -e`, so the "Already on the
- * registry?" step died on a missing binary in every generated `node` publish
- * workflow.
- */
-const READ_NAME: Record<Ecosystem, string> = {
-  bun: `bun -e 'console.log(require("./package.json").name)'`,
-  node: `node -p "require('./package.json').name"`,
-  cargo: `sed -n 's/^name *= *"\\(.*\\)"/\\1/p' Cargo.toml | head -1`,
-}
+// A `READ_NAME` record used to sit here for the root-level "Already on the
+// registry?" step. The probe moved inside the publish loop — per package,
+// because a workspace has more than one name — and reads with `npm pkg get`,
+// which every npm-publishing runner has whichever ecosystem set it up. (Its
+// hard-won lesson stands: anything generated for both `bun` and `node` must
+// not assume Bun exists on the runner.)
 
 export function versionWorkflow(
   eco: Ecosystem,
@@ -587,18 +577,76 @@ const PUBLISH_STEP: Record<Ecosystem, string> = {
       # a real range when it builds a tarball and npm does not. Packing with
       # Bun and handing npm a finished tarball keeps that rewriting *and* gets
       # OIDC, because npm publishes the bytes it is given.
+      #
+      # **Every publishable package, not the root alone.** \`stage\` writes the
+      # version into the root and every workspace member, and a publish that
+      # packs only the root ships one tarball while the members' new numbers
+      # exist nowhere but git — with nothing red anywhere. The list is asked of
+      # npm at run time (\`npm query .workspace\`), so adding a package changes
+      # nothing here, and \`private: true\` opts a package out, the root
+      # included. A repository with no workspaces publishes the root, exactly
+      # as before.
+      #
+      # The registry probe keeps a re-run green, per package: a version that is
+      # already published is a fact, not a failure. A package's *first* release
+      # still goes out by hand — trusted publishing cannot create a package
+      # that does not exist — and the tag pushed afterwards fires this
+      # workflow, which then skips it.
       - name: Publish
-        if: steps.exists.outputs.value != 'true'
         env:
           DIST_TAG: \${{ steps.disttag.outputs.value }}
         run: |
-          bun pm pack --destination "$GITHUB_WORKSPACE/dist"
-          npm publish "$GITHUB_WORKSPACE"/dist/*.tgz --tag "$DIST_TAG"`,
-  node: `      - name: Publish
-        if: steps.exists.outputs.value != 'true'
+          dirs=$(npm query .workspace | jq -r '.[] | select(.private != true) | .location')
+          [ "$(npm pkg get private)" = "true" ] || dirs="$dirs ."
+          mkdir -p "$GITHUB_WORKSPACE/dist"
+          for dir in $dirs; do
+            name=$(cd "$dir" && npm pkg get name | tr -d '"')
+            version=$(cd "$dir" && npm pkg get version | tr -d '"')
+            if curl -fsS -o /dev/null "https://registry.npmjs.org/$name/$version"; then
+              echo "$name@$version is already published — skipping it"
+              continue
+            fi
+            (cd "$dir" && bun pm pack --destination "$GITHUB_WORKSPACE/dist")
+          done
+          if ls "$GITHUB_WORKSPACE"/dist/*.tgz >/dev/null 2>&1; then
+            for tgz in "$GITHUB_WORKSPACE"/dist/*.tgz; do
+              npm publish "$tgz" --tag "$DIST_TAG"
+            done
+          else
+            echo "everything is already on the registry — nothing to publish"
+          fi`,
+  node: `      # **Every publishable package, not the root alone.** \`stage\` writes the
+      # version into the root and every workspace member, and a publish from
+      # the root alone ships one package while the members' new numbers exist
+      # nowhere but git. The list is asked of npm at run time
+      # (\`npm query .workspace\`); \`private: true\` opts a package out, the root
+      # included. A repository with no workspaces publishes the root, exactly
+      # as before.
+      #
+      # npm packs each directory itself — dependency ranges in npm-land are
+      # real ranges, so there is nothing to rewrite on the way. (A workspace
+      # using the \`workspace:^\` protocol needs the packer that rewrites it;
+      # this template hands npm the directory as it stands.)
+      #
+      # The registry probe keeps a re-run green, per package: a version that is
+      # already published is a fact, not a failure. A package's *first* release
+      # still goes out by hand — trusted publishing cannot create a package
+      # that does not exist.
+      - name: Publish
         env:
           DIST_TAG: \${{ steps.disttag.outputs.value }}
-        run: npm publish --tag "$DIST_TAG"`,
+        run: |
+          dirs=$(npm query .workspace | jq -r '.[] | select(.private != true) | .location')
+          [ "$(npm pkg get private)" = "true" ] || dirs="$dirs ."
+          for dir in $dirs; do
+            name=$(cd "$dir" && npm pkg get name | tr -d '"')
+            version=$(cd "$dir" && npm pkg get version | tr -d '"')
+            if curl -fsS -o /dev/null "https://registry.npmjs.org/$name/$version"; then
+              echo "$name@$version is already published — skipping it"
+              continue
+            fi
+            (cd "$dir" && npm publish --tag "$DIST_TAG")
+          done`,
   cargo: `      # \`--workspace\` publishes every member in dependency order (cargo 1.90+).
       # crates.io validates that a dependency exists before its dependent, so
       # the order is not cosmetic.
@@ -765,29 +813,7 @@ ${distTagArms(config).join('\n')}
 `
     : ''
 }
-${
-  npm
-    ? `      # **Idempotent on purpose.** A package's first release goes out by hand —
-      # trusted publishing cannot create a package that does not exist — and the
-      # tag for it is pushed afterwards, which does fire this workflow. The
-      # registry would refuse the duplicate anyway; refusing it here keeps the
-      # run green, and a workflow that is red for a known-fine reason is one
-      # nobody reads.
-      - name: Already on the registry?
-        id: exists
-        run: |
-          name=$(${READ_NAME[eco]})
-          version="\${TAG#v}"
-          if curl -fsS -o /dev/null "https://registry.npmjs.org/$name/$version"; then
-            echo "value=true" >> "$GITHUB_OUTPUT"
-            echo "$name@$version is already published — skipping the publish"
-          else
-            echo "value=false" >> "$GITHUB_OUTPUT"
-          fi
-
-`
-    : ''
-}${PUBLISH_STEP[eco]}`
+${PUBLISH_STEP[eco]}`
     : ''
 }${artifacts ? `${registry ? '\n\n' : ''}${ARTIFACT_JOB[eco].replace(UPLOAD_PLACEHOLDER, collectStep(config))}` : ''}${
     // **Every tag gets a release page, whatever it produces.** Previously this
