@@ -872,3 +872,138 @@ describe('cutver stage, on a branch behind the stable line', () => {
     SLOW,
   )
 })
+
+/**
+ * An explicit version is obeyed — and the notable ones are said out loud.
+ *
+ * Explicit is the documented escape hatch, so none of these gate. What they
+ * guard is the silence: a downgrade past an existing tag and a stable cut from
+ * a prerelease branch each shipped something their author did not mean, with
+ * nothing anywhere to notice it by. And the one true dead end — the explicit
+ * version already being current — used to answer "pass a version explicitly",
+ * verbatim, to someone who just had.
+ */
+describe('cutver stage, an explicit version says the notable part', () => {
+  async function repo(): Promise<{
+    dir: string
+    git: (...a: string[]) => Promise<void>
+  }> {
+    const dir = mkdtempSync(`${tmpdir()}/cutver-explicit-`).replaceAll(
+      '\\',
+      '/',
+    )
+    const git = async (...args: string[]) => {
+      const p = Bun.spawn(['git', ...args], {
+        cwd: dir,
+        env: GIT_ENV,
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      const code = await p.exited
+      if (code !== 0) {
+        const why = (await new Response(p.stderr).text()).trim()
+        throw new Error(`git ${args.join(' ')} exited ${code}: ${why}`)
+      }
+    }
+
+    await git('init', '-q', '-b', 'main')
+    await Bun.write(`${dir}/package.json`, '{"name":"p","version":"0.3.1"}')
+    await git('add', '-A')
+    await git('commit', '-qm', 'feat: base')
+    await git('tag', 'v0.3.1')
+    await Bun.write(`${dir}/f.txt`, 'x')
+    await git('add', '-A')
+    await git('commit', '-qm', 'feat: since the tag')
+    return { dir, git }
+  }
+
+  test(
+    'a downgrade is staged, and called one',
+    async () => {
+      const { dir } = await repo()
+      const { out, code } = await cutver(
+        'stage',
+        '0.2.0',
+        '--offline',
+        '--dry-run',
+        '--cwd',
+        dir,
+      )
+
+      expect(code).toBe(0)
+      expect(out).toContain('0.3.1 -> 0.2.0')
+      expect(out).toContain('0.2.0 is behind 0.3.1')
+      expect(out).toContain('downgrade')
+      rmSync(dir, { recursive: true, force: true })
+    },
+    SLOW,
+  )
+
+  test(
+    'a stable version on a prerelease branch is staged, and said',
+    async () => {
+      const { dir, git } = await repo()
+      await git('checkout', '-qb', '0.4.0-beta')
+      const { out, code } = await cutver(
+        'stage',
+        '0.4.0',
+        '--offline',
+        '--dry-run',
+        '--cwd',
+        dir,
+      )
+
+      expect(code).toBe(0)
+      expect(out).toContain('0.3.1 -> 0.4.0')
+      expect(out).toContain('beta')
+      expect(out).toContain('no prerelease suffix')
+      rmSync(dir, { recursive: true, force: true })
+    },
+    SLOW,
+  )
+
+  test(
+    'and a forward version stays a quiet, ordinary run',
+    async () => {
+      // The warnings must not fire on the case the escape hatch exists for.
+      const { dir } = await repo()
+      const { out, code } = await cutver(
+        'stage',
+        '0.4.0',
+        '--offline',
+        '--dry-run',
+        '--cwd',
+        dir,
+      )
+
+      expect(code).toBe(0)
+      expect(out).not.toContain('downgrade')
+      expect(out).not.toContain('prerelease suffix')
+      rmSync(dir, { recursive: true, force: true })
+    },
+    SLOW,
+  )
+
+  test(
+    'the version already being current is not answered with its own advice',
+    async () => {
+      const { dir } = await repo()
+      const { out, code } = await cutver(
+        'stage',
+        '0.3.1',
+        '--offline',
+        '--dry-run',
+        '--cwd',
+        dir,
+      )
+
+      expect(code).toBe(1)
+      expect(out).toContain('already the current version')
+      expect(out).toContain('given explicitly')
+      // The old message, told to someone who had just done what it says.
+      expect(out).not.toContain('Pass a version explicitly')
+      rmSync(dir, { recursive: true, force: true })
+    },
+    SLOW,
+  )
+})

@@ -25,6 +25,7 @@ import {
   toKebab,
   type Config,
 } from '../config/schema'
+import { matchBranch } from '../config/match'
 import { channelOf, inspect, readWorkflows } from '../drift'
 import {
   createTag,
@@ -349,6 +350,30 @@ function target(opts: Options, config: Config): Target {
   return { channel: asked, stable: false }
 }
 
+/**
+ * Whether `next` is behind `current` — the downgrade check, and only that.
+ *
+ * Not a general semver comparator, on purpose: full precedence needs the
+ * prerelease-identifier rules (numeric vs alphanumeric, field by field), and a
+ * warning does not. Two questions cover every downgrade worth a sentence: is
+ * the release triple lower, and — triples equal — is a prerelease being staged
+ * where a release already stands. Build metadata is ignored, as semver says it
+ * must be. Between two prereleases of the same triple it stays quiet, which is
+ * the right amount of confidence for a heuristic that only ever writes to
+ * stderr.
+ */
+function descends(next: string, current: string): boolean {
+  const core = (v: string) =>
+    v.split(/[-+]/, 1)[0]!.split('.').map(Number) as [number, number, number]
+  const [a, b] = [core(next), core(current)]
+  for (let i = 0; i < 3; i++) {
+    const x = a[i] ?? 0
+    const y = b[i] ?? 0
+    if (x !== y) return x < y
+  }
+  return next.includes('-') && !current.includes('-')
+}
+
 /** `cutver stage`: compute the next version and write it into every manifest. */
 export async function runStage(argv: string[]): Promise<void> {
   const pre = preScan(argv)
@@ -428,7 +453,16 @@ export async function runStage(argv: string[]): Promise<void> {
       console.log('cutver: --if-needed, so this is fine. Nothing written.')
       process.exit(0)
     }
-    die(`${nothing}\n        Pass a version explicitly to override.`)
+    // "Pass a version explicitly" is real advice exactly once. Said to someone
+    // who just did, it reads as the tool not having listened — the message was
+    // measured doing that, verbatim, on `stage 0.2.0` at 0.2.0.
+    die(
+      explicit
+        ? `${nothing}\n` +
+            '        That version was given explicitly, and it is already everywhere\n' +
+            '        it would be written. Pick a later one to release something.'
+        : `${nothing}\n        Pass a version explicitly to override.`,
+    )
   }
 
   const { version } = decision
@@ -440,6 +474,36 @@ export async function runStage(argv: string[]): Promise<void> {
     `cutver: %d${decision.from}%0 %d->%0 %<bold>%c${version}%0 ` +
       `%d(${decision.why})%0`,
   )
+
+  // **An explicit version is obeyed, and the notable ones are said out loud.**
+  //
+  // Explicit is the documented escape hatch — the branch-promise refusal names
+  // it as the way through — and gating it would leave no way to overrule the
+  // arithmetic at all. But obedience and silence are different things, and two
+  // shapes have each shipped something their author did not mean:
+  //
+  //   - `stage 0.2.0` at 0.3.1 stages a downgrade past a tag that exists, with
+  //     nothing anywhere saying "backwards".
+  //   - `stage 0.4.0` on branch `0.4.0-beta` cuts a *stable* 0.4.0 — the
+  //     suffix the branch promises is simply gone, and a prerelease channel
+  //     publishes to `latest`.
+  //
+  // A warning each, exit 0. The person who meant it loses one line of stderr;
+  // the person who did not gets the only chance to notice before the tag.
+  if (explicit) {
+    if (descends(version, current)) {
+      warn(
+        `cutver: %<bold>${version} is behind ${current}%0 — this stages a downgrade.`,
+      )
+    }
+    const promised = matchBranch(branch, config)
+    if (promised.kind === 'channel' && !version.includes('-')) {
+      warn(
+        `cutver: '${branch}' is a %c${promised.channel}%0 branch and ` +
+          `%<bold>${version} is stable%0 — no prerelease suffix.`,
+      )
+    }
+  }
 
   // A release number is interpolated into every manifest and a git tag, so it
   // is validated rather than trusted — including the computed one, which is
