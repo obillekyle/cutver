@@ -250,15 +250,52 @@ describe('the range a tag compiles from', () => {
     expect(notes).not.toContain('base')
   })
 
-  test('the first release of all measures from the root commit', async () => {
-    // Two commits, because `root..tag` excludes the root itself — a repository
-    // whose only commit carries the tag has an empty range by definition.
-    const { dir } = await build([
-      ['chore: repository created'],
-      ['feat: the very first thing', 'v0.1.0'],
-    ])
+  /**
+   * **The root commit belongs to its own release.**
+   *
+   * This test used to build two commits and explain the second away: "`root..tag`
+   * excludes the root itself — a repository whose only commit carries the tag
+   * has an empty range by definition." That is a true statement about `A..B`
+   * and a false conclusion about releases, and writing it here is what kept the
+   * bug alive — the fixture was shaped around the defect until it passed, so
+   * every run confirmed the workaround rather than the behaviour.
+   *
+   * A first release has no lower bound. `AlloyFS/http` — five commits, one
+   * `feat:`, and it is the root — is the shape that exposed it.
+   */
+  test('the first release of all contains its root commit', async () => {
+    const { dir } = await build([['feat: the very first thing', 'v0.1.0']])
 
     const notes = await sectionOrCompile(dir, 'v0.1.0', config)
     expect(notes).toContain('the very first thing')
+  })
+
+  test('a root commit that is user-facing is not dropped from it', async () => {
+    const { dir } = await build([
+      ['feat: the thing itself', 'v0.1.0'],
+      ['feat: everything after', 'v0.2.0'],
+    ])
+
+    const notes = await sectionOrCompile(dir, 'v0.1.0', config)
+    expect(notes).toContain('the thing itself')
+    // The release after it is unaffected — an open span is only the first one.
+    const next = await sectionOrCompile(dir, 'v0.2.0', config)
+    expect(next).toContain('everything after')
+    expect(next).not.toContain('the thing itself')
+  })
+
+  test('the oldest section of CHANGELOG.md contains it too', async () => {
+    // The same defect, in the other path. `compileReleases` reached for the
+    // root commit as the oldest span's start, so the file dropped it as well —
+    // and `notes` was the only half anyone reported.
+    const { dir } = await build([
+      ['feat: the thing itself', 'v0.1.0'],
+      ['fix: a later repair', 'v0.2.0'],
+    ])
+
+    const found = await compileReleases(dir, null, SECTIONS, false)
+    const oldest = found.find(r => r.version === '0.1.0')
+
+    expect(oldest?.notes).toContain('the thing itself')
   })
 })

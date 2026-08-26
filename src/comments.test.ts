@@ -68,6 +68,10 @@ const EXTERNAL = new Set([
   // Other people's crates, from the repositories the rules were measured on.
   'libfuse',
   'winfsp-sys',
+  // A public repository whose shape is the fixture for the root-commit bug:
+  // five commits, one `feat:`, and it is the root. Named in `compile.ts`
+  // because the defect is invisible without a history of exactly that shape.
+  'AlloyFS/http',
   // Files in the bakery repository, which `version-from-commits.ts` is a
   // verbatim port from. Its header says so in the first paragraph.
   'release.ts',

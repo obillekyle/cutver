@@ -45,6 +45,21 @@ import { warn } from '../style'
 const isPrerelease = (version: string) => version.includes('-')
 
 /**
+ * What a release with no user-facing commits says.
+ *
+ * A version whose commits are all `chore` compiles to nothing, and its heading
+ * still belongs in `CHANGELOG.md` — the version happened — so it gets this line
+ * rather than being dropped, which would leave a gap a reader takes for a
+ * mistake.
+ *
+ * **On a release page the same four words are a deletion, not a statement**,
+ * which is why `releases.ts` imports this rather than matching the string: the
+ * two must not drift, or the guard silently stops recognising what it guards
+ * against.
+ */
+export const EMPTY_NOTES = '_No user-facing changes._'
+
+/**
  * Which channel a version was cut in, read from the version itself.
  *
  * `1.0.0-alpha.0` is `alpha`, `1.2.0-rc.2` is `rc`, and anything without a
@@ -85,10 +100,29 @@ function sectionsOf(config: Config): readonly string[] {
  * other. `null` for the remote is ordinary — a clone with no origin is a clone
  * — and it costs the link in the diff line, not the line.
  */
-async function walk(root: string, from: string, to: string) {
+async function walk(root: string, from: string | null, to: string) {
+  /**
+   * **A first release has no lower bound.**
+   *
+   * `A..B` excludes `A`, and no ref exists before a root commit — so naming the
+   * root as the start drops it from its own release, and nothing can name a
+   * commit before it to get it back.
+   *
+   * That is invisible until the root commit is itself user-facing, which is
+   * exactly when a first release has something to say. `AlloyFS/http` — five
+   * commits, one `feat:`, and it is the root — compiled to an empty body.
+   * Probed on cutver's own history: `root..v0.1.0-beta.0` lists 7 commits where
+   * 8 are reachable, and it went unnoticed here only because the missing one is
+   * `chore: scaffold the package`.
+   *
+   * The compare link still needs two ends, so the root stays the base of the
+   * URL. Only the commit range goes unbounded.
+   */
+  const base = from ?? (await rootCommit(root))
+
   const [commits, fromSha, toSha, remote] = await Promise.all([
-    commitsIn(`${from}..${to}`, root),
-    shortSha(from, root),
+    commitsIn(from ? `${from}..${to}` : to, root),
+    shortSha(base, root),
     shortSha(to, root),
     remoteUrl(root),
   ])
@@ -109,8 +143,20 @@ async function walk(root: string, from: string, to: string) {
  * `null` when the tag is not in this repository at all — a shallow clone, or a
  * name that was never a tag. Callers treat that as "say so and carry on", never
  * as a failure: this runs inside a publish job that has already tagged.
+ *
+ * **`{ from: null }` is a different answer from `null`.** It means the tag was
+ * found and is the first release there has ever been, so its range has no lower
+ * bound. The two were one value once, and conflating them is what made the root
+ * commit disappear from its own release — see `walk`.
  */
-async function spanStart(root: string, tag: string): Promise<string | null> {
+type Span = { from: string | null }
+
+/** A span in the form the messages use: `a..b`, or plainly said when open. */
+function describeSpan(from: string | null, to: string): string {
+  return from ? `${from}..${to}` : `everything up to ${to}`
+}
+
+async function spanStart(root: string, tag: string): Promise<Span | null> {
   const tags = await releaseTags(root)
   const at = tags.findIndex(
     t => t.tag === tag || t.version === tag.replace(/^v/, ''),
@@ -147,16 +193,19 @@ async function spanStart(root: string, tag: string): Promise<string | null> {
   const mine = channelOf(describing.version)
   for (const candidate of older) {
     if (channelOf(candidate.version) !== mine) continue
-    if (await behind(candidate)) return candidate.tag
+    if (await behind(candidate)) return { from: candidate.tag }
   }
 
   // No previous release in this channel: the first alpha of a line measures
   // from whatever came last, which is the stable it is building on.
   for (const candidate of older) {
-    if (await behind(candidate)) return candidate.tag
+    if (await behind(candidate)) return { from: candidate.tag }
   }
 
-  return await rootCommit(root)
+  // Nothing released before this, anywhere. The span is open at the bottom
+  // rather than starting at the root commit, so the root is inside its own
+  // release instead of one commit below it.
+  return { from: null }
 }
 
 /**
@@ -167,7 +216,7 @@ async function spanStart(root: string, tag: string): Promise<string | null> {
  */
 export async function compileRange(
   root: string,
-  from: string,
+  from: string | null,
   to: string,
   config: Config,
 ): Promise<string> {
@@ -175,7 +224,7 @@ export async function compileRange(
 
   if (!commits.length) {
     console.error(
-      `cutver: no commits in ${from}..${to} — releasing without a body`,
+      `cutver: no commits in ${describeSpan(from, to)} — releasing without a body`,
     )
     return ''
   }
@@ -205,8 +254,8 @@ export async function sectionOrCompile(
     changelog === null
       ? 'no CHANGELOG.md'
       : `no section for ${tag.replace(/^v/, '')}`
-  const from = await spanStart(root, tag)
-  if (!from) {
+  const span = await spanStart(root, tag)
+  if (!span) {
     console.error(
       `cutver: ${why}, and ${tag} is not a tag here — releasing without a body`,
     )
@@ -214,9 +263,9 @@ export async function sectionOrCompile(
   }
 
   console.error(
-    `cutver: ${why} — compiling ${from}..${tag} from the commits instead`,
+    `cutver: ${why} — compiling ${describeSpan(span.from, tag)} from the commits instead`,
   )
-  return compileRange(root, from, tag, config)
+  return compileRange(root, span.from, tag, config)
 }
 
 /**
@@ -242,14 +291,14 @@ export async function fullBodies(
 ): Promise<RawRange | null> {
   if (second) return rawRange(root, first, second, config)
 
-  const from = await spanStart(root, first)
-  return from ? rawRange(root, from, first, config) : null
+  const span = await spanStart(root, first)
+  return span ? rawRange(root, span.from, first, config) : null
 }
 
 /** The commits in a range, unformatted, and the diff line to copy through. */
 export async function rawRange(
   root: string,
-  from: string,
+  from: string | null,
   to: string,
   config: Config,
 ): Promise<RawRange | null> {
@@ -328,19 +377,24 @@ export async function compileReleases(
   const heads =
     pending && (prereleases || !isPrerelease(pending.version)) ? [pending] : []
 
-  // `[being cut, newest tag, …]` paired with what each one measures from. The
-  // oldest release measures from the first commit, which is not a tag.
+  // `[being cut, newest tag, …]` paired with what each one measures from.
+  //
+  // **The oldest release measures from nothing at all, not from the first
+  // commit.** Naming the root commit as the start reads as the obvious way to
+  // say "from the beginning", and it is off by exactly one commit: `A..B`
+  // excludes `A`, and there is no ref before a root commit to name instead. A
+  // `null` lower bound means the range is the whole of `to`'s history.
   const spans = [
     ...heads.map(p => ({
       version: p.version,
       date: p.date,
-      from: listed[0]?.tag ?? root0,
+      from: listed[0]?.tag ?? null,
       to: 'HEAD',
     })),
     ...listed.map((t, i) => ({
       version: t.version,
       date: t.date,
-      from: listed[i + 1]?.tag ?? root0,
+      from: listed[i + 1]?.tag ?? null,
       to: t.tag,
     })),
   ]
@@ -368,9 +422,11 @@ export async function compileReleases(
       // thing carrying colour.
       warn(`  %d· compiling%0 %cv${span.version}%0`)
 
+      // The compare link still needs a base, so an open span borrows the root
+      // commit for the URL while the commit range itself stays unbounded.
       const [commits, from, to] = await Promise.all([
-        commitsIn(`${span.from}..${span.to}`, root),
-        shortSha(span.from, root),
+        commitsIn(span.from ? `${span.from}..${span.to}` : span.to, root),
+        shortSha(span.from ?? root0, root),
         shortSha(span.to, root),
       ])
 
@@ -386,12 +442,8 @@ export async function compileReleases(
     }),
   )
 
-  // A release whose commits are all `chore` compiles to nothing. Its heading
-  // still belongs in the file — the version happened — so an empty one gets a
-  // line rather than being dropped, which would leave a gap a reader would
-  // read as a mistake.
   return built.map(r => ({
     ...r,
-    notes: r.notes || '_No user-facing changes._',
+    notes: r.notes || EMPTY_NOTES,
   }))
 }

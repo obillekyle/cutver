@@ -17,6 +17,7 @@
 import { remoteUrl } from '../git'
 import { runCommand } from '../runtime'
 import { normaliseRepo } from '../registry'
+import { EMPTY_NOTES } from './compile'
 
 /** What happened to one release, for the report. */
 export interface ReleaseUpdate {
@@ -342,6 +343,32 @@ export async function updateRelease(
   const next = typeof body === 'string' ? body : await body()
   if (current === next.trim()) {
     return { tag, state: 'unchanged', detail: 'already matches the changelog' }
+  }
+
+  /**
+   * **The placeholder never replaces prose, even under `--force`.**
+   *
+   * Every flag here behaves as documented, and the combination still destroys
+   * work: on a tag whose commits are all `chore:`, the compiled body is
+   * `EMPTY_NOTES`, and `pages all --overwrite --force` — which reads as the
+   * obvious "regenerate everything" incantation — would faithfully replace a
+   * written announcement with four words saying nothing changed.
+   *
+   * `--force` means "replace prose with the compiled body", and it is asked for
+   * by someone who believes the compiled body is better. Downgrading prose to a
+   * placeholder is the one case where it cannot be, so it is refused rather
+   * than confirmed twice: GitHub keeps no history of a release body, and there
+   * is nothing to undo it from.
+   *
+   * An unauthored body is still replaced — the placeholder does say more than a
+   * bare tag name.
+   */
+  if (next.trim() === EMPTY_NOTES && authored) {
+    return {
+      tag,
+      state: 'skipped',
+      detail: 'compiles to nothing — kept the written body',
+    }
   }
 
   const patched = await api(`/repos/${repo}/releases/${release.id}`, token, {

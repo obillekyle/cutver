@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test'
+import { EMPTY_NOTES } from './compile'
 import { isUnauthored, resolveToken, tokenFor, updateRelease } from './releases'
 
 /**
@@ -133,6 +134,41 @@ describe('updateRelease', () => {
     expect(result.state).toBe('updated')
     expect(result.detail).toBe('replaced a written body')
     expect(patched).toEqual(['compiled'])
+  })
+
+  /**
+   * **The combination that destroys work while every flag behaves.**
+   *
+   * `pages all --overwrite --force` reads as the obvious "regenerate
+   * everything" incantation. On a tag whose commits are all `chore:` the
+   * compiled body is the placeholder, and without this guard `--force` would
+   * faithfully replace an announcement with four words saying nothing changed —
+   * unrecoverably, since GitHub keeps no history of a release body.
+   */
+  test('the placeholder never replaces prose, even with --force', async () => {
+    const { patched } = stub('Heads up: this one changes the config format.')
+    const result = await updateRelease(
+      'o/r',
+      't',
+      'v1.2.0',
+      EMPTY_NOTES,
+      false,
+      true,
+    )
+
+    expect(result.state).toBe('skipped')
+    expect(result.detail).toBe('compiles to nothing — kept the written body')
+    expect(patched).toEqual([])
+  })
+
+  test('but it does replace a body nobody wrote', async () => {
+    // The placeholder says more than a bare tag name, so this direction is an
+    // improvement rather than a loss.
+    const { patched } = stub('v1.2.0')
+    const result = await updateRelease('o/r', 't', 'v1.2.0', EMPTY_NOTES, false)
+
+    expect(result.state).toBe('updated')
+    expect(patched).toEqual([EMPTY_NOTES])
   })
 
   test('an empty body is filled in without the flag', async () => {
