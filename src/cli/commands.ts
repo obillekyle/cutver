@@ -98,7 +98,7 @@ async function confirmForce(
     '\n        These are meant to be edited — your gates live in version.yml, and\n' +
       '        publish.yml is named in npm trusted-publisher configuration where\n' +
       '        that is set up, so replacing it can break publishing.\n' +
-      '        Docs: https://cutver.okyle.dev/#/getting-started/ci',
+      '        Docs: https://cutver.okyle.dev/?/getting-started/ci',
   )
 
   if (!process.stdin.isTTY) {
@@ -589,7 +589,7 @@ export async function runChangelog(argv: string[]): Promise<void> {
     die(
       'nothing to regenerate — `changelog:` is not set, so cutver does not own\n' +
         '        CHANGELOG.md and will not overwrite what you wrote.\n' +
-        '        Docs: https://cutver.okyle.dev/#/guides/changelog',
+        '        Docs: https://cutver.okyle.dev/?/guides/changelog',
     )
   }
 

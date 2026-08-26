@@ -63,7 +63,7 @@ function noCommand(): never {
       '        then runs `cutver --if-needed`, which now does nothing at all.\n' +
       '        Change that line to `cutver stage --if-needed`, or re-run\n' +
       '        `cutver init --force`.\n' +
-      '        Docs: https://cutver.okyle.dev/#/getting-started/ci',
+      '        Docs: https://cutver.okyle.dev/?/getting-started/ci',
   )
   process.exit(1)
 }

@@ -24,7 +24,7 @@ import type { Ecosystem } from './schema'
 
 export function configTemplate(eco: Ecosystem, publishes = true): string {
   return `# cutver.yml — which branches release what.
-# Docs: https://cutver.okyle.dev/#/reference/config
+# Docs: https://cutver.okyle.dev/?/reference/config
 schema: 1
 
 # The ecosystem this repository releases. Removes the need for --adapter when
