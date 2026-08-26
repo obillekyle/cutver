@@ -156,13 +156,19 @@ export async function workspaceDirs(root: string): Promise<string[]> {
  * no lock entry means the lockfile predates it, which is the same stale-lock
  * condition in a form that would otherwise pass silently.
  */
+/** One deferred write: the file it will touch, and the touch itself. */
+interface PendingWrite {
+  file: string
+  write: () => Promise<void>
+}
+
 async function syncLock(
   root: string,
   dirs: string[],
   version: string,
   dryRun: boolean,
   /** Deferred writes. See `setVersion` — nothing is written until all of it parses. */
-  pending: (() => Promise<void>)[],
+  pending: PendingWrite[],
 ): Promise<Change> {
   const path = `${root}/bun.lock`
   const lock = await readText(path).catch(() => '')
@@ -203,7 +209,8 @@ async function syncLock(
     }
   }
 
-  if (!dryRun) pending.push(() => write(path, patched))
+  if (!dryRun)
+    pending.push({ file: 'bun.lock', write: () => write(path, patched) })
   return {
     file: 'bun.lock',
     state: 'updated',
@@ -288,7 +295,7 @@ export const jsAdapter: Adapter = {
     // flush still leaves part of it written, and closing that needs
     // temp-and-rename in the runtime layer. It closes the window that actually
     // opens.
-    const pending: (() => Promise<void>)[] = []
+    const pending: PendingWrite[] = []
 
     for (const dir of await workspaceDirs(root)) {
       const rel = `${dir}/package.json`
@@ -327,7 +334,10 @@ export const jsAdapter: Adapter = {
       const from = json.version
       json.version = version
       if (!dryRun)
-        pending.push(() => writeManifest(`${root}/${rel}`, json, text))
+        pending.push({
+          file: rel,
+          write: () => writeManifest(`${root}/${rel}`, json, text),
+        })
       changes.push({
         file: rel,
         state: 'updated',
@@ -338,6 +348,7 @@ export const jsAdapter: Adapter = {
     // The root last, and even when it is private: it is the version of record,
     // the number the tag is cut from, and letting it drift away from the
     // packages it contains is how a monorepo ends up with two answers.
+    let rootWrite: PendingWrite | null = null
     {
       const { json, text } = await readManifest(`${root}/package.json`)
       const from = json.version
@@ -350,7 +361,10 @@ export const jsAdapter: Adapter = {
       } else {
         json.version = version
         if (!dryRun)
-          pending.push(() => writeManifest(`${root}/package.json`, json, text))
+          rootWrite = {
+            file: 'package.json',
+            write: () => writeManifest(`${root}/package.json`, json, text),
+          }
         changes.push({
           file: 'package.json',
           state: 'updated',
@@ -366,8 +380,38 @@ export const jsAdapter: Adapter = {
       changes.push(await syncLock(root, bumped, version, dryRun, pending))
     changes.push(...(await foreignLocks(root)))
 
-    // Everything parsed and every refusal passed. Now write.
-    for (const flush of pending) await flush()
+    // **"Root last" means last of the writes too, not last of the manifests.**
+    //
+    // The root is what `version.yml` reads to decide whether anything moved, so
+    // a flush that dies before reaching it leaves CI seeing "no release" and a
+    // tree that is dirty but untagged — recoverable by hand. The lock used to
+    // flush *after* the root, and that ordering quietly forfeited the guarantee
+    // in the one place it mattered: a lock that could not be written (measured
+    // with a read-only bun.lock) left every manifest bumped, the root included,
+    // so CI would have tagged a tree whose lockfile still named the old
+    // versions — the exact shape that once published seven alphas depending on
+    // a stable core. Members, then the lock, then the root.
+    if (rootWrite) pending.push(rootWrite)
+
+    // Everything parsed and every refusal passed. Now write — and if a write
+    // dies partway, say what is already on disk. `EPERM` with a filename reads
+    // as "nothing happened" when three files have in fact moved, and the
+    // recovery is one command nobody can run without knowing they need to.
+    const written: string[] = []
+    for (const { file, write } of pending) {
+      try {
+        await write()
+      } catch (e) {
+        throw new AdapterError(
+          `${e instanceof Error ? e.message : String(e)}\n` +
+            (written.length
+              ? `        ${written.length} file(s) were already rewritten: ${written.join(', ')}.\n` +
+                `        \`git checkout -- ${written.join(' ')}\` puts them back; nothing was tagged.`
+              : '        Nothing had been written yet — the tree is untouched.'),
+        )
+      }
+      written.push(file)
+    }
 
     return changes
   },

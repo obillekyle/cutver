@@ -85,6 +85,9 @@ const EXTERNAL = new Set([
   'owner/repo',
   // Named in the past tense, as the thing that used to be there.
   'HELP',
+  'READ_NAME',
+  // An OS errno, named where a flush can die on it.
+  'EPERM',
 ])
 
 function walk(dir: string): string[] {

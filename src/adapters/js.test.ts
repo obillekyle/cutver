@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { chmod, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { jsAdapter, workspaceDirs } from './js'
 
@@ -214,6 +214,37 @@ describe('setVersion', () => {
     await expect(
       jsAdapter.setVersion({ root, version: '1.1.0', dryRun: false }),
     ).rejects.toThrow(/no workspace entry for packages\/a/)
+  })
+
+  test('a write that dies mid-flush spares the root and names the damage', async () => {
+    // The flush cannot be atomic without temp-and-rename, so the guarantees
+    // that CAN be kept are pinned instead: the root — the number `version.yml`
+    // reads to decide whether anything moved — is written dead last, after the
+    // lock, so a failure anywhere leaves CI seeing "no release". And the error
+    // says which files already moved, because `EPERM` plus a filename reads as
+    // "nothing happened" when two files have in fact been rewritten.
+    //
+    // The lock used to flush *after* the root; measured with exactly this
+    // fixture, that ordering bumped every manifest, root included, and left
+    // the lock stale — the tag would have named a tree whose lockfile
+    // disagreed with every manifest in it.
+    const root = await workspace()
+    await chmod(`${root}/bun.lock`, 0o444)
+
+    try {
+      await expect(
+        jsAdapter.setVersion({ root, version: '1.3.0', dryRun: false }),
+      ).rejects.toThrow(/already rewritten.*packages\/cli\/package\.json/s)
+
+      // Members before the failure moved; the root did not.
+      expect(
+        JSON.parse(await Bun.file(`${root}/packages/cli/package.json`).text())
+          .version,
+      ).toBe('1.3.0')
+      expect(await jsAdapter.readVersion(root)).toBe('1.2.3')
+    } finally {
+      await chmod(`${root}/bun.lock`, 0o644)
+    }
   })
 
   test('a missing lockfile is reported, not fatal', async () => {
