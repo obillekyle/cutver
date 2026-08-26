@@ -17,6 +17,27 @@ which is correct for a release tool. It is not part of your app.
 Prereleases stay behind their channel — `bunx cutver@beta` for the next beta,
 `@rc` for a release candidate. A bare `bunx cutver` never resolves to one.
 
+### A bare `bunx cutver` is not a check of what is current
+
+`bunx` caches what it resolves, so it runs whatever version that cache already
+holds rather than whatever the registry now calls `latest`. Observed in
+practice: 2.4.8 running on a machine that had fetched cutver days earlier, while
+`latest` was 2.4.10. Nothing announces it, because a stale cutver still works —
+it simply lacks whatever the newer one fixed.
+
+The consequence worth remembering is narrow but sharp: **`bunx cutver --version`
+reports the cache, not the registry**, which makes it the wrong tool for the one
+question it looks built for — whether a fix has landed yet. Ask the registry
+instead:
+
+```bash
+npm view cutver version
+```
+
+Naming the tag forces a fresh resolution — `bunx cutver@latest`. In CI this
+rarely bites, since a fresh runner has no cache to be stale; it is a
+local-machine problem.
+
 ## npx
 
 For a repository that uses npm, yarn or pnpm. Nothing about your project has to
