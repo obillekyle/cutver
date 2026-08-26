@@ -77,6 +77,28 @@ describe('files', () => {
   })
 })
 
+// **The oracle below is ground truth only for what this corpus asks it.**
+//
+// The two implementations diverge on one input, deliberately and invisibly: a
+// pattern containing a backslash. `segmentRe` and `patternRe` escape it as a
+// literal character to match, while Bun reads it as a path separator on
+// Windows. Measured on a two-package tree:
+//
+//     packages/*/package.json     cutver [one, two]   Bun [one, two]
+//     packages\*\package.json     cutver []           Bun [one, two]
+//
+// No pattern below contains one, so the disagreement never shows up — and that
+// is the hazard rather than the reassurance. **Adding a backslash pattern here
+// would make this test demand cutver reproduce Bun's separator handling, and
+// read as cutver being wrong when it is only different.** Mirror the divergence
+// into the expectation instead, and say which way is deliberate: an edited
+// reference implementation is fine, a silently edited one reads as authority.
+//
+// The user-facing half is recorded rather than fixed. On Windows a hand-written
+// pattern using backslashes matches nothing, so no manifest gets a version and
+// nothing says so. Normalising separators has to be platform-conditional — a
+// literal backslash is a legal filename character on Linux and impossible on
+// Windows — which makes it a decision rather than a cleanup.
 describe('glob, against Bun.Glob', () => {
   test('finds the same files, including ** and the root case', async () => {
     const dir = scratch()
