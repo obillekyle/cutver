@@ -18,7 +18,7 @@
  * fixture with that specific assertion.
  */
 import { run } from '../run'
-import { AdapterError, type Adapter, type Change } from './types'
+import { AdapterError, warnBarren, type Adapter, type Change } from './types'
 import { exists, glob, readText, write } from '../runtime'
 
 /** A `[section]` header on its own line. `[[array.of.tables]]` deliberately does not match. */
@@ -127,8 +127,10 @@ export interface Member {
  */
 async function scanMembers(root: string, toml: string): Promise<Member[]> {
   const out: Member[] = []
+  const barren: string[] = []
 
   for (const pattern of members(toml)) {
+    const before = out.length
     const found = await glob(`${pattern.replace(/\/+$/, '')}/Cargo.toml`, root)
     for (const rel of found) {
       // `target/` holds unpacked copies of dependencies' sources, each with a
@@ -148,8 +150,10 @@ async function scanMembers(root: string, toml: string): Promise<Member[]> {
         repository: REPOSITORY.exec(section)?.[1] ?? null,
       })
     }
+    if (out.length === before) barren.push(pattern)
   }
 
+  warnBarren(barren, 'Cargo.toml')
   return out.sort((a, b) => a.dir.localeCompare(b.dir))
 }
 

@@ -19,6 +19,7 @@
  */
 
 import type { Registry, Target } from '../registry'
+import { warn } from '../style'
 
 export type { Registry, Target } from '../registry'
 
@@ -82,3 +83,33 @@ export interface Adapter {
 
 /** Anything an adapter throws to say "this repository is not shaped as expected". */
 export class AdapterError extends Error {}
+
+/**
+ * Say so when a declared workspace pattern contributed no member.
+ *
+ * **A workspace glob that matches nothing is a config error on every platform,
+ * and staying quiet about it produces a wrong release rather than a failed
+ * one.** The version goes into the manifests that were found, the run exits 0,
+ * and the member nobody matched keeps its old number — which is the same shape
+ * as the `bun.lock` omission described above: every local gate green, and the
+ * registry wrong.
+ *
+ * Measured on a two-package tree: `workspaces: ["packages/*"]` writes both
+ * manifests, and `["packages\*"]` writes only the root and says nothing. That
+ * one is a Windows separator, which cutver escapes as a literal character while
+ * Bun's globber reads as a path separator — but the warning is deliberately not
+ * about backslashes. Normalising separators has to be platform-conditional (a
+ * literal backslash is a legal filename on Linux and impossible on Windows),
+ * whereas *zero matches* is wrong everywhere and needs no such answer.
+ *
+ * A warning rather than a refusal: a fresh monorepo whose `packages/*` is
+ * genuinely still empty is not broken, and cutver does not gate.
+ */
+export function warnBarren(patterns: string[], manifest: string): void {
+  if (!patterns.length) return
+  warn(
+    `cutver: %<bold>workspace pattern matched no ${manifest}%0 — ` +
+      `%c${patterns.join('%0, %c')}%0\n` +
+      `        those members keep their current version, and nothing else will say so.`,
+  )
+}

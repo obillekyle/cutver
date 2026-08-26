@@ -97,6 +97,63 @@ describe('workspaceDirs', () => {
     })
     expect(await workspaceDirs(root)).toEqual(['packages/a'])
   })
+
+  /**
+   * **A declared pattern that matches nothing is said out loud.**
+   *
+   * Silence there is a wrong release rather than a failed one: the version goes
+   * into the manifests that were found, the run exits 0, and the member nobody
+   * matched keeps its old number. Measured with a Windows separator, which is
+   * how it actually happens — cutver escapes the backslash as a literal
+   * character while Bun's globber reads it as a path separator, so
+   * `packages\*` writes only the root manifest.
+   */
+  test('a pattern that matches nothing is reported', async () => {
+    const said: string[] = []
+    const real = process.stderr.write.bind(process.stderr)
+    process.stderr.write = ((s: string) => {
+      said.push(String(s))
+      return true
+    }) as typeof process.stderr.write
+
+    try {
+      const root = await fixture({
+        'package.json': json({
+          name: 'root',
+          version: '1.0.0',
+          workspaces: ['packages/*', 'apps/*'],
+        }),
+        'packages/a/package.json': json({ name: 'a', version: '1.0.0' }),
+      })
+
+      // The good pattern still resolves — the warning is additive.
+      expect(await workspaceDirs(root)).toEqual(['packages/a'])
+
+      const text = said.join('')
+      expect(text).toContain('matched no package.json')
+      expect(text).toContain('apps/*')
+      // Only the barren one is named.
+      expect(text).not.toContain('packages/*')
+    } finally {
+      process.stderr.write = real
+    }
+  })
+
+  test('and nothing is said when every pattern resolves', async () => {
+    const said: string[] = []
+    const real = process.stderr.write.bind(process.stderr)
+    process.stderr.write = ((s: string) => {
+      said.push(String(s))
+      return true
+    }) as typeof process.stderr.write
+
+    try {
+      await workspaceDirs(await workspace())
+      expect(said.join('')).not.toContain('matched no')
+    } finally {
+      process.stderr.write = real
+    }
+  })
 })
 
 describe('setVersion', () => {

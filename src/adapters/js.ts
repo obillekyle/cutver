@@ -6,7 +6,7 @@
  */
 import { detectEol, detectIndent, withEol } from '../text'
 import type { Target } from '../registry'
-import { AdapterError, type Adapter, type Change } from './types'
+import { AdapterError, warnBarren, type Adapter, type Change } from './types'
 import { exists, glob, readText, write } from '../runtime'
 
 interface Manifest {
@@ -115,8 +115,10 @@ function patterns(root: Manifest): string[] {
 export async function workspaceDirs(root: string): Promise<string[]> {
   const { json } = await readManifest(`${root}/package.json`)
   const found = new Set<string>()
+  const barren: string[] = []
 
   for (const pattern of patterns(json)) {
+    const before = found.size
     const hits = await glob(`${pattern.replace(/\/+$/, '')}/package.json`, root)
     for (const rel of hits) {
       // A `**` pattern will happily walk into an installed dependency, and a
@@ -124,8 +126,10 @@ export async function workspaceDirs(root: string): Promise<string[]> {
       if (rel.split('/').includes('node_modules')) continue
       found.add(rel.replace(/\/package\.json$/, ''))
     }
+    if (found.size === before) barren.push(pattern)
   }
 
+  warnBarren(barren, 'package.json')
   return [...found].sort()
 }
 
