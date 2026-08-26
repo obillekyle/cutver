@@ -8,9 +8,29 @@ is only ever as good as the commits — which is the point.
 explanation in the commit body, where it is also visible in `git log`, in a
 pull request, and on the release page.
 
+## [2.4.11] — 2026-08-26
+
+<sub>diff: [3bfbb38...42d8366](https://github.com/obillekyle/cutver/compare/3bfbb38...42d8366)</sub>
+
+### Fixes
+
+- **changelog:** a first release contains its own root commit ([6d31977](https://github.com/obillekyle/cutver/commit/6d31977))
+
+    `A..B` excludes `A`, and no ref exists before a root commit — so naming the root as a span's lower bound drops it from its own release, with nothing able to name a commit further back to get it back. Every first release has been one commit short since the span logic was written.
+
+### Docs
+
+- **cli:** the links cutver prints point at the routing it ships ([4c34879](https://github.com/obillekyle/cutver/commit/4c34879))
+
+    Four messages still sent people to `cutver.okyle.dev/#/…`, from before the docs shell moved to `?/` query routing so Google could crawl the pages at all.
+
+- **install:** bunx reports its cache, not the registry ([2ad7ce0](https://github.com/obillekyle/cutver/commit/2ad7ce0))
+
+    A bare `bunx cutver` runs whatever version the local cache already holds, not whatever the registry currently calls `latest`. Measured: 2.4.8 running on a machine that had fetched cutver days earlier, while `latest` was 2.4.10.
+
 ## [2.4.10] — 2026-08-24
 
-<sub>diff: [08a7033...4a3e05a](https://github.com/obillekyle/cutver/compare/08a7033...4a3e05a)</sub>
+<sub>diff: [08a7033...3bfbb38](https://github.com/obillekyle/cutver/compare/08a7033...3bfbb38)</sub>
 
 ### Fixes
 
@@ -97,15 +117,5 @@ pull request, and on the release page.
 - **stage:** let a channel cut a prerelease of 1.0.0 from 0.x ([103389a](https://github.com/obillekyle/cutver/commit/103389a))
 
     The guard that stops a 0.x project auto-shipping 1.0.0 matched the prerelease too, so a project at 0.x with a channel branch could not release at all. Seen on alloyfs: at 0.6.0 with a `feat(config)!` on its `alpha` branch, every push failed on `0.6.0 -> 1.0.0-alpha.0`, and the only escape the message offered was `cutver stage 1.0.0` — the stable release the guard exists to stop being cut unattended.
-
-## [2.4.1] — 2026-08-18
-
-<sub>diff: [bc8e48a...1f8cc5e](https://github.com/obillekyle/cutver/compare/bc8e48a...1f8cc5e)</sub>
-
-### Fixes
-
-- **docs:** turn Jekyll off, which was serving the markdown instead of the site ([a489fba](https://github.com/obillekyle/cutver/commit/a489fba))
-
-    GitHub Pages runs Jekyll unless told not to, and it renders every markdown file under docs/ into a standalone page. Measured against the live deployment, /guides/commits answered 200 with a bare themed page — no sidebar, no search, no version picker, none of the shell — and that is what Google had to index.
 
 Older releases are in the git tags and on the releases page.
