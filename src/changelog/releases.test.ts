@@ -65,6 +65,18 @@ describe('isUnauthored', () => {
     expect(isUnauthored(mixed, 'v1.2.0')).toBe(false)
   })
 
+  test("cutver's own placeholders are not prose", () => {
+    // A page left holding one of these is the page a later run should fill:
+    // the release job's fallback when the notes step timed out, and the line
+    // an all-`chore:` range compiles to.
+    expect(isUnauthored('_No release notes._', 'v1.2.0')).toBe(true)
+    expect(isUnauthored('_No user-facing changes._', 'v1.2.0')).toBe(true)
+    // Anything around them is somebody's writing.
+    expect(
+      isUnauthored('_No release notes._\n\nA note on the upgrade.', 'v1.2.0'),
+    ).toBe(false)
+  })
+
   test('a version that is not this tag is not a version marker', () => {
     // `1.1.0` in `v1.2.0`'s body is somebody referring to another release, not
     // a placeholder for this one.
@@ -275,23 +287,107 @@ describe('updateRelease, creating what is missing', () => {
     globalThis.fetch = real
   })
 
-  /** No release for the tag; `hasTag` decides whether the tag is on the remote. */
-  function stub(hasTag: boolean): { posted: Record<string, unknown>[] } {
-    const posted: Record<string, unknown>[] = []
+  /**
+   * No published release for the tag; `hasTag` decides whether the tag is on
+   * the remote, and `drafts` names the tags whose only page is a draft.
+   *
+   * The listing is answered as GitHub answers it: `/releases/tags/{tag}` 404s
+   * for a draft, and only the list endpoint shows one.
+   */
+  function stub(
+    hasTag: boolean,
+    drafts: string[] = [],
+  ): { posted: Record<string, unknown>[]; patched: number } {
+    const seen = { posted: [] as Record<string, unknown>[], patched: 0 }
     globalThis.fetch = (async (url: string, init?: RequestInit) => {
       const path = String(url)
       if (init?.method === 'POST') {
-        posted.push(JSON.parse(String(init.body)))
+        seen.posted.push(JSON.parse(String(init.body)))
         return new Response('{}', { status: 201 })
+      }
+      if (init?.method === 'PATCH') {
+        seen.patched++
+        return new Response('{}', { status: 200 })
       }
       if (path.includes('/git/ref/tags/')) {
         return new Response('{}', { status: hasTag ? 200 : 404 })
       }
+      if (/\/releases\?per_page=/.test(path)) {
+        const listed = drafts.map((tag, id) => ({
+          id,
+          tag_name: tag,
+          draft: true,
+          body: 'Written by hand, and not published yet.',
+        }))
+        return new Response(JSON.stringify(listed), { status: 200 })
+      }
       return new Response('{}', { status: 404 })
     }) as unknown as typeof fetch
 
-    return { posted }
+    return seen
   }
+
+  /**
+   * **A draft is somebody's page, not an empty slot.**
+   *
+   * Measured on bakery: `changelog pages v2.0.0 --dry-run` answered "would be
+   * created" while a hand-written v2.0.0 draft existed, because the lookup by
+   * tag answers for published releases only. Run for real, that is a second,
+   * published v2.0.0 beside the draft its author was about to publish.
+   */
+  test('a draft is neither written into nor created beside', async () => {
+    const seen = stub(true, ['v2.0.0'])
+    let produced = 0
+    const result = await updateRelease(
+      'o/r',
+      't',
+      'v2.0.0',
+      async () => {
+        produced++
+        return 'compiled'
+      },
+      false,
+    )
+
+    expect(result.state).toBe('skipped')
+    expect(result.detail).toContain('draft')
+    expect(seen.posted).toEqual([])
+    expect(seen.patched).toBe(0)
+    // Decided from the listing alone, so a left-alone draft costs no summary.
+    expect(produced).toBe(0)
+  })
+
+  test('--force does not reach into a draft either', async () => {
+    // `--force` replaces published prose. A draft is not published yet, and a
+    // page in progress is the least recoverable thing to overwrite.
+    const seen = stub(true, ['v2.0.0'])
+    const result = await updateRelease(
+      'o/r',
+      't',
+      'v2.0.0',
+      'compiled',
+      false,
+      true,
+    )
+
+    expect(result.state).toBe('skipped')
+    expect(seen.posted).toEqual([])
+    expect(seen.patched).toBe(0)
+  })
+
+  test("another tag's draft does not stop this tag's page", async () => {
+    const seen = stub(true, ['v2.0.0'])
+    const result = await updateRelease(
+      'o/r',
+      't',
+      'v2.0.0-rc.5',
+      'compiled',
+      false,
+    )
+
+    expect(result.state).toBe('created')
+    expect(seen.posted).toHaveLength(1)
+  })
 
   test('creates the release, with the tag as its title', async () => {
     const { posted } = stub(true)

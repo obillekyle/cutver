@@ -61,6 +61,13 @@ export function isUnauthored(
     return true
   }
 
+  // cutver's own placeholders. Each is written where a real body was not to be
+  // had — the generated release job's `_No release notes._` when the notes
+  // step timed out, `EMPTY_NOTES` for an all-`chore:` range — and a page still
+  // holding one is exactly the page a later run should fill. Nobody writes
+  // either of these as prose.
+  if (text === '_No release notes._' || text === EMPTY_NOTES) return true
+
   // GitHub's generated notes, and nothing around them.
   const generated =
     /^##\s+What's Changed/i.test(text) ||
@@ -173,6 +180,37 @@ export async function listReleases(
   }
 
   return found
+}
+
+/**
+ * Whether the tag's only page is a draft.
+ *
+ * The list endpoint is the only one that shows drafts, and only to a token
+ * with push access — which a token able to create a release has anyway. Asked
+ * only on the way to creating a page, so it costs one listing per page that
+ * does not exist yet, never one per page that does.
+ *
+ * A listing that cannot be read answers `false`, and that is a deliberate
+ * choice of the lesser harm: the alternative is refusing every creation
+ * whenever GitHub is slow, which blocks the case this command exists for.
+ */
+async function hasDraft(
+  repo: string,
+  token: string,
+  tag: string,
+): Promise<boolean> {
+  for (let page = 1; page <= 10; page++) {
+    const res = await api(
+      `/repos/${repo}/releases?per_page=100&page=${page}`,
+      token,
+    ).catch(() => null)
+    if (!res?.ok) return false
+
+    const batch = (await res.json()) as { tag_name: string; draft: boolean }[]
+    if (batch.some(r => r.draft && r.tag_name === tag)) return true
+    if (batch.length < 100) return false
+  }
+  return false
 }
 
 /**
@@ -294,7 +332,23 @@ export async function updateRelease(
   // week has a good file and nothing under Releases — and updating bodies that
   // do not exist helped none of it. Creating destroys nothing, so it needs no
   // `--force`: the rule is still that a body somebody wrote is never replaced.
+  //
+  // **Unless the 404 is a draft.** `/releases/tags/{tag}` answers for published
+  // releases only, so a tag whose page is a draft read as "no release" and got
+  // a second, published one beside it — measured on bakery, where
+  // `changelog pages v2.0.0 --dry-run` answered "would be created" while a
+  // hand-written v2.0.0 draft sat waiting to be published. A draft is somebody's
+  // page in progress: nothing is written into it and nothing is created beside
+  // it, `--force` included, because `--force` is about replacing published
+  // prose and a draft is neither yet.
   if (found.status === 404) {
+    if (await hasDraft(repo, token, tag)) {
+      return {
+        tag,
+        state: 'skipped',
+        detail: 'is a draft — left alone (publish or delete it first)',
+      }
+    }
     return createRelease(repo, token, tag, body, dryRun)
   }
   if (!found.ok) {
