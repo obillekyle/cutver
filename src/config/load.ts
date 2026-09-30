@@ -631,10 +631,19 @@ function parseSummarizer(
   const raw = value as Record<string, unknown>
   for (const key of Object.keys(raw)) {
     const k = toKebab(key)
-    if (!['connector', 'model', 'base-url', 'retry', 'with-body'].includes(k)) {
+    if (
+      ![
+        'connector',
+        'model',
+        'base-url',
+        'retry',
+        'with-body',
+        'migration',
+      ].includes(k)
+    ) {
       throw new ConfigError(
         `${where}: unknown key \`summarizer.${key}\` — expected connector, ` +
-          `model, base_url or retry`,
+          'model, base_url, retry, with_body or migration',
       )
     }
   }
@@ -686,7 +695,50 @@ function parseSummarizer(
     baseUrl,
     retry: parseRetry(raw.retry, where),
     withBody: parseWithBody(raw['with_body'] ?? raw.withBody, where, label),
+    migration: parseMigration(raw.migration, where, label),
   }
+}
+
+/**
+ * `migration:` — an upgrade guide per major version.
+ *
+ * A mapping and never a single value: a lone path would be linked from every
+ * breaking release after the one it was written for. YAML reads `2:` as a
+ * number and JSON as the string `"2"`, so both are accepted and stored as the
+ * string.
+ */
+function parseMigration(
+  value: unknown,
+  where: string,
+  label: string,
+): Record<string, string> | null {
+  if (value === undefined || value === null) return null
+
+  const example =
+    '    migration:\n      2: docs/getting-started/upgrading-to-2.md'
+  if (typeof value !== 'object' || Array.isArray(value)) {
+    throw new ConfigError(
+      `${where}: \`${label}.migration\` maps a major version to its upgrade guide:\n${example}`,
+    )
+  }
+
+  const guides: Record<string, string> = {}
+  for (const [major, guide] of Object.entries(
+    value as Record<string, unknown>,
+  )) {
+    if (!/^\d+$/.test(major)) {
+      throw new ConfigError(
+        `${where}: \`${label}.migration\` keys are major versions, and \`${major}\` is not one:\n${example}`,
+      )
+    }
+    if (typeof guide !== 'string' || !guide.trim()) {
+      throw new ConfigError(
+        `${where}: \`${label}.migration.${major}\` must be a path in this repository or a URL`,
+      )
+    }
+    guides[String(Number(major))] = guide.trim()
+  }
+  return Object.keys(guides).length ? guides : null
 }
 
 /**

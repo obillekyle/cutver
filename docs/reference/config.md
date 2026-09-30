@@ -227,6 +227,36 @@ back clean. Either way the page keeps its diff line.
 `CUTVER_SUMMARIZE` in the environment still names any command that reads
 markdown on stdin and writes it on stdout, and still wins when both are set.
 
+### Pointing Migration at an upgrade guide
+
+```yaml
+changelog:
+  summarizer:
+    connector: gemini
+    model: gemini-3.5-flash-lite
+    migration:
+      2: docs/getting-started/upgrading-to-2.md
+```
+
+`migration` maps a major version to its upgrade guide, as a path in the
+repository or a URL. When a summarized release has breaking changes and its
+major has a guide, the model's `### Migration` section is replaced by one line:
+
+```markdown
+### Migration
+
+Every breaking change above, with what to write instead, is in the [upgrade guide](https://github.com/owner/repo/blob/HEAD/docs/getting-started/upgrading-to-2.md).
+```
+
+A path is linked through `blob/HEAD`, so the link follows the default branch and
+shows the guide as it stands. Keyed by major, so a guide written for 2.0 is never
+linked from 3.0: a major with no entry keeps the model's section. Prereleases
+count as their major, so `2.0.0-rc.1` links the guide for 2.
+
+On a release of 134 commits the model's own Migration section invented a step
+that no commit and no guide contained, while the rest of the summary was sound.
+A guide written by someone who knew the release is the better source.
+
 **An answer that is not a release body is refused.** One that echoes the
 prompt's template, opens with JSON, or carries an empty code fence is asked for
 once more, and a second refusal publishes the notes as written, with the reason

@@ -320,6 +320,7 @@ export async function runNotes(argv: string[]): Promise<void> {
     env,
     body,
     raw?.metadata ?? diffLineOf(body),
+    second ?? first,
   )
   if (note) console.error(`cutver: ${note}`)
   console.log(text)
@@ -895,6 +896,7 @@ async function overwriteReleases(
           env,
           section,
           metadata,
+          version,
         )
         note = summary.note
         return summary.text

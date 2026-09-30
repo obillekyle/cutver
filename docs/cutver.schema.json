@@ -134,6 +134,22 @@
                       "type": "boolean",
                       "default": true,
                       "description": "Send whole commit bodies rather than the first paragraph of each. On by default — it is what lets one commit become several bullets."
+                    },
+                    "migration": {
+                      "type": "object",
+                      "propertyNames": {
+                        "pattern": "^[0-9]+$"
+                      },
+                      "additionalProperties": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "description": "An upgrade guide per major version, as a repository path or a URL. When a summarized release has breaking changes and its major has a guide, its Migration section is one line linking it.",
+                      "examples": [
+                        {
+                          "2": "docs/getting-started/upgrading-to-2.md"
+                        }
+                      ]
                     }
                   }
                 }

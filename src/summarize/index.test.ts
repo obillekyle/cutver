@@ -13,6 +13,7 @@ import {
   summarize,
   unfence,
   withDiffLine,
+  withMigration,
 } from './index'
 import type { ChangelogConfig } from '../config/schema'
 import { SECTIONS, sectionFor } from '../changelog/notes'
@@ -955,5 +956,108 @@ describe('summarize, refusing an answer that is not a body', () => {
     expect(text).toBe(NOTES)
     expect(note).toContain('rejected twice')
     expect(note).toContain("echoed the prompt's template")
+  })
+})
+
+/**
+ * The Migration section, pointed at the release's upgrade guide.
+ *
+ * bakery's v2.0.0 summary was clean except its Migration section, which
+ * invented a step ("delete the legacy session flag file") and covered 2 of the
+ * guide's 9 sections. The sentence below is the one written onto that page by
+ * hand, and it is what cutver writes in its place.
+ */
+describe('withMigration', () => {
+  const META =
+    '<sub>diff: [a1...b2](https://github.com/o/r/compare/a1...b2)</sub>'
+  const GUIDES = { '2': 'docs/getting-started/upgrading-to-2.md' }
+  const BODY =
+    'A major release.\n\n### Breaking Changes\n- **vue:** a guard fails closed (55e1838)\n\n' +
+    '### Migration\n- Delete the legacy session flag file and environment variables associated with DASHPASS.\n'
+  const SENTENCE =
+    'Every breaking change above, with what to write instead, is in the ' +
+    '[upgrade guide](https://github.com/o/r/blob/HEAD/docs/getting-started/upgrading-to-2.md).'
+
+  test("replaces the model's section with one line linking the guide", () => {
+    const out = withMigration(BODY, GUIDES, 'v2.0.0', META)
+    expect(out).not.toContain('flag file')
+    expect(out.endsWith(`### Migration\n\n${SENTENCE}`)).toBe(true)
+    expect(out.match(/### Migration/g)).toHaveLength(1)
+    expect(out).toContain('a guard fails closed')
+  })
+
+  test('adds the section when the model wrote none, and a prerelease uses its major', () => {
+    const body = 'A release.\n\n### Breaking Changes\n- a break (55e1838)'
+    expect(withMigration(body, GUIDES, '2.0.0-rc.1', META)).toBe(
+      `${body}\n\n### Migration\n\n${SENTENCE}`,
+    )
+  })
+
+  test('keeps a section that follows Migration, and moves Migration last', () => {
+    const body =
+      'A release.\n\n### Breaking Changes\n- a break (55e1838)\n\n### Migration\n- invented\n\n### Fixes\n- a fix (0e4b2a9)'
+    const out = withMigration(body, GUIDES, 'v2.0.0', META)
+    expect(out).toContain('### Fixes\n- a fix (0e4b2a9)')
+    expect(out).not.toContain('invented')
+    expect(out.endsWith(SENTENCE)).toBe(true)
+  })
+
+  test('a URL is used as given', () => {
+    const out = withMigration(
+      BODY,
+      { '2': 'https://docs.example.invalid/upgrade' },
+      'v2.0.0',
+      META,
+    )
+    expect(out).toContain(
+      '[upgrade guide](https://docs.example.invalid/upgrade)',
+    )
+  })
+
+  test('without a GitHub compare link, a path is named, not linked', () => {
+    const out = withMigration(BODY, GUIDES, 'v2.0.0', 'diff: a1...b2')
+    expect(out).toContain(
+      'the upgrade guide, `docs/getting-started/upgrading-to-2.md`.',
+    )
+    expect(out).not.toContain('](')
+  })
+
+  test('left alone: no breaking changes, another major, or no guides', () => {
+    const noBreak = 'A release.\n\n### Fixes\n- a fix (0e4b2a9)'
+    expect(withMigration(noBreak, GUIDES, 'v2.1.0', META)).toBe(noBreak)
+    expect(withMigration(BODY, GUIDES, 'v3.0.0', META)).toBe(BODY)
+    expect(withMigration(BODY, null, 'v2.0.0', META)).toBe(BODY)
+    expect(withMigration(BODY, GUIDES, null, META)).toBe(BODY)
+  })
+
+  test('through summarize, on the command path, for the release it names', async () => {
+    const dir = mkdtempSync(`${tmpdir()}/cutver-guide-`).replaceAll('\\', '/')
+    writeFileSync(
+      `${dir}/model.js`,
+      `console.log(${JSON.stringify(`<release>${BODY}</release>`)})\n`,
+    )
+    try {
+      const { text } = await summarize(
+        NOTES,
+        config({
+          summarizer: {
+            connector: 'gemini',
+            model: 'm',
+            baseUrl: null,
+            retry: null,
+            withBody: true,
+            migration: GUIDES,
+          },
+        }),
+        withCommand(`bun "${dir}/model.js"`),
+        NOTES,
+        META,
+        'v2.0.0',
+      )
+      expect(text).toContain(SENTENCE)
+      expect(text).not.toContain('flag file')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })

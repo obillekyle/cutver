@@ -184,6 +184,7 @@ describe('inspect', () => {
             baseUrl: null,
             retry: null,
             withBody: true,
+            migration: null,
           },
         },
       }
@@ -433,6 +434,7 @@ describe('a summarizer that CI cannot use', () => {
         baseUrl: null,
         retry: null,
         withBody: true,
+        migration: null,
       },
     },
   })

@@ -1217,3 +1217,87 @@ describe('cutver notes, sending a summarizer the right amount', () => {
     SLOW,
   )
 })
+
+/**
+ * `notes <tag>` hands its tag to the migration guides, so the major is the
+ * release's own: a guide for 2 applies to v2.0.0 and to nothing after 2.x.
+ * The model here writes a breaking change and an invented Migration step, as
+ * bakery's v2.0.0 did.
+ */
+describe('cutver notes, with a migration guide', () => {
+  async function repo(): Promise<string> {
+    const dir = mkdtempSync(`${tmpdir()}/cutver-guide-`).replaceAll('\\', '/')
+    const git = async (...args: string[]) => {
+      const p = Bun.spawn(['git', ...args], {
+        cwd: dir,
+        env: GIT_ENV,
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      if ((await p.exited) !== 0)
+        throw new Error(
+          `git ${args.join(' ')}: ${await new Response(p.stderr).text()}`,
+        )
+    }
+    await git('init', '-q', '-b', 'main')
+    await Bun.write(`${dir}/package.json`, '{"name":"p","version":"1.0.0"}')
+    await Bun.write(
+      `${dir}/cutver.yml`,
+      'schema: 1\nchangelog:\n  file: false\n  summarizer:\n' +
+        '    connector: gemini\n    model: m\n' +
+        '    migration:\n      2: docs/upgrading-to-2.md\n',
+    )
+    await git('add', '-A')
+    await git('commit', '-qm', 'chore: base')
+    await git('tag', 'v1.0.0')
+    await Bun.write(`${dir}/f.txt`, 'x')
+    await git('add', '-A')
+    await git('commit', '-qm', 'feat!: the break')
+    await git('tag', 'v2.0.0')
+    await git('commit', '-q', '--allow-empty', '-m', 'feat!: the next break')
+    await git('tag', 'v3.0.0')
+
+    writeFileSync(
+      `${dir}/model.js`,
+      'console.log(' +
+        JSON.stringify(
+          '<release>A major.\n\n### Breaking Changes\n- the break (abc1234)\n\n' +
+            '### Migration\n- Delete the legacy flag file.</release>',
+        ) +
+        ')\n',
+    )
+    return dir
+  }
+
+  async function notes(dir: string, tag: string): Promise<string> {
+    const proc = Bun.spawn(['bun', ENTRY, 'notes', tag, '--cwd', dir], {
+      env: { ...process.env, CUTVER_SUMMARIZE: `bun "${dir}/model.js"` },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    const out = await new Response(proc.stdout).text()
+    await proc.exited
+    return out
+  }
+
+  test(
+    "the release's own major gets its guide, and the next major does not",
+    async () => {
+      const dir = await repo()
+
+      const two = await notes(dir, 'v2.0.0')
+      expect(two).toContain(
+        'Every breaking change above, with what to write instead, is in the upgrade guide, `docs/upgrading-to-2.md`.',
+      )
+      expect(two).not.toContain('legacy flag file')
+
+      // No guide for 3: the model's section stays, unmodified.
+      const three = await notes(dir, 'v3.0.0')
+      expect(three).toContain('Delete the legacy flag file.')
+      expect(three).not.toContain('upgrade guide')
+
+      rmSync(dir, { recursive: true, force: true })
+    },
+    SLOW,
+  )
+})

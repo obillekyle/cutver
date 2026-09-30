@@ -8,6 +8,7 @@ const config = (over: Partial<SummarizerConfig> = {}): SummarizerConfig => ({
   baseUrl: null,
   retry: null,
   withBody: true,
+  migration: null,
   ...over,
 })
 

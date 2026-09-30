@@ -298,6 +298,56 @@ export function linkShas(
 }
 
 /**
+ * The Migration section, replaced by one line linking the release's upgrade
+ * guide, when it has breaking changes and its major has one.
+ *
+ * The sentence is the one written by hand onto bakery's v2.0.0 page, after the
+ * model's own section invented a step. A repository path is linked through
+ * `blob/HEAD`, so it follows the default branch whatever it is called and
+ * shows the guide as it stands now rather than as it stood at the tag. The
+ * repository comes from the compare URL in `metadata`; without one a path is
+ * named rather than linked. A URL is used as given.
+ *
+ * Nothing changes for a release with no breaking changes, or whose major has
+ * no guide: the model's section, if it wrote one, stays.
+ */
+export function withMigration(
+  body: string,
+  guides: Record<string, string> | null,
+  version: string | null,
+  metadata: string | null,
+): string {
+  if (!guides || !version || !/^###\s+Breaking Changes\s*$/m.test(body))
+    return body
+  const major = /^v?(\d+)\./.exec(version.trim())?.[1]
+  const guide = major === undefined ? undefined : guides[String(Number(major))]
+  if (!guide) return body
+
+  let where: string
+  if (/^https?:\/\//.test(guide)) {
+    where = `the [upgrade guide](${guide})`
+  } else {
+    const path = guide.replace(/^\.?\/+/, '')
+    const repo = /https:\/\/github\.com\/([^/\s)]+\/[^/\s)]+)\/compare\//.exec(
+      metadata ?? '',
+    )?.[1]
+    where = repo
+      ? `the [upgrade guide](https://github.com/${repo}/blob/HEAD/${path})`
+      : `the upgrade guide, \`${path}\``
+  }
+
+  // The model's section, if any: from its heading to the next heading of the
+  // same level, or the end.
+  const without = body
+    .replace(/^###\s+Migration\s*$[\s\S]*?(?=^###\s|(?![\s\S]))/m, '')
+    .trimEnd()
+  return (
+    `${without}\n\n### Migration\n\n` +
+    `Every breaking change above, with what to write instead, is in ${where}.`
+  )
+}
+
+/**
  * The default prompt's dash rule, applied to what came back.
  *
  * **Enforced, because asking was measured not to be enough.** bakery's pages
@@ -378,9 +428,27 @@ export async function summarize(
   env: Record<string, string | undefined> = processEnv,
   fallback: string = notes,
   metadata: string | null = null,
+  /** The release's version or tag, for `migration`. Without it, no guide is linked. */
+  version: string | null = null,
 ): Promise<Summary> {
   if (!config?.summarizer || !notes.trim())
     return { text: fallback, note: null }
+
+  // The migration guides apply to the summary only, whichever path wrote it:
+  // the command wins over a named provider, but the mapping's guides still say
+  // what the release's upgrade guide is.
+  const guides =
+    typeof config.summarizer === 'object' ? config.summarizer.migration : null
+  const finish = (body: string, sent: string) =>
+    withDiffLine(
+      withMigration(
+        ownRules(body, config, metadata, sent),
+        guides,
+        version,
+        metadata,
+      ),
+      metadata,
+    )
 
   // `true` means the command rather than a provider, so there is nothing here
   // to hold a connector.
@@ -466,7 +534,7 @@ export async function summarize(
     }
 
     return {
-      text: withDiffLine(ownRules(body, config, metadata, input), metadata),
+      text: finish(body, input),
       note: `release body summarised by ${summarizer.model}`,
     }
   }
@@ -539,7 +607,7 @@ export async function summarize(
     }
 
     return {
-      text: withDiffLine(ownRules(text, config, metadata, input), metadata),
+      text: finish(text, input),
       note: 'release body summarised',
     }
   } catch (e) {

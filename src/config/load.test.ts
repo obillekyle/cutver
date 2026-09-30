@@ -226,3 +226,73 @@ describe('validation', () => {
     ).not.toThrow()
   })
 })
+
+/**
+ * `changelog.summarizer.migration` — an upgrade guide per major version.
+ *
+ * Keyed by major so a guide written for one release can never be linked from
+ * the next major by a config nobody updated. YAML reads `2:` as a number and
+ * JSON as a string, and both land as the string.
+ */
+describe('summarizer.migration', () => {
+  const withGuides = (migration: unknown) =>
+    at({
+      changelog: {
+        summarizer: {
+          connector: 'gemini',
+          model: 'gemini-3.5-flash-lite',
+          migration,
+        },
+      },
+    })
+
+  test('a mapping of major to guide, from YAML or JSON', async () => {
+    const summarizer = (c: ReturnType<typeof at>) =>
+      c.changelog?.summarizer as { migration: Record<string, string> | null }
+
+    expect(
+      summarizer(withGuides({ '2': 'docs/upgrading-to-2.md' })).migration,
+    ).toEqual({
+      '2': 'docs/upgrading-to-2.md',
+    })
+
+    const dir = await fixture({
+      'cutver.yml':
+        'changelog:\n  summarizer:\n    connector: gemini\n    model: m\n' +
+        '    migration:\n      2: docs/upgrading-to-2.md\n      3: https://example.invalid/3\n',
+    })
+    const { config } = await loadConfig(dir)
+    expect(summarizer(config).migration).toEqual({
+      '2': 'docs/upgrading-to-2.md',
+      '3': 'https://example.invalid/3',
+    })
+  })
+
+  test('absent is null, and the rest of the summarizer is unchanged', () => {
+    const c = at({
+      changelog: { summarizer: { connector: 'gemini', model: 'm' } },
+    })
+    expect(
+      (c.changelog?.summarizer as { migration: unknown }).migration,
+    ).toBeNull()
+  })
+
+  test('one value for every release is refused, with the shape to use', () => {
+    expect(() => withGuides('docs/upgrading.md')).toThrow(
+      /maps a major version/,
+    )
+  })
+
+  test('a key that is not a major version is refused', () => {
+    for (const key of ['v2', '2.0', 'next'])
+      expect(() => withGuides({ [key]: 'docs/x.md' }), key).toThrow(
+        /keys are major versions/,
+      )
+  })
+
+  test('an empty guide is refused', () => {
+    expect(() => withGuides({ '2': '  ' })).toThrow(
+      /must be a path in this repository or a URL/,
+    )
+  })
+})

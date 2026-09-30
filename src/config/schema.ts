@@ -310,6 +310,23 @@ export interface SummarizerConfig {
    * off, which is the point of saying so here rather than inferring it.
    */
   withBody: boolean
+  /**
+   * An upgrade guide per major version, as `{ "2": "docs/upgrading-to-2.md" }`:
+   * a repository path or a URL. When a summarized release has breaking changes
+   * and its major has a guide, the model's `### Migration` section is replaced
+   * by one sentence linking it.
+   *
+   * **Because the model's steps were measured not to hold on a big release.**
+   * bakery's v2.0.0 (134 commits) came back clean in every other respect and
+   * still invented a step ("delete the legacy session flag file", which no
+   * commit and no guide says), and covered 2 of the guide's 9 sections. The
+   * guide was written by a person who knew the release; the steps were not.
+   *
+   * Keyed by major, not one value, so a guide for 2.0 can never be linked from
+   * 3.0 by a config nobody remembered to change. A major with no entry keeps
+   * the model's section as before.
+   */
+  migration: Record<string, string> | null
 }
 
 /**
