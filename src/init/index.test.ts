@@ -76,6 +76,38 @@ describe('the generated workflows', () => {
     }
   })
 
+  test('the version workflow takes a version by hand, for a graduation', () => {
+    // A prerelease line merged into main with nothing new on top computes
+    // nothing: every commit shipped in a prerelease already. Measured on
+    // bakery, where merging `2.0.0-rc` reported "nothing to release" and
+    // 2.0.0 had to be staged by hand in a worktree.
+    for (const eco of ECOSYSTEMS) {
+      const version = Bun.YAML.parse(
+        initFiles(eco)[0]?.contents as string,
+      ) as any
+      const input = version.on.workflow_dispatch?.inputs?.version
+      expect(input, eco).toBeTruthy()
+      expect(input.required, eco).toBe(false)
+      expect(input.type, eco).toBe('string')
+
+      const step = version.jobs.version.steps.find((s: any) =>
+        String(s.run ?? '').includes('stage'),
+      )
+      // Data to the shell, never code: the input arrives through the env and
+      // is quoted where it is used.
+      expect(step.env.VERSION, eco).toBe('${{ inputs.version }}')
+      expect(step.run, eco).not.toContain('inputs.version')
+      expect(step.run, eco).toContain('stage "$VERSION"')
+      // A number somebody asked for is not softened into a green no-op.
+      const byHand = step.run
+        .split('\n')
+        .find((l: string) => l.includes('stage "$VERSION"'))
+      expect(byHand, eco).not.toContain('--if-needed')
+      // And a push still computes, exactly as before.
+      expect(step.run, eco).toContain('stage --if-needed')
+    }
+  })
+
   test('the version job can dispatch the publish one', () => {
     // A tag pushed with the default GITHUB_TOKEN cannot start a workflow, so
     // without `actions: write` and the explicit dispatch the tag lands and

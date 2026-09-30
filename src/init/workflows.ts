@@ -148,6 +148,19 @@ on:
 ${branchTriggers(config)
   .map(b => `      - ${yamlBranch(b)}`)
   .join('\n')}
+  # **By hand, with a version, for the release no commit can compute.** A
+  # prerelease line merged into a stable branch with nothing new on top has
+  # nothing left to measure: every commit already shipped in a prerelease, so
+  # the push reports "nothing to release" and exits 0. Graduating it takes an
+  # explicit version, and this is where one goes: run this workflow from the
+  # Actions tab on that branch with the version filled in. Empty computes it
+  # from the commits, exactly as a push does.
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to cut, e.g. 2.0.0. Empty computes it from the commits.'
+        required: false
+        type: string
 
 concurrency:
   # Never two releases at once on the same ref: both would compute the same
@@ -192,8 +205,20 @@ ${GATES[eco]}
       #
       # \`--branch\` because CI checks out a detached HEAD, where git answers
       # the literal string 'HEAD' and the real branch is only in the payload.
+      #
+      # A version given by hand is staged without \`--if-needed\`: somebody
+      # asked for that number, so "nothing to release" is news, not a green
+      # run. It reaches the script through the environment rather than being
+      # interpolated into it, so the input is data to the shell and never code.
       - name: Compute the version and bump ${MANIFEST[eco]}
-        run: ${RUN[eco].cutver} stage --if-needed --branch '\${{ github.ref_name }}'
+        env:
+          VERSION: \${{ inputs.version }}
+        run: |
+          if [ -n "$VERSION" ]; then
+            ${RUN[eco].cutver} stage "$VERSION" --branch '\${{ github.ref_name }}'
+          else
+            ${RUN[eco].cutver} stage --if-needed --branch '\${{ github.ref_name }}'
+          fi
 
       # **Whether the version moved is the signal — not whether the tree is
       # dirty.** \`git status\` reports an unrelated formatter edit as "a

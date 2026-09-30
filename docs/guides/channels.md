@@ -186,6 +186,14 @@ it, so a `1.3.0-beta.4` graduates to **`1.3.0`** â€” the base the beta was for â
 rather than to `1.3.1`. And if a `feat!` landed during the beta, it graduates
 to `2.0.0` instead. Both fall out of the same rule; neither is a special case.
 
+**A finished prerelease line merged as it stands computes nothing.** Every
+commit on it already shipped in a prerelease, so the push to the stable branch
+reports "nothing to release" and the workflow stays green. Graduate it by name:
+run the Version workflow by hand from the Actions tab, on the stable branch,
+with the version filled in (`2.0.0`). The generated `version.yml` takes that
+input and stages exactly the number given. Left empty, it computes from the
+commits the way a push does.
+
 ## Publishing a prerelease
 
 **Pass the dist-tag.** cutver reminds you, every time it cuts one:
