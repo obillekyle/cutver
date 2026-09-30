@@ -183,7 +183,7 @@ describe('the generated workflows', () => {
     const steps = cargo.jobs.release.steps
     const notes = steps.find((s: any) => s.name === 'Release notes')
 
-    expect(notes.run).toBe('cutver notes "$TAG" > notes.md')
+    expect(notes.run).toBe('cutver notes "$TAG" --page > notes.md')
     // No extraction logic left behind in the workflow.
     expect(JSON.stringify(steps)).not.toContain('awk')
     expect(JSON.stringify(steps)).not.toContain('PROMPT')
@@ -192,9 +192,40 @@ describe('the generated workflows', () => {
     // one must not fail a job whose binaries are already built.
     expect(notes['timeout-minutes']).toBe(15)
     expect(notes['continue-on-error']).toBe(true)
+    // `--page` writes through the GitHub API, so the step needs the token.
+    expect(notes.env.GH_TOKEN).toBe('${{ github.token }}')
 
     expect(JSON.stringify(steps)).toContain('--notes-file notes.md')
     expect(JSON.stringify(steps)).not.toContain('--notes ""')
+  })
+
+  test('the release job never writes over a page that exists', () => {
+    // It used to `gh release create … || echo`, then `gh release edit`
+    // unconditionally: a re-run replaced a page written by hand, and a draft
+    // written ahead of the tag got a published duplicate beside it. The page
+    // rule lives in `notes --page` now, and `gh` only creates what is missing.
+    for (const eco of ECOSYSTEMS as readonly Ecosystem[]) {
+      for (const artifacts of [false, true]) {
+        const config = {
+          ...DEFAULT_CONFIG,
+          ...(artifacts
+            ? { artifacts: { folders: [], files: 'auto' as const } }
+            : {}),
+        }
+        const file = initFiles(eco, undefined, config)[1]?.contents as string
+        if (!file.includes('release:')) continue
+        const doc = Bun.YAML.parse(file) as any
+        const run = JSON.stringify(doc.jobs.release.steps)
+        const label = `${eco}${artifacts ? '+artifacts' : ''}`
+
+        expect(run, label).not.toContain('gh release edit')
+        expect(run, label).toContain('gh release view')
+        // `create` sits inside the branch where `view` found nothing.
+        expect(run.indexOf('gh release view'), label).toBeLessThan(
+          run.indexOf('gh release create'),
+        )
+      }
+    }
   })
 
   test('the release job can reach cutver, and the changelog', () => {

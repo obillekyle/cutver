@@ -22,6 +22,7 @@ import {
   listReleases,
   resolveToken,
   updateRelease,
+  writePage,
   type ReleaseUpdate,
 } from '../changelog/releases'
 import {
@@ -262,6 +263,8 @@ export async function runNotes(argv: string[]): Promise<void> {
     )
   if (args.length > 2)
     die(`notes takes a tag or a range, not ${args.length} arguments`)
+  if (opts.page && second)
+    die("--page writes one tag's release page, and a range has none")
 
   const root = resolveRoot(opts.cwd)
   const { config } = await loadConfig(root, opts.config).catch((e: Error) =>
@@ -307,6 +310,12 @@ export async function runNotes(argv: string[]): Promise<void> {
   )
   if (note) console.error(`cutver: ${note}`)
   console.log(text)
+
+  // After the body is out, so `> notes.md` holds it whatever the page does:
+  // the release job's fallback creates the page from that file when this
+  // step cannot.
+  if (opts.page)
+    console.error(`cutver: ${await writePage(root, first, text, env)}`)
 }
 
 /**

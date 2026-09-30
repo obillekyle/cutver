@@ -357,7 +357,9 @@ no stated steps gets no invented ones.
 - name: Release notes
   timeout-minutes: 15
   continue-on-error: true
-  run: cutver notes "$TAG" > notes.md
+  env:
+    GH_TOKEN: ${{ github.token }}
+  run: cutver notes "$TAG" --page > notes.md
 ```
 
 Extraction, the prompt and the summariser pipe all live in `cutver notes` rather
@@ -382,6 +384,13 @@ publishing nothing.
 
 It always exits 0. It runs in a publish job that has already tagged and already
 built, so failing there would strand a finished release over its notes.
+
+`--page` writes the release page in the same step, by the rules
+`changelog pages` keeps: a tag with no page gets one, a page nobody wrote is
+filled, and a page somebody wrote, or a draft, is left alone. The step after it
+creates a page only when this one could not, because it timed out or GitHub
+refused it. So a re-run never replaces a page written by hand, and a draft
+written ahead of the tag never gets a published duplicate beside it.
 
 `timeout-minutes` is the guard for a model that hangs, and it is in the workflow
 because that is where the mechanism exists — Bun Shell exposes neither a timeout

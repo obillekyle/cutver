@@ -1,6 +1,14 @@
 import { afterEach, describe, expect, test } from 'bun:test'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { EMPTY_NOTES } from './compile'
-import { isUnauthored, resolveToken, tokenFor, updateRelease } from './releases'
+import {
+  isUnauthored,
+  resolveToken,
+  tokenFor,
+  updateRelease,
+  writePage,
+} from './releases'
 
 /**
  * The one rule that must not be wrong.
@@ -450,5 +458,96 @@ describe('updateRelease, creating what is missing', () => {
     expect(result.detail).toContain('dry run')
     expect(posted).toEqual([])
     expect(produced).toBe(0)
+  })
+})
+
+/**
+ * `notes <tag> --page`: the body just printed, onto the tag's page.
+ *
+ * Driven through a real checkout with a GitHub remote, because which
+ * repository to write to is read from the remote, and `GH_TOKEN` in the
+ * environment keeps `gh` out of it. The API itself is stubbed.
+ */
+describe('writePage', () => {
+  const real = globalThis.fetch
+  const made: string[] = []
+  afterEach(() => {
+    globalThis.fetch = real
+    while (made.length)
+      rmSync(made.pop() as string, { recursive: true, force: true })
+  })
+
+  async function checkout(remote: string | null): Promise<string> {
+    const dir = mkdtempSync(`${tmpdir()}/cutver-page-`)
+    made.push(dir)
+    const git = (...args: string[]) =>
+      Bun.spawn(['git', ...args], {
+        cwd: dir,
+        stdout: 'ignore',
+        stderr: 'ignore',
+      }).exited
+    await git('init', '-q')
+    if (remote) await git('remote', 'add', 'origin', remote)
+    return dir
+  }
+
+  /** No published page for any tag; `drafts` names the ones with a draft. */
+  function stub(drafts: string[] = []): { posted: unknown[] } {
+    const posted: unknown[] = []
+    globalThis.fetch = (async (url: string, init?: RequestInit) => {
+      const path = String(url)
+      if (init?.method === 'POST') {
+        posted.push(JSON.parse(String(init.body)))
+        return new Response('{}', { status: 201 })
+      }
+      if (path.includes('/git/ref/tags/'))
+        return new Response('{}', { status: 200 })
+      if (/\/releases\?per_page=/.test(path)) {
+        const listed = drafts.map(tag => ({ tag_name: tag, draft: true }))
+        return new Response(JSON.stringify(listed), { status: 200 })
+      }
+      return new Response('{}', { status: 404 })
+    }) as unknown as typeof fetch
+    return { posted }
+  }
+
+  test('creates the page from the body it is given', async () => {
+    const root = await checkout('https://github.com/o/r.git')
+    const { posted } = stub()
+    const line = await writePage(root, 'v1.2.0-rc.1', 'the notes', {
+      GH_TOKEN: 't',
+    })
+
+    expect(line).toBe(
+      'release page for v1.2.0-rc.1: created, marked prerelease',
+    )
+    expect(posted).toEqual([
+      {
+        tag_name: 'v1.2.0-rc.1',
+        name: 'v1.2.0-rc.1',
+        body: 'the notes',
+        prerelease: true,
+      },
+    ])
+  })
+
+  test('leaves a draft alone, as `changelog pages` does', async () => {
+    const root = await checkout('https://github.com/o/r.git')
+    const { posted } = stub(['v2.0.0'])
+    const line = await writePage(root, 'v2.0.0', 'the notes', { GH_TOKEN: 't' })
+
+    expect(line).toBe(
+      'release page for v2.0.0: a draft, left alone until it is published or deleted',
+    )
+    expect(posted).toEqual([])
+  })
+
+  test('without a GitHub remote it says so, and writes nothing', async () => {
+    const root = await checkout(null)
+    const { posted } = stub()
+    const line = await writePage(root, 'v1.2.0', 'the notes', { GH_TOKEN: 't' })
+
+    expect(line).toContain('no github.com remote')
+    expect(posted).toEqual([])
   })
 })

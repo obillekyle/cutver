@@ -72,6 +72,7 @@ of `rc`, and the version written is the canonical `-rc.N`.
 | `--runner <cmd>` | (`hook`) Pin how the hook invokes cutver, instead of detecting it at run time. |
 | `--no-hook` | (`init`) Do not install the pre-push guard. Everything else is written as usual. |
 | `--overwrite` | (`changelog`) **Deprecated — now `cutver changelog pages`.** Still works: rebuilds the file *and* updates the release pages. **Creates the page when a tag has none**, which is the case a project adopting `changelog:` after a year of tagging is in. **Only replaces a body nobody wrote** — empty, the version repeated, or GitHub’s own generated notes; anything else is reported and left alone. Summarised when a [summariser](config.md#the-summariser) is configured, so a page filled in afterwards reads the same as one written at release time. Needs a token: `GH_TOKEN`, `GITHUB_TOKEN`, or a signed-in `gh`. |
+| `--page` | (`notes`) Also write the body onto the tag's GitHub release page, by the rules `changelog pages` keeps: created when the tag has none (marked prerelease from its version), filled when nobody wrote it, left alone when somebody did or when it is a draft. The outcome goes to stderr and the body still goes to stdout, so `> notes.md` keeps working. Needs a token: `GH_TOKEN`, `GITHUB_TOKEN`, or a signed-in `gh`. |
 | `--config <path>` | (every command) Read this config instead of looking for one. Given and missing is an error, never a silent fallback to the defaults. |
 | `-h`, `--help` | Usage. |
 | `-v`, `--version` | The version of cutver itself. |

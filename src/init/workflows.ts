@@ -510,6 +510,12 @@ ${
       # summariser that died — each prints why on stderr and releases without a
       # body, because the binaries are the point of this job.
       #
+      # **\`--page\` writes the release page here, by cutver's page rules**: made
+      # when the tag has none, filled when nobody wrote it, left alone when
+      # somebody did or when it is a draft. This job used to \`gh release edit\`
+      # unconditionally, so a re-run replaced a page written by hand, and a
+      # draft written ahead of the tag got a second, published page beside it.
+      #
       # \`timeout-minutes\` is the only guard a hanging summariser needs, and it
       # belongs here rather than inside cutver: GitHub enforces it, and a model
       # that never returns would otherwise hold a runner until the job timeout.
@@ -517,6 +523,7 @@ ${
         timeout-minutes: 15
         continue-on-error: true
         env:
+          GH_TOKEN: \${{ github.token }}
           # The summariser command, when \`changelog.summarizer\` is on. **Here and
           # not in cutver.yml**: a command in a tracked file is a command a fork
           # can put there, and \`gh pr checkout\` brings a fork's tracked files
@@ -537,8 +544,14 @@ ${
           # publishes the compiled notes — the same fallback as every other way
           # this step can go wrong.
           CUTVER_SUMMARIZE_KEY: \${{ secrets.CUTVER_SUMMARIZE_KEY }}
-        run: ${RUN[eco].cutver} notes "$TAG" > notes.md
+        run: ${RUN[eco].cutver} notes "$TAG" --page > notes.md
 
+      # **The fallback, and only that.** A page that exists, published or a
+      # draft, is not touched here: whether its body may be replaced is the
+      # rule the step above applies. This creates one only when that step could
+      # not, because it timed out or GitHub refused it, so every tag still ends
+      # with a page. \`gh release view\` finds a draft by its tag too.
+      #
       # A prerelease is **marked** as one, which matters more than it sounds:
       # \`releases/latest/download/…\` follows GitHub's idea of latest and skips
       # prereleases, so an unmarked beta becomes the thing every install script
@@ -548,19 +561,17 @@ ${
           GH_TOKEN: \${{ github.token }}
           REPO: \${{ github.repository }}
         run: |
-          case "$TAG" in
-            *-*) pre=--prerelease ;;
-            *)   pre= ;;
-          esac
-          # An empty body is worse than a mechanical one — it reads as though
-          # nothing changed. \`notes\` always exits 0, so this is about the file
-          # being empty rather than about it having failed.
-          [ -s notes.md ] || echo "_No release notes._" > notes.md
-          gh release create "$TAG" --repo "$REPO" --title "$TAG" --notes-file notes.md $pre \\
-            || echo "release $TAG already exists — updating its notes"
-          # The notes are set either way: a re-run after a failed leg must not
-          # leave the body from a half-finished attempt.
-          gh release edit "$TAG" --repo "$REPO" --notes-file notes.md${
+          if ! gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+            case "$TAG" in
+              *-*) pre=--prerelease ;;
+              *)   pre= ;;
+            esac
+            # An empty body is worse than a mechanical one: it reads as though
+            # nothing changed. A later run fills this placeholder, because
+            # cutver counts it as a page nobody wrote.
+            [ -s notes.md ] || echo "_No release notes._" > notes.md
+            gh release create "$TAG" --repo "$REPO" --title "$TAG" --notes-file notes.md $pre
+          fi${
             artifacts
               ? `
           # \`--clobber\` so a re-run replaces a partially uploaded asset rather

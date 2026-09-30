@@ -133,8 +133,19 @@ export const COMMANDS: readonly Command[] = [
         'because it runs in a publish job that has already tagged and already ' +
         'built. A missing or extra argument is still an argument error, and ' +
         'still exits 1.',
+      "`--page` also writes the body onto the tag's GitHub release page, by " +
+        'the rules `changelog pages` keeps: created when missing, filled when ' +
+        'nobody wrote it, left alone when somebody did or when it is a draft. ' +
+        'The outcome goes to stderr; the body still goes to stdout.',
     ],
-    flags: [],
+    flags: [
+      {
+        name: '--page',
+        takes: null,
+        summary:
+          "also write it onto the tag's release page, never over one somebody wrote",
+      },
+    ],
   },
   {
     name: 'changelog',

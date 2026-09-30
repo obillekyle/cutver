@@ -140,6 +140,41 @@ export async function resolveToken(
   return { token, from: 'gh' }
 }
 
+/**
+ * One tag's release page, from a body already produced — what
+ * `notes <tag> --page` does with the text it just printed.
+ *
+ * **The same rules as `changelog pages`, because it is the same page.** A tag
+ * with no page gets one, marked prerelease from its version; a page nobody
+ * wrote is filled; one somebody wrote, or a draft, is left alone. The release
+ * job used to create with `gh` and then `gh release edit` unconditionally, so a
+ * re-run replaced a hand-written page, and a hand-written draft made ahead of
+ * the tag got a second published page beside it. Deciding here means the rule
+ * lives in one place, which upgrades with cutver rather than being frozen into
+ * every workflow `init` ever wrote.
+ *
+ * Returns the line to report, and never throws. It runs in a publish job whose
+ * tag is already public, beside a fallback step that makes sure a page exists
+ * at all, so every way this can fail is a sentence, never an exit code.
+ */
+export async function writePage(
+  root: string,
+  tag: string,
+  body: string,
+  env: Record<string, string | undefined>,
+): Promise<string> {
+  const repo = await githubRepo(root)
+  if (!repo) return `no page written for ${tag}: no github.com remote`
+
+  const { token } = await resolveToken(env, root)
+  if (!token) {
+    return `no page written for ${tag}: no token (GH_TOKEN, GITHUB_TOKEN, or \`gh auth\`)`
+  }
+
+  const result = await updateRelease(repo, token, tag, body, false)
+  return `release page for ${tag}: ${result.detail}`
+}
+
 interface Release {
   id: number
   body: string | null
@@ -346,7 +381,7 @@ export async function updateRelease(
       return {
         tag,
         state: 'skipped',
-        detail: 'is a draft — left alone (publish or delete it first)',
+        detail: 'a draft, left alone until it is published or deleted',
       }
     }
     return createRelease(repo, token, tag, body, dryRun)

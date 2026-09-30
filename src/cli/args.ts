@@ -92,6 +92,8 @@ export interface Options {
   regenerateChangelogs: boolean
   /** `changelog`: also push each section onto its GitHub release page. */
   overwrite: boolean
+  /** `notes <tag>`: also write the body onto that tag's GitHub release page. */
+  page: boolean
   /** Force the manifest adapter, rather than detecting it. */
   adapter?: AdapterId
   /** `check`: the commit to judge. Defaults to `HEAD`. */
@@ -146,6 +148,7 @@ export function parse(
     noHook: false,
     regenerateChangelogs: false,
     overwrite: false,
+    page: false,
     channel: null,
     positional: [],
     deprecated: [],
@@ -206,6 +209,9 @@ export function parse(
         break
       case '--overwrite':
         opts.overwrite = true
+        break
+      case '--page':
+        opts.page = true
         break
       case '--no-hook':
         opts.noHook = true
