@@ -8,9 +8,19 @@ is only ever as good as the commits — which is the point.
 explanation in the commit body, where it is also visible in `git log`, in a
 pull request, and on the release page.
 
+## [2.5.2] — 2026-09-30
+
+<sub>diff: [67110aa...a962ed8](https://github.com/obillekyle/cutver/compare/67110aa...a962ed8)</sub>
+
+### Fixes
+
+- **summarize:** refuse an answer that is not a release body ([a962ed8](https://github.com/obillekyle/cutver/commit/a962ed8))
+
+    Measured on bakery's v2.0.0 with 2.5.1 and gemini-3.5-flash-lite: a range of 134 commits, 211 KB of commit bodies sent. One answer was a JSON fragment, an empty code fence, and then the prompt's own Shape template (`### <heading>`, `- **<scope>:** <the change, one line> (<sha>)`). Another opened a real body with a JSON array of the heading names and an empty fence, and linked 0 of its 91 shas. Both were reported "release body summarised", because the only check was that the text was not empty. The same range sent as its 40 KB compiled section (`with_body: false`) came back clean, but lost its diff line.
+
 ## [2.5.1] — 2026-09-30
 
-<sub>diff: [846bb40...acc1918](https://github.com/obillekyle/cutver/compare/846bb40...acc1918)</sub>
+<sub>diff: [846bb40...67110aa](https://github.com/obillekyle/cutver/compare/846bb40...67110aa)</sub>
 
 ### Fixes
 
@@ -153,15 +163,5 @@ pull request, and on the release page.
 - **docs:** make the version escape links work again ([e03c7bf](https://github.com/obillekyle/cutver/commit/e03c7bf))
 
     `Read it in the current release` and `Switch to the current release` both point at the page being read, minus `?v=`. The click handler decides between re-rendering and merely scrolling by comparing the page, and the page had not changed — so it dropped the version out of the URL and left the old ref's markdown on screen, banner and all. Clicking either did visibly nothing.
-
-## [2.4.4] — 2026-08-18
-
-<sub>diff: [092d176...b5b9926](https://github.com/obillekyle/cutver/compare/092d176...b5b9926)</sub>
-
-### Fixes
-
-- **docs:** the title went to `#/`, which the query router only appended ([150a9e9](https://github.com/obillekyle/cutver/commit/150a9e9))
-
-    Clicking the site title on any page produced `?/guides/mounting#/` instead of going home. The shell's brand link still carried the fragment form from before routing moved into the query string, and the click handler only intercepts hrefs starting with `?/` — so the browser was left to handle it, and setting a fragment on a URL that already has a query does exactly what it looks like: appends one.
 
 Older releases are in the git tags and on the releases page.
