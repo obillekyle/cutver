@@ -8,9 +8,25 @@ is only ever as good as the commits — which is the point.
 explanation in the commit body, where it is also visible in `git log`, in a
 pull request, and on the release page.
 
+## [2.5.1] — 2026-09-30
+
+<sub>diff: [846bb40...acc1918](https://github.com/obillekyle/cutver/compare/846bb40...acc1918)</sub>
+
+### Fixes
+
+- **changelog:** compare links name commits, not annotated tag objects ([d61c61b](https://github.com/obillekyle/cutver/commit/d61c61b))
+
+    Every release page's diff line was built from `git rev-parse --short <tag>`. For an annotated tag that is the tag object, not the commit it points to, and GitHub's compare endpoint answers 404 for tag objects. Measured on 2026-09-30: 33 of 33 compare links on bakery's release pages returned 404, and so did cutver's own v2.5.0 link, `d981cb9...72c423b`. Those are the tag objects of v2.4.11 and v2.5.0, whose commits are `32cc171` and `846bb40`. Lightweight tags hid it, because for those the tag and the commit are the same object, and every fixture here used lightweight tags.
+
+### Docs
+
+- **git:** the measured shas in shortSha's comment are values, not names ([acc1918](https://github.com/obillekyle/cutver/commit/acc1918))
+
+    d61c61b's comment quoted the broken v2.5.0 compare range in backticks, and the comments test reads every backticked name as a reference that has to resolve to something in the tree. A sha range resolves to nothing, so the suite failed at the Version workflow's gate and 2.5.1 was never tagged. The shas are now plain text, and the comment records the count on cutver's own pages too: all 41 were broken, and all 41 were repaired on 2026-09-30.
+
 ## [2.5.0] — 2026-09-30
 
-<sub>diff: [d981cb9...9513cd1](https://github.com/obillekyle/cutver/compare/d981cb9...9513cd1)</sub>
+<sub>diff: [32cc171...846bb40](https://github.com/obillekyle/cutver/compare/32cc171...846bb40)</sub>
 
 ### New Features
 
@@ -60,7 +76,7 @@ pull request, and on the release page.
 
 ## [2.4.11] — 2026-08-26
 
-<sub>diff: [3bfbb38...d981cb9](https://github.com/obillekyle/cutver/compare/3bfbb38...d981cb9)</sub>
+<sub>diff: [29ac8e8...32cc171](https://github.com/obillekyle/cutver/compare/29ac8e8...32cc171)</sub>
 
 ### Fixes
 
@@ -80,7 +96,7 @@ pull request, and on the release page.
 
 ## [2.4.10] — 2026-08-24
 
-<sub>diff: [08a7033...3bfbb38](https://github.com/obillekyle/cutver/compare/08a7033...3bfbb38)</sub>
+<sub>diff: [a5aeb35...29ac8e8](https://github.com/obillekyle/cutver/compare/a5aeb35...29ac8e8)</sub>
 
 ### Fixes
 
@@ -90,7 +106,7 @@ pull request, and on the release page.
 
 ## [2.4.9] — 2026-08-24
 
-<sub>diff: [e85ee9a...08a7033](https://github.com/obillekyle/cutver/compare/e85ee9a...08a7033)</sub>
+<sub>diff: [17f2fc2...a5aeb35](https://github.com/obillekyle/cutver/compare/17f2fc2...a5aeb35)</sub>
 
 ### Fixes
 
@@ -100,7 +116,7 @@ pull request, and on the release page.
 
 ## [2.4.8] — 2026-08-23
 
-<sub>diff: [46bc4b2...e85ee9a](https://github.com/obillekyle/cutver/compare/46bc4b2...e85ee9a)</sub>
+<sub>diff: [08de946...17f2fc2](https://github.com/obillekyle/cutver/compare/08de946...17f2fc2)</sub>
 
 ### Fixes
 
@@ -110,7 +126,7 @@ pull request, and on the release page.
 
 ## [2.4.7] — 2026-08-20
 
-<sub>diff: [560ceae...46bc4b2](https://github.com/obillekyle/cutver/compare/560ceae...46bc4b2)</sub>
+<sub>diff: [4fdeb9a...08de946](https://github.com/obillekyle/cutver/compare/4fdeb9a...08de946)</sub>
 
 ### Fixes
 
@@ -120,7 +136,7 @@ pull request, and on the release page.
 
 ## [2.4.6] — 2026-08-20
 
-<sub>diff: [6cda633...560ceae](https://github.com/obillekyle/cutver/compare/6cda633...560ceae)</sub>
+<sub>diff: [98e48a5...4fdeb9a](https://github.com/obillekyle/cutver/compare/98e48a5...4fdeb9a)</sub>
 
 ### Fixes
 
@@ -130,7 +146,7 @@ pull request, and on the release page.
 
 ## [2.4.5] — 2026-08-19
 
-<sub>diff: [2f88091...6cda633](https://github.com/obillekyle/cutver/compare/2f88091...6cda633)</sub>
+<sub>diff: [b5b9926...98e48a5](https://github.com/obillekyle/cutver/compare/b5b9926...98e48a5)</sub>
 
 ### Fixes
 
@@ -140,22 +156,12 @@ pull request, and on the release page.
 
 ## [2.4.4] — 2026-08-18
 
-<sub>diff: [bee302d...2f88091](https://github.com/obillekyle/cutver/compare/bee302d...2f88091)</sub>
+<sub>diff: [092d176...b5b9926](https://github.com/obillekyle/cutver/compare/092d176...b5b9926)</sub>
 
 ### Fixes
 
 - **docs:** the title went to `#/`, which the query router only appended ([150a9e9](https://github.com/obillekyle/cutver/commit/150a9e9))
 
     Clicking the site title on any page produced `?/guides/mounting#/` instead of going home. The shell's brand link still carried the fragment form from before routing moved into the query string, and the click handler only intercepts hrefs starting with `?/` — so the browser was left to handle it, and setting a fragment on a URL that already has a query does exactly what it looks like: appends one.
-
-## [2.4.3] — 2026-08-18
-
-<sub>diff: [b2f8190...bee302d](https://github.com/obillekyle/cutver/compare/b2f8190...bee302d)</sub>
-
-### Fixes
-
-- **stage:** refuse to re-release what a stable tag already shipped ([c246388](https://github.com/obillekyle/cutver/commit/c246388))
-
-    A version is measured from the last tag reachable from HEAD, and the bump commit a release leaves behind lives on the branch that cut it. So a channel branch that has not merged from the stable line cannot see its tag, counts every commit that release already shipped a second time, and cuts a prerelease whose notes repeat the stable one's.
 
 Older releases are in the git tags and on the releases page.
