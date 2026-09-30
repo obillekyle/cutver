@@ -8,9 +8,19 @@ is only ever as good as the commits — which is the point.
 explanation in the commit body, where it is also visible in `git log`, in a
 pull request, and on the release page.
 
+## [2.6.1] — 2026-09-30
+
+<sub>diff: [9dcdfed...e55071d](https://github.com/obillekyle/cutver/compare/9dcdfed...e55071d)</sub>
+
+### Fixes
+
+- **summarize:** a migration guide covers its major's first release only ([e55071d](https://github.com/obillekyle/cutver/commit/e55071d))
+
+    `migration` linked the guide for a major from every release in that major. The line it writes claims "every breaking change above ... is in the upgrade guide", and a later release can carry a Breaking Changes heading the guide does not cover: a commit typed `fix` that breaks something, as bakery's 2.0.2 did when it moved `api/` routes into a new `api.json`, or a version given by hand. The 2.0 guide says nothing about either, so the line would have been false.
+
 ## [2.6.0] — 2026-09-30
 
-<sub>diff: [95634ba...0a093e6](https://github.com/obillekyle/cutver/compare/95634ba...0a093e6)</sub>
+<sub>diff: [95634ba...9dcdfed](https://github.com/obillekyle/cutver/compare/95634ba...9dcdfed)</sub>
 
 ### New Features
 
@@ -159,15 +169,5 @@ pull request, and on the release page.
 - **docs:** the version picker learns releases the deployed file cannot see ([5f0d2ed](https://github.com/obillekyle/cutver/commit/5f0d2ed))
 
     versions.json is written by the branch that releases and the site is served from one branch, so a channel shipping alphas leaves the deployed copy behind: alloyfs's main still said 0.6.0 while alpha was thirty-one releases into its 1.0.0 line, and none of them could be picked. The changelog cache, keyed on the same file, had no reason to refresh either.
-
-## [2.4.6] — 2026-08-20
-
-<sub>diff: [98e48a5...4fdeb9a](https://github.com/obillekyle/cutver/compare/98e48a5...4fdeb9a)</sub>
-
-### Fixes
-
-- **changelog:** span a release from the last tag in its own channel ([a15b626](https://github.com/obillekyle/cutver/commit/a15b626))
-
-    The fallback that compiles a tag's range started at the neighbour by creatordate, whatever channel that neighbour belonged to. Promoting a channel is where it broke: cut 1.0.0-alpha.0 on `alpha`, merge to `main`, cut 1.0.0, and the range became alpha.0..1.0.0 — the single commit made after the merge. Measured on a fixture, the notes for 1.0.0 listed one fix and none of the three features it shipped.
 
 Older releases are in the git tags and on the releases page.
