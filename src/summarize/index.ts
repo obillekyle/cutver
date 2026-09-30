@@ -181,8 +181,14 @@ export function extractRelease(text: string): string {
   // as a code span. Matching the bare tag then found it inside the span and
   // left the closing backtick as the first character of every release body.
   // Measured across three runs of one model, all three.
-  const OPEN = /`?<release>`?/g
-  const CLOSE = /`?<\/release>`?/
+  //
+  // **Paired, or bare, and never one backtick alone.** `?` on each side also
+  // took a backtick that belonged to the body: an answer ending in a code span
+  // written straight against `</release>` lost the span's closing backtick,
+  // and the unterminated span then slipped past `checkAgainst`, which reads
+  // only whole spans. The measured case was always the pair.
+  const OPEN = /`<release>`|<release>/g
+  const CLOSE = /`<\/release>`|<\/release>/
 
   // **Line endings first, because everything below counts lines.** A model
   // may answer with CRLF — measured on this repository's v2.1.0 — and a stray
@@ -235,6 +241,79 @@ export function checkRelease(body: string): string | null {
     return 'it carried an empty code fence'
 
   return null
+}
+
+/**
+ * Why an answer states something the commits do not, or `null` when it does
+ * not: every inline code span must appear, verbatim, in what was sent.
+ *
+ * **A code span is a thing to type, so a wrong one is an instruction.**
+ * bakery's v2.0.2 page, written by 2.5.2 from one commit, told readers to
+ * change their typecheck script to `bakery && tsc -b`. The commit says
+ * `bakery --types && tsc -b`, and without `--types` bare `bakery` starts a
+ * production server, so the step never reaches `tsc`. `checkRelease` passed
+ * it: well formed, and wrong.
+ *
+ * Verbatim rather than word by word, because the dangerous edit is a dropped
+ * flag, and every word of the wrong command still appears in the commit.
+ * Measured across every published page and the input it was written from:
+ * 1 true catch (that one), and 2 of about 79 model-written pages that would
+ * have been refused, cutver's `cutver docs install` (composed from commits
+ * that never spell it out) and an escaped `<\release>`. A refusal is one more
+ * try and then the notes as written, which cost polish and never state
+ * anything false. A miss states a wrong command.
+ */
+export function checkAgainst(body: string, sent: string): string | null {
+  const spans = [
+    ...body.replace(/```[\s\S]*?```/g, '').matchAll(/`([^`\n]+)`/g),
+  ]
+    .map(m => m[1] as string)
+    .filter(span => !sent.includes(span))
+  return spans.length ? `\`${spans[0]}\` appears nowhere in the commits` : null
+}
+
+/**
+ * The prompt's heading order, restored: Breaking Changes, New Features,
+ * Fixes, Performance, Refactor, Docs, Build, CI, Tests, then Migration last.
+ *
+ * bakery's v2.0.2 answer wrote Fixes, New Features, then Breaking Changes. An
+ * order is fixable without asking again, so it is fixed rather than refused.
+ * The opening sentence stays first; a heading outside the list keeps its
+ * relative place after the ones in it, and before Migration.
+ */
+export function orderSections(body: string): string {
+  if (!/^###\s/m.test(body)) return body
+  const [head, ...rest] = body.split(/^(?=###\s)/m)
+  const intro = /^###\s/.test(head ?? '') ? '' : (head ?? '')
+  const sections = /^###\s/.test(head ?? '') ? [head as string, ...rest] : rest
+
+  const ORDER = [
+    'Breaking Changes',
+    'New Features',
+    'Fixes',
+    'Performance',
+    'Refactor',
+    'Docs',
+    'Build',
+    'CI',
+    'Tests',
+  ]
+  const rank = (section: string) => {
+    const name = /^###\s+(.+?)\s*$/m.exec(section)?.[1] ?? ''
+    if (name === 'Migration') return ORDER.length + 1
+    const at = ORDER.indexOf(name)
+    return at === -1 ? ORDER.length : at
+  }
+
+  return [
+    intro.trim(),
+    ...sections
+      .map((section, i) => ({ section, i, r: rank(section) }))
+      .sort((a, b) => a.r - b.r || a.i - b.i)
+      .map(({ section }) => section.trim()),
+  ]
+    .filter(Boolean)
+    .join('\n\n')
 }
 
 /**
@@ -386,7 +465,9 @@ function ownRules(
   metadata: string | null,
   sent: string,
 ): string {
-  return config?.prompt ? body : linkShas(plainDashes(body), metadata, sent)
+  return config?.prompt
+    ? body
+    : linkShas(plainDashes(orderSections(body)), metadata, sent)
 }
 
 function plainProse(text: string): string {
@@ -439,6 +520,14 @@ export async function summarize(
   // what the release's upgrade guide is.
   const guides =
     typeof config.summarizer === 'object' ? config.summarizer.migration : null
+
+  // Why an answer is refused, or null. The shape check applies under any
+  // prompt; the facts check only under the shipped one, whose rule it is,
+  // and against the commits that were sent rather than the whole payload,
+  // which would let the prompt's own words vouch for a span.
+  const judge = (body: string) =>
+    checkRelease(body) ?? (config.prompt ? null : checkAgainst(body, notes))
+
   const finish = (body: string, sent: string) =>
     withDiffLine(
       withMigration(
@@ -517,14 +606,14 @@ export async function summarize(
     // same model on the same input gave template echo once and a real body the
     // next time, so a second sample is worth one call. A second rejection is
     // said out loud rather than published.
-    let rejected = checkRelease(body)
+    let rejected = judge(body)
     if (rejected) {
       console.error(
         `cutver: ${summarizer.connector}: answer rejected, ${rejected}; asking once more`,
       )
       const again = await ask(summarizer, key, input)
       const second = again.error ? '' : extractRelease(again.text as string)
-      rejected = second ? checkRelease(second) : (again.error ?? 'empty')
+      rejected = second ? judge(second) : (again.error ?? 'empty')
       if (rejected)
         return {
           text: fallback,
@@ -590,14 +679,14 @@ export async function summarize(
     }
 
     // The same one more try as the connector path, for the same reason.
-    let rejected = checkRelease(text)
+    let rejected = judge(text)
     if (rejected) {
       console.error(
         `cutver: summarizer answer rejected, ${rejected}; asking once more`,
       )
       const again = await runShell(command, input)
       const second = again.ok ? extractRelease(again.out) : ''
-      rejected = second ? checkRelease(second) : `exited ${again.code}`
+      rejected = second ? judge(second) : `exited ${again.code}`
       if (rejected)
         return {
           text: fallback,

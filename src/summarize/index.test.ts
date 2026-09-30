@@ -2,12 +2,14 @@ import { afterAll, describe, expect, test } from 'bun:test'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import {
+  checkAgainst,
   checkRelease,
   COMMAND_ENV,
   DEFAULT_PROMPT,
   diffLineOf,
   extractRelease,
   linkShas,
+  orderSections,
   payload,
   plainDashes,
   summarize,
@@ -384,6 +386,17 @@ describe('extractRelease', () => {
     expect(extractRelease(answer)).not.toContain('Release part')
   })
 
+  test('a code span written against the closing tag keeps its backtick', () => {
+    // The tolerance above used to take any backtick beside a tag, so this
+    // lost its last one, and the span check could not see the command.
+    expect(
+      extractRelease('<release>- run `bakery --types && tsc -b`</release>'),
+    ).toBe('- run `bakery --types && tsc -b`')
+    expect(extractRelease('<release>`cmd` does x</release>')).toBe(
+      '`cmd` does x',
+    )
+  })
+
   test('a tag written as a code span still delimits the body', () => {
     // **Measured, three runs out of three.** The prompt names the tags in
     // backticks, so a model writes them back the same way — and matching the
@@ -448,13 +461,28 @@ describe('summarize', () => {
   })
 
   test('runs the command and takes its stdout', async () => {
-    const { text, note } = await summarize(
-      NOTES,
-      config({ summarizer: true }),
-      withCommand('tr a-z A-Z'),
+    // A command that transforms what it was sent in `<commits>`. This was
+    // `tr a-z A-Z` over the whole payload, which echoes the prompt too, and an
+    // echoed prompt is now refused: its code spans are in no commit.
+    const dir = mkdtempSync(`${tmpdir()}/cutver-upper-`).replaceAll('\\', '/')
+    writeFileSync(
+      `${dir}/upper.js`,
+      'const input = await Bun.stdin.text()\n' +
+        "const from = input.lastIndexOf('<commits>')\n" +
+        "const to = input.lastIndexOf('</commits>')\n" +
+        "console.log('<release>' + input.slice(from + 9, to).toUpperCase() + '</release>')\n",
     )
-    expect(text).toContain('A REAL BUG')
-    expect(note).toBe('release body summarised')
+    try {
+      const { text, note } = await summarize(
+        NOTES,
+        config({ summarizer: true }),
+        withCommand(`bun "${dir}/upper.js"`),
+      )
+      expect(text).toContain('A REAL BUG')
+      expect(note).toBe('release body summarised')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 
   test('sends the prompt ahead of the notes', async () => {
@@ -1059,5 +1087,142 @@ describe('withMigration', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
+  })
+})
+
+/**
+ * bakery's v2.0.2 page, written by 2.5.2 from one commit (f593ffb): well formed,
+ * and wrong. The commit is condensed to the sentences that matter; the answer
+ * is the model's, as published.
+ */
+const F593FFB =
+  'fix(core): an editor gives every app file its scope, through tsconfig.bakery.json\n\n' +
+  'A fresh clone has neither generated file, and tsc stops at TS6053, so\n' +
+  '`bakery --types` writes them without starting a server.\n\n' +
+  'The template, apps/starter and apps/example move to the new root. The\n' +
+  'typecheck script becomes `bakery --types && tsc -b`, because tsc -p on a\n' +
+  'root that claims nothing checks nothing and reports success.\n'
+
+const V202_ANSWER =
+  'This release updates the TypeScript configuration and editor setup for apps built with bakery.\n\n' +
+  '### Fixes\n- **core:** an editor gives every app file its scope, through tsconfig.bakery.json (f593ffb)\n\n' +
+  '### New Features\n- add `bakery --types` to write type definitions and check projects without starting a server (f593ffb)\n\n' +
+  '### Breaking Changes\n- update the typecheck script in package.json to run `bakery --types && tsc -b` (f593ffb)\n\n' +
+  '### Migration\n- Edit package.json to change the typecheck script to `bakery && tsc -b`'
+
+describe('checkAgainst', () => {
+  test('a command that is not in the commits is refused, by name', () => {
+    // Every word of it is in the commit. The flag is not, and without it
+    // `bakery` starts a production server.
+    expect(checkAgainst(V202_ANSWER, F593FFB)).toBe(
+      '`bakery && tsc -b` appears nowhere in the commits',
+    )
+  })
+
+  test('spans copied exactly pass', () => {
+    const faithful = V202_ANSWER.replace(
+      '`bakery && tsc -b`',
+      '`bakery --types && tsc -b`',
+    )
+    expect(checkAgainst(faithful, F593FFB)).toBeNull()
+  })
+
+  test('prose without spans, and code in a fence, are not its business', () => {
+    expect(checkAgainst('- a fix, with no code (abc1234)', F593FFB)).toBeNull()
+    expect(
+      checkAgainst('Run:\n```bash\nbun run migrate\n```', F593FFB),
+    ).toBeNull()
+  })
+})
+
+describe('orderSections', () => {
+  test("the v2.0.2 answer's order, put back", () => {
+    const out = orderSections(V202_ANSWER)
+    const headings = out.match(/^### .+$/gm)
+    expect(headings).toEqual([
+      '### Breaking Changes',
+      '### New Features',
+      '### Fixes',
+      '### Migration',
+    ])
+    // The sentence that opens it stays first, and no bullet is lost.
+    expect(out.startsWith('This release updates')).toBe(true)
+    expect(out.match(/^- /gm)).toHaveLength(4)
+  })
+
+  test('an unknown heading goes after the known ones and before Migration', () => {
+    const out = orderSections(
+      '### Migration\n- m\n\n### Extras\n- e\n\n### Fixes\n- f',
+    )
+    expect(out.match(/^### .+$/gm)).toEqual([
+      '### Fixes',
+      '### Extras',
+      '### Migration',
+    ])
+  })
+
+  test('a body already in order, or with no headings, is unchanged', () => {
+    const inOrder = 'Intro.\n\n### Breaking Changes\n- b\n\n### Fixes\n- f'
+    expect(orderSections(inOrder)).toBe(inOrder)
+    expect(orderSections('Just prose.')).toBe('Just prose.')
+  })
+})
+
+/** Through summarize: refused, asked again, then the notes as written. */
+describe('summarize, refusing an answer that states what the commits do not', () => {
+  const made: string[] = []
+  afterAll(() => {
+    for (const dir of made) rmSync(dir, { recursive: true, force: true })
+  })
+
+  function answers(first: string, then: string): string {
+    const dir = mkdtempSync(`${tmpdir()}/cutver-facts-`).replaceAll('\\', '/')
+    made.push(dir)
+    writeFileSync(
+      `${dir}/model.js`,
+      `const fs = require('fs')\n` +
+        `const f = ${JSON.stringify(`${dir}/count`)}\n` +
+        `let n = 0\ntry { n = Number(fs.readFileSync(f, 'utf8')) } catch {}\n` +
+        `fs.writeFileSync(f, String(n + 1))\n` +
+        `console.log(${JSON.stringify(`<release>`)} + (n === 0 ? ${JSON.stringify(first)} : ${JSON.stringify(then)}) + '</release>')\n`,
+    )
+    return `bun "${dir}/model.js"`
+  }
+
+  const FAITHFUL = V202_ANSWER.replace(
+    '`bakery && tsc -b`',
+    '`bakery --types && tsc -b`',
+  )
+
+  test('the wrong command is asked for again, and the second answer ships, in order', async () => {
+    const { text } = await summarize(
+      F593FFB,
+      config({ summarizer: true }),
+      withCommand(answers(V202_ANSWER, FAITHFUL)),
+    )
+    expect(text).not.toContain('`bakery && tsc -b`')
+    expect(text).toContain('`bakery --types && tsc -b`')
+    expect(text.indexOf('### Breaking Changes')).toBeLessThan(
+      text.indexOf('### Fixes'),
+    )
+  })
+
+  test('wrong twice, the notes go out as written, naming the span', async () => {
+    const { text, note } = await summarize(
+      F593FFB,
+      config({ summarizer: true }),
+      withCommand(answers(V202_ANSWER, V202_ANSWER)),
+    )
+    expect(text).toBe(F593FFB)
+    expect(note).toContain('`bakery && tsc -b` appears nowhere in the commits')
+  })
+
+  test('a custom prompt owns its content, so the facts check stands aside', async () => {
+    const { text } = await summarize(
+      F593FFB,
+      config({ summarizer: true, prompt: 'My own rules.' }),
+      withCommand(answers(V202_ANSWER, V202_ANSWER)),
+    )
+    expect(text).toContain('`bakery && tsc -b`')
   })
 })

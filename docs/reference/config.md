@@ -263,6 +263,14 @@ once more, and a second refusal publishes the notes as written, with the reason
 on stderr. Shas the model left unlinked are linked to their commits when the
 repository is on GitHub.
 
+**Every command, flag or path the answer puts in backticks has to appear,
+exactly, in the commits.** A summary once told readers to run `bakery && tsc -b`
+where the commit said `bakery --types && tsc -b`; without the flag, `bakery`
+starts a production server. An answer like that is refused the same way. The
+headings are also put back in the prompt's order, with Migration last. Both
+rules belong to the shipped prompt, so a config with its own `prompt:` keeps its
+answers as written.
+
 Every failure — missing key, wrong model, rate limit, timeout, empty answer —
 publishes the notes as written. Full detail in
 [Changelogs](../guides/changelog.md#summarising-the-release-body).
