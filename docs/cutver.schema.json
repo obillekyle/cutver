@@ -144,7 +144,7 @@
                         "type": "string",
                         "minLength": 1
                       },
-                      "description": "An upgrade guide per major version, as a repository path or a URL. When a summarized release has breaking changes and its major has a guide, its Migration section is one line linking it.",
+                      "description": "An upgrade guide per major version, as a repository path or a URL. When the major's first release (X.0.0, or a prerelease of it) is summarized with breaking changes, its Migration section is one line linking the guide.",
                       "examples": [
                         {
                           "2": "docs/getting-started/upgrading-to-2.md"

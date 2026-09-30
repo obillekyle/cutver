@@ -1058,6 +1058,20 @@ describe('withMigration', () => {
     expect(withMigration(BODY, GUIDES, null, META)).toBe(BODY)
   })
 
+  test("only the major's first release: a later one keeps its own section", () => {
+    // The guide covers the move into 2.0. bakery's 2.0.2 carried a real
+    // breaking change in a commit typed `fix` (routes moved into a new
+    // `api.json`), and "every breaking change above is in the upgrade guide"
+    // would have been false there: the 2.0 guide says nothing about it.
+    for (const later of ['v2.0.2', 'v2.1.0', '2.1.0-beta.0', 'v2.10.0'])
+      expect(withMigration(BODY, GUIDES, later, META), later).toBe(BODY)
+    // And the first release, with the prereleases that lead to it, gets it.
+    for (const first of ['v2.0.0', '2.0.0-alpha.3', 'v2.0.0-rc.5'])
+      expect(withMigration(BODY, GUIDES, first, META), first).toContain(
+        'upgrade guide',
+      )
+  })
+
   test('through summarize, on the command path, for the release it names', async () => {
     const dir = mkdtempSync(`${tmpdir()}/cutver-guide-`).replaceAll('\\', '/')
     writeFileSync(

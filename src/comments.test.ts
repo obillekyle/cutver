@@ -77,6 +77,9 @@ const EXTERNAL = new Set([
   'release.ts',
   'template.ts',
   'prompt.ts',
+  // A TypeScript project bakery 2.0.2 generates for an app's `api/` routes, named
+  // where its release page is the measured case for `migration`.
+  'api.json',
   // Words and formats quoted as examples rather than referenced as code.
   'domain', // "`main` is a substring of `domain`"
   'base-channel.n',

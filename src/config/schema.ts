@@ -325,6 +325,11 @@ export interface SummarizerConfig {
    * Keyed by major, not one value, so a guide for 2.0 can never be linked from
    * 3.0 by a config nobody remembered to change. A major with no entry keeps
    * the model's section as before.
+   *
+   * Applied to the major's first release only, X.0.0 and its prereleases,
+   * because a guide covers the move into a major. A later 2.x with a
+   * Breaking Changes heading (a commit typed `fix` that breaks something, or a
+   * version given by hand) is not covered by the 2.0 guide.
    */
   migration: Record<string, string> | null
 }

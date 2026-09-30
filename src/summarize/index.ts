@@ -398,8 +398,18 @@ export function withMigration(
 ): string {
   if (!guides || !version || !/^###\s+Breaking Changes\s*$/m.test(body))
     return body
-  const major = /^v?(\d+)\./.exec(version.trim())?.[1]
-  const guide = major === undefined ? undefined : guides[String(Number(major))]
+
+  // **The major's first release only: X.0.0, and the prereleases leading to
+  // it.** An upgrade guide covers the move into a major, and the sentence
+  // claims it covers "every breaking change above". A later release in the
+  // same major can still carry a Breaking Changes heading, from a commit typed
+  // `fix` that breaks something (bakery's 2.0.2 moved `api/` routes into a
+  // new `api.json`) or from a version given by hand, and the 2.0 guide says
+  // nothing about that change. Those keep the model's section, which the
+  // answer checks already hold to the commits.
+  const parts = /^v?(\d+)\.(\d+)\.(\d+)/.exec(version.trim())
+  if (!parts || parts[2] !== '0' || parts[3] !== '0') return body
+  const guide = guides[String(Number(parts[1]))]
   if (!guide) return body
 
   let where: string

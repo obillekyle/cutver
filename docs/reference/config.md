@@ -250,8 +250,14 @@ Every breaking change above, with what to write instead, is in the [upgrade guid
 
 A path is linked through `blob/HEAD`, so the link follows the default branch and
 shows the guide as it stands. Keyed by major, so a guide written for 2.0 is never
-linked from 3.0: a major with no entry keeps the model's section. Prereleases
-count as their major, so `2.0.0-rc.1` links the guide for 2.
+linked from 3.0: a major with no entry keeps the model's section.
+
+**Only the major's first release links it**: `2.0.0`, and the prereleases leading
+to it, such as `2.0.0-rc.1`. The guide covers the move into 2.0, and the line
+says it covers every breaking change above it. A later `2.x` can still carry a
+breaking change, from a commit typed `fix` that breaks something or a version
+given by hand, and the 2.0 guide says nothing about that one. Those releases
+keep the model's own section.
 
 On a release of 134 commits the model's own Migration section invented a step
 that no commit and no guide contained, while the rest of the summary was sound.
