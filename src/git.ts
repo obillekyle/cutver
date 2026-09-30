@@ -320,10 +320,10 @@ export async function remoteUrl(root: string): Promise<string | null> {
  * `rev-parse v1.2.0` answers with *that*: every release page's compare link
  * was built from two tag objects, and GitHub's compare answers 404 for them.
  * Measured on 2026-09-30, 33 of 33 links on bakery's pages were broken, and
- * cutver's own v2.5.0 link too (`d981cb9...72c423b`, the tag objects of
- * v2.4.11 and v2.5.0, whose commits are `32cc171` and `846bb40`). Lightweight
- * tags hid it, since for those the tag is the commit. `^{commit}` is a no-op
- * on a commit, a branch or `HEAD`.
+ * all 41 of cutver's own: v2.5.0's compared d981cb9...72c423b, the tag
+ * objects of v2.4.11 and v2.5.0, whose commits are 32cc171 and 846bb40.
+ * Lightweight tags hid it, since for those the tag is the commit. `^{commit}`
+ * is a no-op on a commit, a branch or `HEAD`.
  */
 export async function shortSha(
   rev: string,
