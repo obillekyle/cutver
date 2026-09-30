@@ -2,6 +2,7 @@ import { afterAll, describe, expect, test } from 'bun:test'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { compileReleases, sectionOrCompile } from './compile'
+import { shortSha } from '../git'
 import { write } from '../runtime'
 
 /**
@@ -263,6 +264,28 @@ describe('the range a tag compiles from', () => {
    * A first release has no lower bound. `AlloyFS/http` — five commits, one
    * `feat:`, and it is the root — is the shape that exposed it.
    */
+  test('an annotated tag names its commit, not itself', async () => {
+    // Every compare link was built from `rev-parse <tag>`, which for an
+    // annotated tag is the tag object, and GitHub's compare 404s on those:
+    // 33 of 33 on bakery's pages. Lightweight tags, which every other fixture
+    // here uses, hid it.
+    const { dir, git } = await build([['feat: first'], ['fix: second']])
+    await git('tag', '-a', 'v1.0.0', '-m', 'v1.0.0', 'HEAD~1')
+    await git('tag', '-a', 'v1.1.0', '-m', 'v1.1.0')
+
+    const read = async (...args: string[]) => {
+      const p = Bun.spawn(['git', ...args], { cwd: dir, stdout: 'pipe' })
+      return (await new Response(p.stdout).text()).trim()
+    }
+    const commit = await read('rev-parse', '--short', 'v1.1.0^{commit}')
+    const object = await read('rev-parse', '--short', 'v1.1.0')
+    expect(object).not.toBe(commit)
+
+    expect(await shortSha('v1.1.0', dir)).toBe(commit)
+    // And a plain commit or HEAD is unchanged by the peel.
+    expect(await shortSha('HEAD', dir)).toBe(commit)
+  })
+
   test('the first release of all contains its root commit', async () => {
     const { dir } = await build([['feat: the very first thing', 'v0.1.0']])
 
