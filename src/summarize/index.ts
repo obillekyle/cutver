@@ -201,6 +201,53 @@ export function extractRelease(text: string): string {
 }
 
 /**
+ * The default prompt's dash rule, applied to what came back.
+ *
+ * **Enforced, because asking was measured not to be enough.** bakery's pages
+ * carried an em dash on v1.0.0 and on v2.0.0-alpha.0, both in a bullet that
+ * copied a commit subject verbatim ("Field, a namespaced column vocabulary —
+ * and DISTINCT", "defineLayout() — client-side navigation for catch-all
+ * pages"). Commit subjects are exempt from any house style and full of dashes,
+ * and a model told to copy them faithfully does exactly that. The prompt now
+ * says to rewrite the punctuation; this makes the rule hold when a model does
+ * not.
+ *
+ * Code keeps its bytes: fenced blocks and inline spans pass through untouched.
+ * In prose, a range of numbers takes a hyphen, a dash opening a line or
+ * following other punctuation is dropped, and any other dash becomes the comma
+ * it was standing in for. That reads right for both measured cases, and the
+ * tidy-up afterwards removes the ", ." a dash before a full stop would leave.
+ */
+export function plainDashes(text: string): string {
+  return text
+    .split(/(```[\s\S]*?```|`[^`\n]*`)/)
+    .map((part, i) => (i % 2 ? part : plainProse(part)))
+    .join('')
+}
+
+/**
+ * The shipped prompt's rules, where the shipped prompt was used.
+ *
+ * A config that brings its own `prompt:` brings its own register, and
+ * enforcing a rule it never asked for would be cutver overruling the
+ * repository. Only the model's answer passes through here; the fallback is the
+ * changelog as written, and stays exactly that.
+ */
+function ownRules(body: string, config: ChangelogConfig | null): string {
+  return config?.prompt ? body : plainDashes(body)
+}
+
+function plainProse(text: string): string {
+  return text
+    .replace(/(\d)[ \t]*[–—]+[ \t]*(\d)/g, '$1-$2')
+    .replace(/^([ \t]*(?:[-*+][ \t]+)?)[–—]+[ \t]*/gm, '$1')
+    .replace(/([:;,.!?(](?:\*\*|__|\*|_)?)[ \t]*[–—]+[ \t]*/g, '$1 ')
+    .replace(/[ \t]*[–—]+[ \t]*/g, ', ')
+    .replace(/,[ \t]*([,.;:!?)])/g, '$1')
+    .replace(/\([ \t]+/g, '(')
+}
+
+/**
  * Where the command comes from, and why it is not the config file.
  *
  * A command in `cutver.yml` is a command in a tracked file, and `gh pr
@@ -296,7 +343,7 @@ export async function summarize(
         note: `${summarizer.connector}: empty release body — notes used as written`,
       }
     return {
-      text: withDiffLine(body, metadata),
+      text: withDiffLine(ownRules(body, config), metadata),
       note: `release body summarised by ${summarizer.model}`,
     }
   }
@@ -351,7 +398,7 @@ export async function summarize(
       }
     }
     return {
-      text: withDiffLine(text, metadata),
+      text: withDiffLine(ownRules(text, config), metadata),
       note: 'release body summarised',
     }
   } catch (e) {
