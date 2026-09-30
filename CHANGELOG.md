@@ -8,9 +8,59 @@ is only ever as good as the commits — which is the point.
 explanation in the commit body, where it is also visible in `git log`, in a
 pull request, and on the release page.
 
+## [2.5.0] — 2026-09-30
+
+<sub>diff: [d981cb9...9513cd1](https://github.com/obillekyle/cutver/compare/d981cb9...9513cd1)</sub>
+
+### New Features
+
+- **init:** version.yml takes a version by hand, for a graduation ([f71612a](https://github.com/obillekyle/cutver/commit/f71612a))
+
+    Graduating a prerelease line to stable takes an explicit version whenever the line is merged as it stands: every commit on it already shipped in a prerelease, so the push to the stable branch measures nothing, reports "nothing to release", and exits 0 under `--if-needed`. The generated version.yml had no way to pass one. Measured on bakery: merging `2.0.0-rc` into main cut nothing, and 2.0.0 was staged by hand in a worktree.
+
+- **notes:** --page writes the release page by the page rules ([d9fa607](https://github.com/obillekyle/cutver/commit/d9fa607))
+
+    The generated release job created its page with `gh release create ... || echo "already exists, updating its notes"` and then ran `gh release edit --notes-file` unconditionally. So every run replaced whatever the page said: a re-run after a failed leg overwrote a page somebody had since written by hand, and a draft written ahead of the tag (bakery's hand-written v2.0.0, for one) either had its body replaced or, when `create` ran first, got a second, published release beside it. `changelog pages` had the rule that prevents both, authored bodies left alone and drafts untouched, and the release job did not use it.
+
+### Fixes
+
+- **doctor:** a summarizer CI cannot use is a warning, not "nothing wrong" ([9513cd1](https://github.com/obillekyle/cutver/commit/9513cd1))
+
+    Run against bakery, both 2.2.0 and 2.4.11 printed "workflows in step with the config", "summariser gemini, gemini-3.5-flash-lite, key present" and "nothing wrong here". bakery had a `summarizer:` mapping, the key stored as a GitHub secret, and a hand-written publish.yml whose one job publishes to npm. Nothing in CI wrote a release page, fourteen tags went out without one, and the secret had never been read. Three separate holes let that through.
+
+- **summarize:** no em or en dash on a summarized page, enforced ([e097791](https://github.com/obillekyle/cutver/commit/e097791))
+
+    Counted over bakery's release pages: one em dash each on v1.0.0 (562 words) and v2.0.0-alpha.0 (288 words), both inside a bullet that copied a commit subject verbatim: "Field, a namespaced column vocabulary [em dash] and DISTINCT" (4336382) and "defineLayout() [em dash] client-side navigation for catch-all pages" (4fc2d22). alpha.0's opening sentence, the model's own prose, said "build behaviour". Commit subjects are exempt from any house style and full of dashes, so this recurs on every release that quotes one.
+
+- **changelog:** a draft page is left alone, never duplicated ([33732a3](https://github.com/obillekyle/cutver/commit/33732a3))
+
+    `updateRelease` looked a page up at `/releases/tags/{tag}`, which answers for published releases only. A tag whose page was a draft read as having none, fell through to `createRelease`, and gained a second, published release beside the draft.
+
+- **init:** publish every workspace package, not the root alone ([c5960e2](https://github.com/obillekyle/cutver/commit/c5960e2))
+
+    The generated npm publish read `require("./package.json").name`, packed the root, and shipped one tarball. On a workspace that is the worst available outcome wearing a green run: `stage` writes the version into the root and every member, the publish sends the root, and every member's new number exists nowhere but git. Measured on a two-member fixture — preflight enumerated all three packages correctly, and the workflow it generated for that same repository packed `booknotes-0.3.0.tgz`, the whole application.
+
+- **adapters:** root last means last of the writes too ([ad809ea](https://github.com/obillekyle/cutver/commit/ad809ea))
+
+    The deferred-write pass already moves every read, parse and refusal in front of the first byte, and its comment is honest that this is not atomicity: a failure during the flush still leaves part of it written. What the flush order forfeited was the one guarantee that survives without atomicity.
+
+- **stage:** an explicit version says the notable part out loud ([ba73164](https://github.com/obillekyle/cutver/commit/ba73164))
+
+    An explicit version is the documented escape hatch — the branch-promise refusal names it as the way through — and it stays ungated. What changes is the silence around it. Three shapes, each measured on a fixture:
+
+    Staging a downgrade said nothing. `stage 0.2.0` at 0.3.1, with v0.3.1 in the
+    tag list, wrote 0.3.1 -> 0.2.0 and exited 0 without a word anywhere saying
+    "backwards". The tag-collision refusal only fires on an exact tag match, so
+    going past an existing tag in the wrong direction was indistinguishable from
+    an ordinary release.
+
+- **adapters:** say when a workspace pattern matches no manifest ([365ba0a](https://github.com/obillekyle/cutver/commit/365ba0a))
+
+    A declared workspace glob that expands to nothing was silent, and silence there is a wrong release rather than a failed one: the version goes into the manifests that were found, the run exits 0, and the member nobody matched keeps its old number. That is the same shape as the bun.lock omission this adapter already carries a warning about — every local gate green, and the registry wrong.
+
 ## [2.4.11] — 2026-08-26
 
-<sub>diff: [3bfbb38...42d8366](https://github.com/obillekyle/cutver/compare/3bfbb38...42d8366)</sub>
+<sub>diff: [3bfbb38...d981cb9](https://github.com/obillekyle/cutver/compare/3bfbb38...d981cb9)</sub>
 
 ### Fixes
 
@@ -107,15 +157,5 @@ pull request, and on the release page.
 - **stage:** refuse to re-release what a stable tag already shipped ([c246388](https://github.com/obillekyle/cutver/commit/c246388))
 
     A version is measured from the last tag reachable from HEAD, and the bump commit a release leaves behind lives on the branch that cut it. So a channel branch that has not merged from the stable line cannot see its tag, counts every commit that release already shipped a second time, and cuts a prerelease whose notes repeat the stable one's.
-
-## [2.4.2] — 2026-08-18
-
-<sub>diff: [1f8cc5e...b2f8190](https://github.com/obillekyle/cutver/compare/1f8cc5e...b2f8190)</sub>
-
-### Fixes
-
-- **stage:** let a channel cut a prerelease of 1.0.0 from 0.x ([103389a](https://github.com/obillekyle/cutver/commit/103389a))
-
-    The guard that stops a 0.x project auto-shipping 1.0.0 matched the prerelease too, so a project at 0.x with a channel branch could not release at all. Seen on alloyfs: at 0.6.0 with a `feat(config)!` on its `alpha` branch, every push failed on `0.6.0 -> 1.0.0-alpha.0`, and the only escape the message offered was `cutver stage 1.0.0` — the stable release the guard exists to stop being cut unattended.
 
 Older releases are in the git tags and on the releases page.
