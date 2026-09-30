@@ -1,5 +1,5 @@
 import { expect, test, describe } from 'bun:test'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import manifest from '../../package.json' with { type: 'json' }
 
@@ -1089,6 +1089,129 @@ describe('cutver doctor, on a key only this machine has', () => {
       // The file is read for its name. The value stays in it.
       expect(out).not.toContain('a-value-that-must-never-print')
 
+      rmSync(dir, { recursive: true, force: true })
+    },
+    SLOW,
+  )
+})
+
+/**
+ * What `notes` sends a summarizer, and what it puts back.
+ *
+ * bakery's v2.0.0 sent 211 KB of commit bodies and got template echo and JSON
+ * back, and the same range sent as its 40 KB compiled section came back clean,
+ * but lost its diff line: with `with_body: false` there was no metadata to
+ * restore it from. Driven through `cutver notes` with a summarizer that
+ * answers with whatever it was sent in `<commits>`, minus any diff line, the
+ * way a model told not to write one behaves.
+ */
+describe('cutver notes, sending a summarizer the right amount', () => {
+  const PADDING = 'PADDING-FROM-A-SECOND-PARAGRAPH'
+
+  async function repo(
+    bodyBytes: number,
+    config: string,
+  ): Promise<{ dir: string; model: string }> {
+    const dir = mkdtempSync(`${tmpdir()}/cutver-size-`).replaceAll('\\', '/')
+    const git = async (...args: string[]) => {
+      const p = Bun.spawn(['git', ...args], {
+        cwd: dir,
+        env: GIT_ENV,
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      if ((await p.exited) !== 0)
+        throw new Error(
+          `git ${args.join(' ')}: ${await new Response(p.stderr).text()}`,
+        )
+    }
+
+    await git('init', '-q', '-b', 'main')
+    await Bun.write(`${dir}/package.json`, '{"name":"p","version":"1.0.0"}')
+    await Bun.write(`${dir}/cutver.yml`, config)
+    await git('add', '-A')
+    await git('commit', '-qm', 'chore: base')
+    await git('tag', 'v1.0.0')
+
+    // Three fixes, each with a second paragraph: full bodies carry it, the
+    // compiled section (subject and first paragraph) does not.
+    const second = `${PADDING} ${'x'.repeat(Math.max(0, bodyBytes))}`
+    for (const n of [1, 2, 3]) {
+      await Bun.write(`${dir}/f${n}.txt`, String(n))
+      await git('add', '-A')
+      await git(
+        'commit',
+        '-qm',
+        `fix: repair number ${n}\n\nFirst paragraph.\n\n${second}`,
+      )
+    }
+    await git('tag', 'v1.0.1')
+
+    writeFileSync(
+      `${dir}/model.js`,
+      'const input = await Bun.stdin.text()\n' +
+        "const from = input.lastIndexOf('<commits>')\n" +
+        "const to = input.lastIndexOf('</commits>')\n" +
+        "const sent = from < 0 || to < from ? '' : input.slice(from + 9, to)\n" +
+        "const kept = sent.split('\\n').filter(l => !l.includes('diff:')).join('\\n').trim()\n" +
+        "console.log('<release>' + kept + '</release>')\n",
+    )
+    return { dir, model: `bun "${dir}/model.js"` }
+  }
+
+  async function notes(dir: string, model: string) {
+    const proc = Bun.spawn(['bun', ENTRY, 'notes', 'v1.0.1', '--cwd', dir], {
+      env: { ...process.env, CUTVER_SUMMARIZE: model },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    const [out, err] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+    ])
+    return { out, err, code: await proc.exited }
+  }
+
+  const COMMAND = 'schema: 1\nchangelog:\n  file: false\n  summarizer: true\n'
+
+  test(
+    'a small range sends full bodies',
+    async () => {
+      const { dir, model } = await repo(100, COMMAND)
+      const { out, err } = await notes(dir, model)
+      expect(out).toContain(PADDING)
+      expect(err).not.toContain('compiled section instead')
+      rmSync(dir, { recursive: true, force: true })
+    },
+    SLOW,
+  )
+
+  test(
+    'past the limit, the compiled section goes instead, and says so',
+    async () => {
+      // Three bodies of 30 KB: 90 KB, over the 64 KB limit.
+      const { dir, model } = await repo(30 * 1024, COMMAND)
+      const { out, err } = await notes(dir, model)
+      expect(out).not.toContain(PADDING)
+      expect(out).toContain('repair number 2')
+      expect(err).toContain('sending the compiled section instead')
+      rmSync(dir, { recursive: true, force: true })
+    },
+    SLOW,
+  )
+
+  test(
+    'with_body: false keeps the diff line',
+    async () => {
+      // A provider is named so `with_body` has a home, and the command in the
+      // environment wins over it, so nothing leaves the machine.
+      const config =
+        'schema: 1\nchangelog:\n  file: false\n  summarizer:\n' +
+        '    connector: gemini\n    model: gemini-3.5-flash-lite\n    with_body: false\n'
+      const { dir, model } = await repo(100, config)
+      const { out } = await notes(dir, model)
+      expect(out.trimStart()).toMatch(/^<sub>diff:/)
+      expect(out).not.toContain(PADDING)
       rmSync(dir, { recursive: true, force: true })
     },
     SLOW,

@@ -2,9 +2,12 @@ import { afterAll, describe, expect, test } from 'bun:test'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import {
+  checkRelease,
   COMMAND_ENV,
   DEFAULT_PROMPT,
+  diffLineOf,
   extractRelease,
+  linkShas,
   payload,
   plainDashes,
   summarize,
@@ -531,13 +534,31 @@ describe('summarize', () => {
     })
 
     test('a working summariser reads the source, not the fallback', async () => {
-      const { text } = await summarize(
-        SOURCE,
-        config({ summarizer: true }),
-        withCommand('cat'),
-        PROSE,
+      // A model that answers with what it was sent in `<commits>`. This used
+      // to be `cat`, which echoes the whole payload, prompt and Shape template
+      // included, and that is now refused, correctly: it is the template echo
+      // bakery's v2.0.0 published as "summarised". The *last* `<commits>`,
+      // because the prompt names the tag twice in its own rules.
+      const dir = mkdtempSync(`${tmpdir()}/cutver-echo-`).replaceAll('\\', '/')
+      writeFileSync(
+        `${dir}/echo.js`,
+        'const input = await Bun.stdin.text()\n' +
+          "const from = input.lastIndexOf('<commits>')\n" +
+          "const to = input.lastIndexOf('</commits>')\n" +
+          "const sent = from < 0 || to < from ? '' : input.slice(from + 9, to).trim()\n" +
+          "console.log('<release>' + sent + '</release>')\n",
       )
-      expect(text).toContain('Three.')
+      try {
+        const { text } = await summarize(
+          SOURCE,
+          config({ summarizer: true }),
+          withCommand(`bun "${dir}/echo.js"`),
+          PROSE,
+        )
+        expect(text).toContain('Three.')
+      } finally {
+        rmSync(dir, { recursive: true, force: true })
+      }
     })
 
     test('one argument still means one string', async () => {
@@ -797,5 +818,142 @@ describe('summarize, enforcing the default prompt', () => {
       withCommand('false'),
     )
     expect(text).toBe(written)
+  })
+})
+
+/**
+ * An answer that is not a release body, refused rather than published.
+ *
+ * The shapes are the ones bakery's v2.0.0 produced (134 commits, 211 KB of
+ * bodies), both reported "summarised" by 2.5.1.
+ */
+describe('checkRelease', () => {
+  test("the prompt's own template, echoed back", () => {
+    const run1 =
+      '[\n  {\n    "slug": "release-body",\n    "status": "complete"\n  }\n]\n' +
+      '```\n```\n### <heading>\n- **<scope>:** <the change, one line> (<sha>)\n'
+    expect(checkRelease(run1)).toBe("it echoed the prompt's template")
+  })
+
+  test('a real body behind a JSON preamble', () => {
+    const run2 =
+      '["3d90fe8...6053234", "Breaking Changes", "New Features"]\n```\n```\n' +
+      'Bakery 2.0.0 is a major release.\n\n### Fixes\n- a fix (abc1234)\n'
+    expect(checkRelease(run2)).toBe('it opened with JSON')
+  })
+
+  test('an empty fence pair anywhere', () => {
+    expect(
+      checkRelease('A release.\n\n```json\n```\n\n### Fixes\n- x (abc1234)'),
+    ).toBe('it carried an empty code fence')
+  })
+
+  test('real bodies pass, including the ones that look close', () => {
+    // The clean run on the same range, a quoted command, and a first line
+    // that is a markdown link rather than JSON.
+    for (const body of [
+      'This release closes the dashboard.\n\n### Fixes\n- **vue:** a guard fails closed (55e1838)',
+      'A release.\n\n### Migration\n- Run:\n```bash\nbun run migrate\n```',
+      '[Upgrade guide](https://example.invalid/upgrade) first.\n\n### Fixes\n- x (abc1234)',
+      '<sub>diff: [a...b](https://github.com/o/r/compare/a...b)</sub>\n\nA release.',
+    ])
+      expect(checkRelease(body), body).toBeNull()
+  })
+})
+
+describe('diffLineOf', () => {
+  test("a section's first line, only when it is the diff line", () => {
+    const line =
+      '<sub>diff: [a1...b2](https://github.com/o/r/compare/a1...b2)</sub>'
+    expect(diffLineOf(`${line}\n\n### Fixes\n- x`)).toBe(line)
+    expect(diffLineOf('### Fixes\n- x')).toBeNull()
+    expect(diffLineOf('')).toBeNull()
+  })
+})
+
+/** Shas linked by cutver, because a model was measured dropping all 91. */
+describe('linkShas', () => {
+  const META =
+    '<sub>diff: [a1...b2](https://github.com/o/r/compare/a1...b2)</sub>'
+  const SENT = 'sha: 55e1838\nsha: 0e4b2a9\n'
+
+  test('every bare sha that was sent, linked to its commit', () => {
+    expect(linkShas('- a fix (55e1838)\n- another (0e4b2a9)', META, SENT)).toBe(
+      '- a fix ([55e1838](https://github.com/o/r/commit/55e1838))\n' +
+        '- another ([0e4b2a9](https://github.com/o/r/commit/0e4b2a9))',
+    )
+  })
+
+  test('a sha that was never sent stays text', () => {
+    expect(linkShas('- made up (deadbee)', META, SENT)).toBe(
+      '- made up (deadbee)',
+    )
+  })
+
+  test('an already linked sha and code are left alone', () => {
+    const linked = '- x ([55e1838](https://github.com/o/r/commit/55e1838))'
+    expect(linkShas(linked, META, SENT)).toBe(linked)
+    expect(linkShas('run `git show (55e1838)`', META, SENT)).toBe(
+      'run `git show (55e1838)`',
+    )
+  })
+
+  test('no GitHub compare link, no links', () => {
+    expect(linkShas('- a fix (55e1838)', null, SENT)).toBe('- a fix (55e1838)')
+    expect(linkShas('- a fix (55e1838)', 'diff: a1...b2', SENT)).toBe(
+      '- a fix (55e1838)',
+    )
+  })
+})
+
+/**
+ * One more try on a rejected answer, then the notes as written.
+ *
+ * Driven through the command path with a script that counts its runs in a
+ * file, so the first answer and the second can differ the way the model's did.
+ */
+describe('summarize, refusing an answer that is not a body', () => {
+  const made: string[] = []
+  afterAll(() => {
+    for (const dir of made) rmSync(dir, { recursive: true, force: true })
+  })
+
+  const TEMPLATE =
+    '<release>### <heading>\n- **<scope>:** <the change, one line> (<sha>)</release>'
+  const GOOD = '<release>### Fixes\n\n- a real fix (abc1234)</release>'
+
+  function answers(first: string, then: string): string {
+    const dir = mkdtempSync(`${tmpdir()}/cutver-retry-`).replaceAll('\\', '/')
+    made.push(dir)
+    writeFileSync(
+      `${dir}/model.js`,
+      `const fs = require('fs')\n` +
+        `const f = ${JSON.stringify(`${dir}/count`)}\n` +
+        `let n = 0\ntry { n = Number(fs.readFileSync(f, 'utf8')) } catch {}\n` +
+        `fs.writeFileSync(f, String(n + 1))\n` +
+        `console.log(n === 0 ? ${JSON.stringify(first)} : ${JSON.stringify(then)})\n`,
+    )
+    return `bun "${dir}/model.js"`
+  }
+
+  test('a template echo is retried, and the second answer is used', async () => {
+    const { text, note } = await summarize(
+      NOTES,
+      config({ summarizer: true }),
+      withCommand(answers(TEMPLATE, GOOD)),
+    )
+    expect(text).toBe('### Fixes\n\n- a real fix (abc1234)')
+    expect(note).toBe('release body summarised')
+  })
+
+  test('rejected twice, the notes go out as written, and say why', async () => {
+    const { text, note } = await summarize(
+      NOTES,
+      config({ summarizer: true }),
+      withCommand(answers(TEMPLATE, TEMPLATE)),
+    )
+    expect(text).toBe(NOTES)
+    expect(note).toContain('rejected twice')
+    expect(note).toContain("echoed the prompt's template")
   })
 })

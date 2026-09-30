@@ -49,7 +49,7 @@ import {
 } from '../init'
 import { plan, PlanRefusal } from '../plan'
 import { platformAdvice, probeTargets } from '../platforms'
-import { summarize } from '../summarize'
+import { diffLineOf, FULL_BODIES_LIMIT, summarize } from '../summarize'
 import {
   die,
   parse,
@@ -301,12 +301,25 @@ export async function runNotes(argv: string[]): Promise<void> {
       ? await fullBodies(root, first, second, config)
       : null
 
+  // **Too many bodies, and the section goes instead.** See `FULL_BODIES_LIMIT`
+  // for the measurement: bakery's v2.0.0 sent 211 KB of bodies and got template
+  // echo back, and the same range as its compiled section came back clean.
+  const size = raw ? Buffer.byteLength(raw.commits) : 0
+  const bodies = raw && size <= FULL_BODIES_LIMIT ? raw.commits : null
+  if (raw && !bodies)
+    console.error(
+      `cutver: ${Math.round(size / 1024)} KB of commit bodies is more than a model ` +
+        `summarizes reliably (${FULL_BODIES_LIMIT / 1024} KB); sending the compiled section instead`,
+    )
+
+  // The diff line comes from the bodies' metadata, or from the section's own
+  // first line when the section is what is sent.
   const { text, note } = await summarize(
-    raw?.commits ?? body,
+    bodies ?? body,
     config.changelog,
     env,
     body,
-    raw?.metadata ?? null,
+    raw?.metadata ?? diffLineOf(body),
   )
   if (note) console.error(`cutver: ${note}`)
   console.log(text)
@@ -874,8 +887,7 @@ async function overwriteReleases(
         // `<commits>` — and now it is told not to write one at all, because
         // cutver restores it. Restoring needs it *passed*: without this the
         // page came out with no footnote at all.
-        const head = section.split('\n')[0] ?? ''
-        const metadata = /^\s*(?:<sub>)?\s*diff:/i.test(head) ? head : null
+        const metadata = diffLineOf(section)
 
         const summary = await summarize(
           section,

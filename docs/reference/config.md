@@ -219,8 +219,19 @@ On by default, and it is what lets one commit become several bullets — the
 changes after the first live in the paragraphs a rendered section drops. `false`
 is cheaper and enough for a project whose bodies are a line each.
 
+**Past 64 KB of commit bodies, the compiled section is sent instead**, and
+`notes` says so. A release of 134 commits sent 211 KB of bodies and came back
+as the prompt's own template; the same release sent as its 40 KB section came
+back clean. Either way the page keeps its diff line.
+
 `CUTVER_SUMMARIZE` in the environment still names any command that reads
 markdown on stdin and writes it on stdout, and still wins when both are set.
+
+**An answer that is not a release body is refused.** One that echoes the
+prompt's template, opens with JSON, or carries an empty code fence is asked for
+once more, and a second refusal publishes the notes as written, with the reason
+on stderr. Shas the model left unlinked are linked to their commits when the
+repository is on GitHub.
 
 Every failure — missing key, wrong model, rate limit, timeout, empty answer —
 publishes the notes as written. Full detail in

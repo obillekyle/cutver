@@ -201,6 +201,103 @@ export function extractRelease(text: string): string {
 }
 
 /**
+ * Why an extracted `<release>` is not a release body, or `null` when it is.
+ *
+ * **Measured on bakery's v2.0.0**, 134 commits with 211 KB of commit bodies
+ * sent to gemini-3.5-flash-lite. One answer was a JSON fragment, an empty
+ * fence pair, and then the prompt's own Shape template, `### <heading>` and
+ * `- **<scope>:** <the change, one line> (<sha>)`. Another opened a real body
+ * with a JSON array of the heading names and an empty fence pair. Both were
+ * reported "summarised", because the only check was that the text was not
+ * empty.
+ *
+ * Deliberately narrow: each rule is a shape no real body has. A placeholder is
+ * the template echoed back, JSON ahead of the first line of prose is a
+ * malformed answer, and an empty fence pair is debris. A fence with something
+ * inside it is allowed, since a body may quote a command.
+ */
+export function checkRelease(body: string): string | null {
+  if (
+    /<(?:heading|scope|sha|the change[^>]*|one or two sentences[^>]*)>/.test(
+      body,
+    )
+  )
+    return "it echoed the prompt's template"
+
+  const first = body
+    .split('\n')
+    .map(line => line.trim())
+    .find(line => line && !/^(?:<sub>)?\s*diff:/i.test(line))
+  if (first && /^\[\s*(?:\{|"|\[|$)|^\{\s*(?:"|$)/.test(first))
+    return 'it opened with JSON'
+
+  if (/^[ \t]*```[^\n]*\n[ \t]*```[ \t]*$/m.test(body))
+    return 'it carried an empty code fence'
+
+  return null
+}
+
+/**
+ * The `diff:` line a compiled section opens with, or `null` when it has none.
+ *
+ * The summarizer is told not to write one, because cutver puts it back, so
+ * whatever is sent must say what to put back. Full bodies carry it as
+ * metadata. The section carries it as its first line, and `notes` with
+ * `with_body: false` used to pass nothing at all, so the page lost its link.
+ */
+export function diffLineOf(section: string): string | null {
+  const head = section.split('\n')[0] ?? ''
+  return /^\s*(?:<sub>)?\s*diff:/i.test(head) ? head : null
+}
+
+/**
+ * Past this many bytes of commit bodies, the compiled section is sent instead.
+ *
+ * **Placed between two measurements, not derived.** Full bodies summarized
+ * cleanly on every release that sent them, the largest being cutver's own
+ * v2.2.0 at 22 KB. bakery's v2.0.0 sent 211 KB, and two runs of three came
+ * back as template echo and JSON debris. The same range as a 40 KB compiled
+ * section came back clean. 64 KB sits about three times above the one and
+ * three times below the other. `checkRelease` catches what gets through
+ * anyway.
+ */
+export const FULL_BODIES_LIMIT = 64 * 1024
+
+/**
+ * Every bare sha the model wrote, linked to its commit.
+ *
+ * The prompt asks for links, and on bakery's v2.0.0 one answer linked 0 of 91.
+ * A formatting rule a model can drop is applied here instead, only to shas
+ * that appear in what was sent, so a hex word the model made up stays text.
+ * The repository comes from the compare URL in `metadata`. Without one,
+ * nothing is linked, the same choice `diffLine` makes for a host that is not
+ * GitHub.
+ */
+export function linkShas(
+  body: string,
+  metadata: string | null,
+  sent: string,
+): string {
+  const repo = /https:\/\/github\.com\/([^/\s)]+\/[^/\s)]+)\/compare\//.exec(
+    metadata ?? '',
+  )?.[1]
+  if (!repo) return body
+
+  return body
+    .split(/(```[\s\S]*?```|`[^`\n]*`)/)
+    .map((part, i) =>
+      i % 2
+        ? part
+        : part.replace(/\(([0-9a-f]{7,40})\)/g, (whole, sha: string) =>
+            sent.includes(sha)
+              ? `([${sha}](https://github.com/${repo}/commit/${sha}))`
+              : whole,
+          ),
+    )
+    .join('')
+}
+
+/**
  * The default prompt's dash rule, applied to what came back.
  *
  * **Enforced, because asking was measured not to be enough.** bakery's pages
@@ -233,8 +330,13 @@ export function plainDashes(text: string): string {
  * repository. Only the model's answer passes through here; the fallback is the
  * changelog as written, and stays exactly that.
  */
-function ownRules(body: string, config: ChangelogConfig | null): string {
-  return config?.prompt ? body : plainDashes(body)
+function ownRules(
+  body: string,
+  config: ChangelogConfig | null,
+  metadata: string | null,
+  sent: string,
+): string {
+  return config?.prompt ? body : linkShas(plainDashes(body), metadata, sent)
 }
 
 function plainProse(text: string): string {
@@ -336,14 +438,35 @@ export async function summarize(
       }
 
     // The reasoning pass is working-out, not prose. Only `<release>` ships.
-    const body = extractRelease(text as string)
+    let body = extractRelease(text as string)
     if (!body)
       return {
         text: fallback,
         note: `${summarizer.connector}: empty release body — notes used as written`,
       }
+
+    // **A rejected answer gets one more try, then the notes as written.** The
+    // same model on the same input gave template echo once and a real body the
+    // next time, so a second sample is worth one call. A second rejection is
+    // said out loud rather than published.
+    let rejected = checkRelease(body)
+    if (rejected) {
+      console.error(
+        `cutver: ${summarizer.connector}: answer rejected, ${rejected}; asking once more`,
+      )
+      const again = await ask(summarizer, key, input)
+      const second = again.error ? '' : extractRelease(again.text as string)
+      rejected = second ? checkRelease(second) : (again.error ?? 'empty')
+      if (rejected)
+        return {
+          text: fallback,
+          note: `${summarizer.connector}: answer rejected twice (${rejected}); notes used as written`,
+        }
+      body = second
+    }
+
     return {
-      text: withDiffLine(ownRules(body, config), metadata),
+      text: withDiffLine(ownRules(body, config, metadata, input), metadata),
       note: `release body summarised by ${summarizer.model}`,
     }
   }
@@ -384,7 +507,7 @@ export async function summarize(
     // enforces and anyone can see and change.
     const result = await runShell(command, input)
 
-    const text = extractRelease(result.out)
+    let text = extractRelease(result.out)
     if (!result.ok) {
       return {
         text: fallback,
@@ -397,8 +520,26 @@ export async function summarize(
         note: 'summariser returned nothing — notes used as written',
       }
     }
+
+    // The same one more try as the connector path, for the same reason.
+    let rejected = checkRelease(text)
+    if (rejected) {
+      console.error(
+        `cutver: summarizer answer rejected, ${rejected}; asking once more`,
+      )
+      const again = await runShell(command, input)
+      const second = again.ok ? extractRelease(again.out) : ''
+      rejected = second ? checkRelease(second) : `exited ${again.code}`
+      if (rejected)
+        return {
+          text: fallback,
+          note: `summarizer answer rejected twice (${rejected}); notes used as written`,
+        }
+      text = second
+    }
+
     return {
-      text: withDiffLine(ownRules(text, config), metadata),
+      text: withDiffLine(ownRules(text, config, metadata, input), metadata),
       note: 'release body summarised',
     }
   } catch (e) {
