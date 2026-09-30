@@ -8,9 +8,25 @@ is only ever as good as the commits — which is the point.
 explanation in the commit body, where it is also visible in `git log`, in a
 pull request, and on the release page.
 
+## [2.6.0] — 2026-09-30
+
+<sub>diff: [95634ba...0a093e6](https://github.com/obillekyle/cutver/compare/95634ba...0a093e6)</sub>
+
+### New Features
+
+- **summarize:** point Migration at an upgrade guide, per major version ([29d0ad3](https://github.com/obillekyle/cutver/commit/29d0ad3))
+
+    On bakery's v2.0.0, a 134-commit release, the summary that came back clean in every other respect still invented a Migration step ("delete the legacy session flag file and environment variables associated with DASHPASS", which no commit and no guide says) and covered 2 of the upgrade guide's 9 sections. The page went out with that section replaced by hand, with one sentence linking the guide.
+
+### Fixes
+
+- **summarize:** a command in the answer has to be in the commits ([0a093e6](https://github.com/obillekyle/cutver/commit/0a093e6))
+
+    bakery's v2.0.2 page, written by 2.5.2 in CI from one commit (f593ffb), passed every check and told readers to change their typecheck script to `bakery && tsc -b`. The commit says `bakery --types && tsc -b`, and without `--types` bare `bakery` starts a production server, so the step never reaches `tsc`. The same answer put its headings in the order Fixes, New Features, Breaking Changes.
+
 ## [2.5.2] — 2026-09-30
 
-<sub>diff: [67110aa...a962ed8](https://github.com/obillekyle/cutver/compare/67110aa...a962ed8)</sub>
+<sub>diff: [67110aa...95634ba](https://github.com/obillekyle/cutver/compare/67110aa...95634ba)</sub>
 
 ### Fixes
 
@@ -153,15 +169,5 @@ pull request, and on the release page.
 - **changelog:** span a release from the last tag in its own channel ([a15b626](https://github.com/obillekyle/cutver/commit/a15b626))
 
     The fallback that compiles a tag's range started at the neighbour by creatordate, whatever channel that neighbour belonged to. Promoting a channel is where it broke: cut 1.0.0-alpha.0 on `alpha`, merge to `main`, cut 1.0.0, and the range became alpha.0..1.0.0 — the single commit made after the merge. Measured on a fixture, the notes for 1.0.0 listed one fix and none of the three features it shipped.
-
-## [2.4.5] — 2026-08-19
-
-<sub>diff: [b5b9926...98e48a5](https://github.com/obillekyle/cutver/compare/b5b9926...98e48a5)</sub>
-
-### Fixes
-
-- **docs:** make the version escape links work again ([e03c7bf](https://github.com/obillekyle/cutver/commit/e03c7bf))
-
-    `Read it in the current release` and `Switch to the current release` both point at the page being read, minus `?v=`. The click handler decides between re-rendering and merely scrolling by comparing the page, and the page had not changed — so it dropped the version out of the URL and left the old ref's markdown on screen, banner and all. Clicking either did visibly nothing.
 
 Older releases are in the git tags and on the releases page.
