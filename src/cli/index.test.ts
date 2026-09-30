@@ -1007,3 +1007,90 @@ describe('cutver stage, an explicit version says the notable part', () => {
     SLOW,
   )
 })
+
+/**
+ * `doctor` on a summarizer that only works on this machine.
+ *
+ * bakery's shape: a `summarizer:` mapping, the key in a gitignored
+ * `.env.local`, and a publish.yml with no step that writes notes. `doctor`
+ * answered "key present" and "nothing wrong here" to that for weeks. Run with
+ * the repository as the working directory, so Bun loads its `.env.local` the
+ * way it does for anyone running `cutver` there.
+ */
+describe('cutver doctor, on a key only this machine has', () => {
+  test(
+    'names where the key came from, and warns that CI has no page to put a summary on',
+    async () => {
+      const dir = mkdtempSync(`${tmpdir()}/cutver-doctor-key-`).replaceAll(
+        '\\',
+        '/',
+      )
+      const git = (...args: string[]) =>
+        Bun.spawn(['git', ...args], {
+          cwd: dir,
+          env: GIT_ENV,
+          stdout: 'ignore',
+          stderr: 'ignore',
+        }).exited
+
+      await git('init', '-q', '-b', 'main')
+      await Bun.write(`${dir}/package.json`, '{"name":"p","version":"1.0.0"}')
+      await Bun.write(
+        `${dir}/cutver.yml`,
+        'schema: 1\n' +
+          'changelog:\n' +
+          '  file: false\n' +
+          '  summarizer:\n' +
+          '    connector: gemini\n' +
+          '    model: gemini-3.5-flash-lite\n',
+      )
+      await Bun.write(
+        `${dir}/.github/workflows/publish.yml`,
+        'name: Publish\non:\n  push:\n    tags: [v*]\njobs:\n  publish:\n' +
+          '    runs-on: ubuntu-latest\n    steps:\n      - run: npm publish\n',
+      )
+      await Bun.write(
+        `${dir}/.env.local`,
+        'CUTVER_SUMMARIZE_KEY=a-value-that-must-never-print\n',
+      )
+      await git('add', '-A')
+      await git('commit', '-qm', 'feat: base')
+
+      // The key comes from the file and nowhere else. `NODE_ENV` goes too:
+      // `bun test` sets it to `test`, and under that Bun does not load
+      // `.env.local` at all, which is not the case being tested.
+      const env = { ...process.env }
+      for (const name of [
+        'CUTVER_SUMMARIZE_KEY',
+        'GEMINI_API_KEY',
+        'GOOGLE_API_KEY',
+        'CUTVER_SUMMARIZE',
+        'NODE_ENV',
+      ])
+        delete env[name]
+
+      const proc = Bun.spawn(['bun', ENTRY, 'doctor', '--offline'], {
+        cwd: dir,
+        env,
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      const out =
+        (await new Response(proc.stdout).text()) +
+        (await new Response(proc.stderr).text())
+      const code = await proc.exited
+
+      expect(out).toContain('key present on this machine (.env.local)')
+      expect(out).toContain('nothing in publish.yml runs')
+      expect(out).toContain('warning(s) worth fixing')
+      expect(out).not.toContain('nothing wrong here')
+      // A warning never stops a release, so it never changes the exit code.
+      expect(code).toBe(0)
+      // The file is read for its name. The value stays in it.
+      expect(out).not.toContain('a-value-that-must-never-print')
+
+      rmSync(dir, { recursive: true, force: true })
+    },
+    SLOW,
+  )
+})

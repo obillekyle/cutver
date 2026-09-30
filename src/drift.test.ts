@@ -409,3 +409,143 @@ describe('a publish.yml that should not be there', () => {
     expect(found.some(d => d.message.includes('publishes nothing'))).toBe(false)
   })
 })
+
+/**
+ * A summarizer configured, and CI unable to use it.
+ *
+ * Measured on bakery: a `summarizer:` mapping, the key as a GitHub secret, and
+ * a hand-written publish.yml whose one job publishes to npm. `doctor` said
+ * "nothing wrong here" while fourteen tags went out with no release page, and
+ * the secret had never been read.
+ */
+describe('a summarizer that CI cannot use', () => {
+  const mapped = (): Config => ({
+    ...DEFAULT_CONFIG,
+    changelog: {
+      sections: ['feat', 'fix'],
+      keep: 10,
+      prereleases: false,
+      file: false,
+      prompt: null,
+      summarizer: {
+        connector: 'gemini',
+        model: 'gemini-3.5-flash-lite',
+        baseUrl: null,
+        retry: null,
+        withBody: true,
+      },
+    },
+  })
+  const commandOn = (): Config => ({
+    ...mapped(),
+    changelog: { ...mapped().changelog!, summarizer: true },
+  })
+
+  const NOWHERE = 'nothing in publish.yml runs'
+  const NO_KEY = 'passes none of'
+  const ours = (found: { message: string }[]) =>
+    found.filter(d => d.message.includes(NOWHERE) || d.message.includes(NO_KEY))
+
+  /** bakery's shape: one job, and it publishes to npm. */
+  const PUBLISH_ONLY =
+    'jobs:\n  publish:\n    steps:\n      - run: npm publish --tag "$DIST_TAG"\n'
+
+  const notesStep = (env: string) =>
+    `jobs:\n  release:\n    steps:\n      - name: Release notes\n        env:\n${env}        run: cutver notes "$TAG" --page > notes.md\n`
+
+  test('no step writes notes: said, with the step to paste', () => {
+    const found = ours(
+      inspect({ version: null, publish: PUBLISH_ONLY }, mapped(), '1.3.0'),
+    )
+    expect(found).toHaveLength(1)
+    expect(found[0]?.message).toContain(NOWHERE)
+    expect(found[0]?.message).toContain('run: cutver notes "$TAG" --page')
+    expect(found[0]?.message).toContain('secrets.CUTVER_SUMMARIZE_KEY')
+    expect(
+      inspect({ version: null, publish: PUBLISH_ONLY }, mapped(), '1.3.0').find(
+        d => d.message.includes(NOWHERE),
+      )?.level,
+    ).toBe('warn')
+  })
+
+  test('a comment naming the command is not the command', () => {
+    const publish = `# cutver notes "$TAG" used to run here\n${PUBLISH_ONLY}`
+    const found = ours(inspect({ version: null, publish }, mapped(), '1.3.0'))
+    expect(found).toHaveLength(1)
+    expect(found[0]?.message).toContain(NOWHERE)
+  })
+
+  test('`changelog pages` in CI counts as writing notes', () => {
+    const publish = `${PUBLISH_ONLY}      - run: cutver changelog pages "\${TAG#v}"\n        env:\n          CUTVER_SUMMARIZE_KEY: \${{ secrets.K }}\n`
+    expect(
+      ours(inspect({ version: null, publish }, mapped(), '1.3.0')),
+    ).toEqual([])
+  })
+
+  test('a notes step with the key passed is silent', () => {
+    const publish = notesStep(
+      '          CUTVER_SUMMARIZE_KEY: ${{ secrets.CUTVER_SUMMARIZE_KEY }}\n',
+    )
+    expect(
+      ours(inspect({ version: null, publish }, mapped(), '1.3.0')),
+    ).toEqual([])
+  })
+
+  test("the connector's own key name counts too", () => {
+    const publish = notesStep(
+      '          GEMINI_API_KEY: ${{ secrets.GEMINI }}\n',
+    )
+    expect(
+      ours(inspect({ version: null, publish }, mapped(), '1.3.0')),
+    ).toEqual([])
+  })
+
+  test('a notes step with no key, or an empty one, is said', () => {
+    for (const env of ['', "          CUTVER_SUMMARIZE_KEY: ''\n"]) {
+      const found = ours(
+        inspect({ version: null, publish: notesStep(env) }, mapped(), '1.3.0'),
+      )
+      expect(found, JSON.stringify(env)).toHaveLength(1)
+      expect(found[0]?.message).toContain(NO_KEY)
+      expect(found[0]?.message).toContain('GEMINI_API_KEY')
+    }
+  })
+
+  test('a command in the workflow needs no key', () => {
+    const publish = notesStep('          CUTVER_SUMMARIZE: my-model --stdin\n')
+    expect(
+      ours(inspect({ version: null, publish }, mapped(), '1.3.0')),
+    ).toEqual([])
+  })
+
+  test('`summarizer: true` with no notes step is one finding, not two', () => {
+    const found = inspect(
+      { version: null, publish: PUBLISH_ONLY },
+      commandOn(),
+      '1.3.0',
+    ).filter(d => /summari[sz]/i.test(d.message))
+    expect(found).toHaveLength(1)
+    expect(found[0]?.message).toContain(NOWHERE)
+  })
+
+  test('silent when no summarizer is asked for, or no publish.yml exists', () => {
+    expect(
+      ours(
+        inspect(
+          { version: null, publish: PUBLISH_ONLY },
+          DEFAULT_CONFIG,
+          '1.3.0',
+        ),
+      ),
+    ).toEqual([])
+    // A repository releasing from a laptop has chosen to, and `changelog
+    // pages` there is the whole arrangement.
+    expect(
+      ours(inspect({ version: null, publish: null }, mapped(), '1.3.0')),
+    ).toEqual([])
+  })
+
+  test('the generated workflow, from the same config, is silent', () => {
+    expect(ours(inspect(generated(mapped()), mapped(), '1.3.0'))).toEqual([])
+  })
+})

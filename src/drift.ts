@@ -37,6 +37,7 @@ import {
   type Config,
 } from './config/schema'
 import { parseYaml, readText } from './runtime'
+import { keyFor } from './summarize/connectors'
 
 const DOCS = 'https://cutver.okyle.dev'
 
@@ -112,7 +113,7 @@ function orphanedPublish(publish: string | null, publishes: boolean): Drift[] {
         '        It fires on `push: tags: v*` and runs a publish for a tag that\n' +
         '        is meant to produce nothing at all. `cutver init --force`\n' +
         '        removes it, or delete it by hand.',
-      docs: `${DOCS}/#/reference/config`,
+      docs: `${DOCS}/?/reference/config`,
     },
   ]
 }
@@ -135,7 +136,7 @@ function armForThisRelease(publish: string, version: string): Drift[] {
         '\n' +
         '        Add this arm above the `*-*)` line in publish.yml:\n' +
         `          *-${channel}.*)  tag=${channel} ;;`,
-      docs: `${DOCS}/#/reference/config`,
+      docs: `${DOCS}/?/reference/config`,
     },
   ]
 }
@@ -169,7 +170,7 @@ function armsForOtherChannels(
         'A release in one of those channels would fail after its tag is public.\n' +
         '        Add above the `*-*)` line in publish.yml:\n' +
         missing.map(c => `          *-${c}.*)  tag=${c} ;;`).join('\n'),
-      docs: `${DOCS}/#/reference/config`,
+      docs: `${DOCS}/?/reference/config`,
     },
   ]
 }
@@ -202,7 +203,7 @@ function artifactsNotAttached(
         '        The job is too long to print here — generate one into an empty\n' +
         '        directory and copy it across, or drop `artifacts` from `publish`:\n' +
         '          cutver init <ecosystem> --cwd /tmp/scratch --no-hook',
-      docs: `${DOCS}/#/guides/artifacts`,
+      docs: `${DOCS}/?/guides/artifacts`,
     },
   ]
 }
@@ -228,6 +229,9 @@ function artifactsNotAttached(
 function summariserWithoutCommand(publish: string, config: Config): Drift[] {
   if (config.changelog?.summarizer !== true) return []
   if (hasSummarizer(publish)) return []
+  // With no notes step at all, the missing command is the smaller problem, and
+  // `summaryGoesNowhere` says the larger one.
+  if (!writesNotes(publish)) return []
 
   return [
     {
@@ -251,7 +255,87 @@ function summariserWithoutCommand(publish: string, config: Config): Drift[] {
         '\n' +
         '        `CUTVER_SUMMARIZE` in the environment still works and still wins —\n' +
         '        any command reading markdown on stdin and writing it on stdout.',
-      docs: `${DOCS}/#/guides/changelog`,
+      docs: `${DOCS}/?/guides/changelog`,
+    },
+  ]
+}
+
+/**
+ * A summary asked for, and nothing in CI to write the page it goes on.
+ *
+ * Measured on bakery: a `summarizer:` mapping, the key stored as a GitHub
+ * secret, and a hand-written publish.yml whose only job publishes to npm. Every
+ * rule here passed and `doctor` said "nothing wrong here", while fourteen tags
+ * went out with no release page, because the only thing that had ever written
+ * one was `changelog pages` run by hand from a laptop. In CI the summarizer
+ * settings were dead config, and the secret had never been read.
+ *
+ * Only where publish.yml exists. A repository with none releases from a
+ * laptop on purpose, and `changelog pages` there is the whole arrangement.
+ */
+function summaryGoesNowhere(publish: string, config: Config): Drift[] {
+  if (!config.changelog?.summarizer) return []
+  if (writesNotes(publish)) return []
+
+  return [
+    {
+      level: 'warn',
+      message:
+        '`changelog.summarizer` is set, but nothing in publish.yml runs ' +
+        '`cutver notes` or `changelog pages`, so CI writes no release page\n' +
+        '        and the summarizer never runs there. A tag gets a page only when ' +
+        'somebody runs `cutver changelog pages` by hand.\n' +
+        '        Add this step to a job with `permissions: contents: write` and a ' +
+        'full-history checkout (`fetch-depth: 0`):\n' +
+        '          - name: Release notes\n' +
+        '            timeout-minutes: 15\n' +
+        '            continue-on-error: true\n' +
+        '            env:\n' +
+        '              GH_TOKEN: ${{ github.token }}\n' +
+        '              CUTVER_SUMMARIZE_KEY: ${{ secrets.CUTVER_SUMMARIZE_KEY }}\n' +
+        '            run: cutver notes "$TAG" --page > notes.md',
+      docs: `${DOCS}/?/guides/changelog`,
+    },
+  ]
+}
+
+/**
+ * A notes step that runs the summarizer with no key to run it with.
+ *
+ * `doctor`'s summarizer line reads this machine's environment, where a key in
+ * `.env.local` is enough, and it cannot see CI. A publish.yml running
+ * `cutver notes` without passing the key gets the fallback on every release: a
+ * correct page, unsummarized, which is exactly the kind nobody looks at twice.
+ *
+ * Any of the connector's key names counts, set anywhere in the file (step,
+ * job or workflow env) to something other than empty. A command in
+ * `CUTVER_SUMMARIZE` wins over the connector and needs no key, so its
+ * presence silences this.
+ */
+function summaryKeyMissingInCi(publish: string, config: Config): Drift[] {
+  const summarizer = config.changelog?.summarizer
+  if (!summarizer || summarizer === true) return []
+  if (!writesNotes(publish) || hasSummarizer(publish)) return []
+
+  const names = keyFor(summarizer.connector, {}).tried
+  const live = uncommented(publish)
+  const passed = names.some(name => {
+    const line = new RegExp(`^[ \\t]*${name}:[ \\t]*(.*)$`, 'm').exec(live)
+    const value = (line?.[1] ?? '').trim()
+    return line !== null && value !== '' && value !== "''" && value !== '""'
+  })
+  if (passed) return []
+
+  return [
+    {
+      level: 'warn',
+      message:
+        `publish.yml runs \`cutver notes\` but passes none of ${names.join(', ')}, ` +
+        'so CI has no key and every release page goes out unsummarized.\n' +
+        "        Add to that step's env:\n" +
+        '          CUTVER_SUMMARIZE_KEY: ${{ secrets.CUTVER_SUMMARIZE_KEY }}\n' +
+        "        and store the key under that name in the repository's Actions secrets.",
+      docs: `${DOCS}/?/guides/changelog`,
     },
   ]
 }
@@ -282,7 +366,7 @@ function inlineReleaseBody(publish: string, config: Config): Drift[] {
         '            timeout-minutes: 15\n' +
         '            continue-on-error: true\n' +
         '            run: cutver notes "$TAG" > notes.md',
-      docs: `${DOCS}/#/guides/changelog`,
+      docs: `${DOCS}/?/guides/changelog`,
     },
   ]
 }
@@ -326,7 +410,7 @@ function preTwoInvocation(name: string, text: string | null): Drift[] {
           '        older cutver — so that step releases nothing.\n' +
           '        Change the line to `cutver stage --if-needed …`, or re-run\n' +
           '          cutver init --force',
-      docs: `${DOCS}/#/getting-started/ci`,
+      docs: `${DOCS}/?/getting-started/ci`,
     },
   ]
 }
@@ -359,7 +443,7 @@ function missingTriggers(version: string, config: Config): Drift[] {
         missing
           .map(b => `          - ${/^[*?]/.test(b) ? `'${b}'` : b}`)
           .join('\n'),
-      docs: `${DOCS}/#/getting-started/ci`,
+      docs: `${DOCS}/?/getting-started/ci`,
     },
   ]
 }
@@ -412,7 +496,9 @@ export function inspect(
           ...armForThisRelease(publish, version),
           ...armsForOtherChannels(publish, config, version),
           ...artifactsNotAttached(publish, config, adapter),
+          ...summaryGoesNowhere(publish, config),
           ...summariserWithoutCommand(publish, config),
+          ...summaryKeyMissingInCi(publish, config),
           ...inlineReleaseBody(publish, config),
         ]
       : []),
@@ -435,6 +521,29 @@ function hasSummarizer(publish: string): boolean {
   if (!line) return false
   const value = (line[1] ?? '').trim()
   return value !== '' && value !== "''" && value !== '""'
+}
+
+/**
+ * The workflow with its comment lines removed.
+ *
+ * A comment naming a command is not the command. The generated files explain
+ * `cutver notes` in comments, and a hand-written workflow may well do the
+ * same, above a job that no longer exists.
+ */
+function uncommented(yaml: string): string {
+  return yaml
+    .split('\n')
+    .filter(line => !/^[ \t]*#/.test(line))
+    .join('\n')
+}
+
+/** Whether anything in the workflow writes release notes: `cutver notes`, or `changelog pages`. */
+function writesNotes(publish: string): boolean {
+  const live = uncommented(publish)
+  return (
+    /\bcutver\b[^\n]*\bnotes\b/.test(live) ||
+    /\bchangelog[ \t]+pages\b/.test(live)
+  )
 }
 
 /**

@@ -31,15 +31,25 @@ import { checkRegistry, detectOidc } from '../registry'
 import { keyFor } from '../summarize/connectors'
 import { COMMAND_ENV } from '../summarize'
 import { parse, preScan, resolveAdapter, resolveRoot } from './args'
-import { env } from '../runtime'
+import { env, readText } from '../runtime'
 import { esc, pad, say as write } from '../style'
 
-/** How each line is marked. `✗` is the only one that changes the exit code. */
-type Level = 'ok' | 'note' | 'bad'
+/**
+ * How each line is marked. `✗` is the only one that changes the exit code.
+ *
+ * **`!` is a workflow warning, and it is not a note.** Drift used to be marked
+ * `·`, the weight of "channels: alpha, beta, rc", and the report closed with
+ * "nothing wrong here" beneath it. On bakery that line sat under a publish.yml
+ * with no release job, while fourteen tags went out with no page. A warning
+ * still never stops a release (that is the whole design of drift), so the
+ * exit code is unchanged; what changes is that the report says so.
+ */
+type Level = 'ok' | 'note' | 'warn' | 'bad'
 
 const MARK: Record<Level, string> = {
   ok: '%g✓%0',
   note: '%d·%0',
+  warn: '%y!%0',
   bad: '%r✗%0',
 }
 
@@ -91,10 +101,43 @@ function say(f: Finding, width: number): void {
  * release must never die over its notes. So it is worth a line here, where
  * nothing is at stake and somebody is looking.
  */
-function summariser(
+/**
+ * Which `.env` file supplied the key, when one did: `" (.env.local)"`, or
+ * nothing.
+ *
+ * Bun reads `.env`, `.env.{NODE_ENV}` and `.env.local` from the working
+ * directory before any of this runs, so by the time this looks, a key from one
+ * of them is indistinguishable from one exported in the shell. Naming the file
+ * is what makes the line honest: a key in `.env.local` exists on one laptop.
+ * The file is read for the name alone; the value is never printed.
+ */
+async function keySource(names: readonly string[]): Promise<string> {
+  const mode = process.env.NODE_ENV?.trim()
+  // In Bun's order of precedence. Bun skips `.env.local` under
+  // `NODE_ENV=test` (measured: loaded when unset, development or production,
+  // not under test), so there a key it defines is not the one in the env.
+  const files = [
+    ...(mode === 'test' ? [] : ['.env.local']),
+    ...(mode ? [`.env.${mode}`] : []),
+    '.env',
+  ]
+  for (const file of files) {
+    const text = await readText(`${process.cwd()}/${file}`).catch(() => '')
+    const defines = names.some(name =>
+      new RegExp(
+        `^[ \\t]*(?:export[ \\t]+)?${name}[ \\t]*=[ \\t]*\\S`,
+        'm',
+      ).test(text),
+    )
+    if (defines) return ` (${file})`
+  }
+  return ''
+}
+
+async function summariser(
   config: Config,
   env: Record<string, string | undefined>,
-): Finding {
+): Promise<Finding> {
   const declared = config.changelog?.summarizer
   if (!declared) {
     return { level: 'note', topic: 'summariser', detail: 'off' }
@@ -124,7 +167,12 @@ function summariser(
     ? {
         level: 'ok',
         topic: 'summariser',
-        detail: `${declared.connector}, ${declared.model}, key present`,
+        // **"On this machine", because that is all this can see.** It read
+        // "key present" on bakery for weeks, satisfied by a gitignored
+        // `.env.local`, while CI had no step that could use a key at all.
+        // Whether CI passes one is a question about publish.yml, and the
+        // workflow checks above answer it.
+        detail: `${declared.connector}, ${declared.model}, key present on this machine${await keySource(tried)}`,
       }
     : {
         level: 'bad',
@@ -244,7 +292,7 @@ export async function runDoctor(argv: string[]): Promise<void> {
       }
       for (const d of drift) {
         found.push({
-          level: d.level === 'refuse' ? 'bad' : 'note',
+          level: d.level === 'refuse' ? 'bad' : 'warn',
           topic: 'workflows',
           detail: firstLine(d.message),
           more: `Docs: ${d.docs}`,
@@ -297,7 +345,7 @@ export async function runDoctor(argv: string[]): Promise<void> {
     }
   }
 
-  found.push(summariser(config, env))
+  found.push(await summariser(config, env))
 
   // **The config's own deprecations.** `parseConfig` has collected these since
   // `publish` became a boolean, and nothing printed them — so this command,
@@ -314,10 +362,13 @@ export async function runDoctor(argv: string[]): Promise<void> {
   for (const f of found) say(f, width)
 
   const bad = found.filter(f => f.level === 'bad').length
+  const warned = found.filter(f => f.level === 'warn').length
   console.log(
     bad
       ? `\ncutver: ${bad} problem(s) that would affect a release.`
-      : '\ncutver: nothing wrong here.',
+      : warned
+        ? `\ncutver: ${warned} warning(s) worth fixing. None of them stops a release.`
+        : '\ncutver: nothing wrong here.',
   )
   if (bad) process.exit(1)
 }
