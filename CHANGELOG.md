@@ -8,9 +8,25 @@ is only ever as good as the commits — which is the point.
 explanation in the commit body, where it is also visible in `git log`, in a
 pull request, and on the release page.
 
+## [2.6.2] — 2026-10-24
+
+<sub>diff: [7ca2976...97fbe7c](https://github.com/obillekyle/cutver/compare/7ca2976...97fbe7c)</sub>
+
+### Fixes
+
+- **changelog:** a finished prerelease line is not the previous release ([e4bd632](https://github.com/obillekyle/cutver/commit/e4bd632))
+
+    A prerelease measured from the last tag in its channel, whatever line that tag was on. bakery's v2.5.0-alpha.0, the first alpha of the 2.5.0 line, took v2.0.0-alpha.17: the last alpha in its history, with fourteen stable releases (2.0.0 to 2.4.1) between them. The page publish.yml wrote from it covered 85 commits where 5 were new since v2.4.1: 46 bullets in five sections, a breaking change that first shipped in 2.0.0-rc.5 (55e1838) and its Migration line among them.
+
+### Docs
+
+- **changelog:** v1.0.0 spans 41 commits from the root, not 33 ([97fbe7c](https://github.com/obillekyle/cutver/commit/97fbe7c))
+
+    The guide said v1.0.0 covers 2 commits from v0.1.0-beta.12 and 33 from the last stable point, the other 31 being the beta series. The range holds 41: git rev-list --count v1.0.0 gives 41, with or without merges, and the comment over compileReleases has said 41 and 39 since 1deb97b. By type they are 12 feat, 4 fix, 1 refactor, 8 docs and 16 chore, and no filter a reader would assume gives 33.
+
 ## [2.6.1] — 2026-09-30
 
-<sub>diff: [9dcdfed...e55071d](https://github.com/obillekyle/cutver/compare/9dcdfed...e55071d)</sub>
+<sub>diff: [9dcdfed...7ca2976](https://github.com/obillekyle/cutver/compare/9dcdfed...7ca2976)</sub>
 
 ### Fixes
 
@@ -159,15 +175,5 @@ pull request, and on the release page.
 - **build:** keep the version define's quotes out of the shell's reach ([dc7489d](https://github.com/obillekyle/cutver/commit/dc7489d))
 
     Bun Shell 1.4 strips double quotes the way POSIX does; 1.3 passed them through. The bundle step wrote its define as CUTVER_VERSION="${version}" in the template, so the quotes were shell syntax — fine for eleven releases and a syntax error on the first build under 1.4, since --define's value is a JS expression and a bare 2.4.7 is not one. The compiled targets never broke: their define is built in JavaScript and interpolated whole, and an interpolated value arrives verbatim under either behaviour. Both now use one value built that way.
-
-## [2.4.7] — 2026-08-20
-
-<sub>diff: [4fdeb9a...08de946](https://github.com/obillekyle/cutver/compare/4fdeb9a...08de946)</sub>
-
-### Fixes
-
-- **docs:** the version picker learns releases the deployed file cannot see ([5f0d2ed](https://github.com/obillekyle/cutver/commit/5f0d2ed))
-
-    versions.json is written by the branch that releases and the site is served from one branch, so a channel shipping alphas leaves the deployed copy behind: alloyfs's main still said 0.6.0 while alpha was thirty-one releases into its 1.0.0 line, and none of them could be picked. The changelog cache, keyed on the same file, had no reason to refresh either.
 
 Older releases are in the git tags and on the releases page.
