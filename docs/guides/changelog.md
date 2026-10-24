@@ -141,7 +141,7 @@ is the part worth understanding before turning it back on. A stable release's
 span runs from the previous *stable* tag, absorbing every prerelease between —
 without that, removing the headings would delete their contents with nothing to
 mark the absence. Measured here: `v1.0.0` covers 2 commits from
-`v0.1.0-beta.12`, and 33 from the last stable point. The other 31 are the beta
+`v0.1.0-beta.12`, and 41 from the last stable point. The other 39 are the beta
 series, and they shipped in 1.0.0 whatever the tag history says.
 
 `cutver notes v1.3.0-beta.1` still works for a prerelease tag with no heading in
