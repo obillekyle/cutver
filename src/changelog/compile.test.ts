@@ -155,18 +155,27 @@ describe('compileReleases with prereleases on', () => {
  * to. Promoting a channel is where it fell over.
  */
 describe('the range a tag compiles from', () => {
-  /** A repository, built commit by commit, so each fixture states its history. */
+  /**
+   * A repository, built commit by commit, so each fixture states its history.
+   *
+   * **A step can carry a date, and a fixture about order needs one.** Tags made
+   * in the same day are ordered by version, not by when they were cut (see
+   * `releaseTags`), so in an undated fixture a 1.0.1 cut after a 2.0.0 alpha
+   * still sorts below it, and a test of "released after" passes whatever the
+   * code does. Measured: a variant that finished a line at any stable cut after
+   * its last alpha passed all sixteen tests here until the fixture was dated.
+   */
   async function build(
-    steps: [subject: string, tag?: string][],
+    steps: [subject: string, tag?: string, date?: string][],
     branches?: (git: (...a: string[]) => Promise<void>) => Promise<void>,
   ): Promise<{ dir: string; git: (...a: string[]) => Promise<void> }> {
     const dir = mkdtempSync(`${tmpdir()}/cutver-span-`).replaceAll('\\', '/')
     roots.push(dir)
 
-    const git = async (...args: string[]) => {
+    const spawn = async (env: typeof GIT_ENV, args: string[]) => {
       const p = Bun.spawn(['git', ...args], {
         cwd: dir,
-        env: GIT_ENV,
+        env,
         stdout: 'pipe',
         stderr: 'pipe',
       })
@@ -176,15 +185,21 @@ describe('the range a tag compiles from', () => {
         )
       }
     }
+    const git = (...args: string[]) => spawn(GIT_ENV, args)
 
     await git('init', '-q', '-b', 'main')
     await write(`${dir}/package.json`, '{"name":"p","version":"0.0.0"}')
 
-    for (const [subject, tag] of steps) {
+    for (const [subject, tag, date] of steps) {
+      // A lightweight tag is dated by its commit, so dating the commit dates
+      // the tag.
+      const env = date
+        ? { ...GIT_ENV, GIT_AUTHOR_DATE: date, GIT_COMMITTER_DATE: date }
+        : GIT_ENV
       await write(`${dir}/f.txt`, subject)
-      await git('add', '-A')
-      await git('commit', '-qm', subject)
-      if (tag) await git('tag', tag)
+      await spawn(env, ['add', '-A'])
+      await spawn(env, ['commit', '-qm', subject])
+      if (tag) await spawn(env, ['tag', tag])
     }
 
     if (branches) await branches(git)
@@ -249,6 +264,86 @@ describe('the range a tag compiles from', () => {
     const notes = await sectionOrCompile(dir, 'v1.1.0-alpha.0', config)
     expect(notes).toContain('after the stable')
     expect(notes).not.toContain('base')
+  })
+
+  /**
+   * **A channel holds many lines, and a finished one is not the previous
+   * release.** bakery's first 2.5.0 alpha measured from v2.0.0-alpha.17, the
+   * last alpha in its history, and its page listed 85 commits where 5 were new
+   * since v2.4.1. The three tests after this one are its controls: where the
+   * line ends, and that an open one still counts.
+   */
+  test('the first alpha of a new line measures from the stable, not a finished line', async () => {
+    const { dir } = await build([
+      ['feat: base', 'v1.0.0'],
+      ['feat(one): the 2.0 work', 'v2.0.0-alpha.0'],
+      ['fix(one): an alpha repair', 'v2.0.0-alpha.1'],
+      ['fix(two): shipped in 2.0', 'v2.0.0'],
+      ['feat(three): shipped in 2.1', 'v2.1.0'],
+      ['fix(four): new on the 2.2 line', 'v2.2.0-alpha.0'],
+    ])
+
+    const notes = await sectionOrCompile(dir, 'v2.2.0-alpha.0', config)
+
+    expect(notes).toContain('new on the 2.2 line')
+    // Each of these shipped in a stable release already in this history.
+    expect(notes).not.toContain('shipped in 2.1')
+    expect(notes).not.toContain('shipped in 2.0')
+    expect(notes).not.toContain('an alpha repair')
+  })
+
+  test('a line is finished by the stable release it graduated to', async () => {
+    // The boundary: equal finishes it, so 2.0.0 itself ends the 2.0.0 alphas.
+    const { dir } = await build([
+      ['feat: base', 'v1.0.0'],
+      ['feat(one): the 2.0 work', 'v2.0.0-alpha.0'],
+      ['fix(two): finishing 2.0', 'v2.0.0'],
+      ['feat(three): the 2.1 line', 'v2.1.0-alpha.0'],
+    ])
+
+    const notes = await sectionOrCompile(dir, 'v2.1.0-alpha.0', config)
+
+    expect(notes).toContain('the 2.1 line')
+    expect(notes).not.toContain('finishing 2.0')
+  })
+
+  test('a stable below the line does not finish it', async () => {
+    // A maintenance release on the old major, cut between two alphas, leaves
+    // the alpha line open: the second alpha still measures from the first, and
+    // the repair is in its range because it landed between them. Dated a day
+    // apart, so 1.0.1 is the newer tag of the two below the second alpha.
+    const { dir } = await build([
+      ['feat: base', 'v1.0.0', '2026-01-01T12:00:00Z'],
+      ['feat(one): first alpha', 'v2.0.0-alpha.0', '2026-01-02T12:00:00Z'],
+      ['fix(two): a 1.x repair', 'v1.0.1', '2026-01-03T12:00:00Z'],
+      ['feat(three): second alpha', 'v2.0.0-alpha.1', '2026-01-04T12:00:00Z'],
+    ])
+
+    const notes = await sectionOrCompile(dir, 'v2.0.0-alpha.1', config)
+
+    expect(notes).toContain('second alpha')
+    expect(notes).toContain('a 1.x repair')
+    expect(notes).not.toContain('first alpha')
+  })
+
+  test('an open line still counts when the next alpha is for a higher version', async () => {
+    // A breaking change mid-line moves the next alpha from 2.5.0 to 3.0.0. No
+    // stable has reached 2.5.0, so that line is open, and its last alpha is
+    // what this channel released before. The beta between them is what tells
+    // this apart from counting only the alpha's own line, which would find no
+    // 3.0.0 alpha and start at the beta instead.
+    const { dir } = await build([
+      ['feat: base', 'v2.4.1'],
+      ['feat(one): in the 2.5 alphas', 'v2.5.0-alpha.0'],
+      ['feat(two): a beta thing', 'v2.5.0-beta.0'],
+      ['feat(three)!: breaks it', 'v3.0.0-alpha.0'],
+    ])
+
+    const notes = await sectionOrCompile(dir, 'v3.0.0-alpha.0', config)
+
+    expect(notes).toContain('breaks it')
+    expect(notes).toContain('a beta thing')
+    expect(notes).not.toContain('in the 2.5 alphas')
   })
 
   /**

@@ -17,6 +17,7 @@ import type { Config } from '../config/schema'
 import {
   commitsIn,
   isAncestor,
+  lastStableTag,
   releaseTags,
   remoteUrl,
   rootCommit,
@@ -32,7 +33,7 @@ import {
   sectionFor,
   type ReleaseSection,
 } from './notes'
-import { readText } from '../runtime'
+import { readText, semverOrder } from '../runtime'
 import { warn } from '../style'
 
 /**
@@ -72,6 +73,14 @@ function channelOf(version: string): string {
   if (!isPrerelease(version)) return 'release'
   const identifier = version.split('-').slice(1).join('-').split('.')[0]
   return identifier || 'release'
+}
+
+/**
+ * Which release a version is a step toward: `2.5.0-alpha.3` is on the 2.5.0
+ * line, and a stable version is its own. Build metadata is not part of it.
+ */
+function lineOf(version: string): string {
+  return version.split(/[-+]/)[0] as string
 }
 
 /** What the summariser is sent: the material, and the facts to copy through. */
@@ -191,13 +200,34 @@ async function spanStart(root: string, tag: string): Promise<Span | null> {
   // stable, because it contains its own prereleases. And an alpha measures from
   // the last alpha, so a beta cut in between does not truncate it.
   const mine = channelOf(describing.version)
+
+  // **The last alpha of a line that is still open, not the last alpha ever.**
+  // A prerelease line is finished once a stable release at or above its
+  // version is in this tag's history: 2.0.0 ends every 2.0.0 alpha, and so does
+  // a 2.4.1 that came after it. The channel alone kept reaching past that.
+  // bakery's first 2.5.0 alpha measured from v2.0.0-alpha.17, the last alpha in
+  // its history, with fourteen stable releases from 2.0.0 to 2.4.1 between
+  // them, so its notes covered 85 commits where 5 were new since v2.4.1, and
+  // listed everything those releases had shipped (a breaking change and its
+  // migration among them) as though it were new.
+  //
+  // One stable answers it for every candidate: the highest in the history, by
+  // the same `lastStableTag` the version's own baseline is measured from. A
+  // line at or below it is finished, which is a version comparison with no
+  // git call. A stable release has no line to finish and skips the lookup.
+  const stable =
+    mine === 'release' ? null : await lastStableTag(root, describing.tag)
+  const finished = (candidate: ReleaseTag) =>
+    stable !== null &&
+    semverOrder(stable.replace(/^v/, ''), lineOf(candidate.version)) >= 0
+
   for (const candidate of older) {
-    if (channelOf(candidate.version) !== mine) continue
+    if (channelOf(candidate.version) !== mine || finished(candidate)) continue
     if (await behind(candidate)) return { from: candidate.tag }
   }
 
-  // No previous release in this channel: the first alpha of a line measures
-  // from whatever came last, which is the stable it is building on.
+  // No open line in this channel: the first alpha of a line measures from
+  // whatever came last, which is the stable it is building on.
   for (const candidate of older) {
     if (await behind(candidate)) return { from: candidate.tag }
   }

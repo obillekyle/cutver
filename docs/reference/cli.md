@@ -109,6 +109,29 @@ for a tag the changelog does not list.
 `keep` never limited the pages: it is applied when the file is rendered, not
 when the sections are compiled.
 
+### Where a tag's range starts
+
+A tag the changelog does not list is compiled from its own range: the commits
+after the release before it, up to the tag. Which release counts as the one
+before depends on the tag.
+
+- **A stable release** starts at the previous stable tag, so it contains its
+  own prereleases.
+- **A prerelease** starts at the previous tag in its channel, so an alpha
+  measures from the last alpha, and a beta cut between them does not truncate
+  it. That tag counts only while its line is open. Once a stable release at or
+  above its version is in the history, the line is finished: 2.0.0 finishes
+  every 2.0.0 alpha, and so does 2.4.1.
+- **The first prerelease of a line** starts at the nearest release before it,
+  of any kind, which is usually the stable it builds on: `v2.5.0-alpha.0`
+  starts at `v2.4.1`, however many 2.0.0 alphas came before.
+- **The first release of all** contains every commit up to it, the root commit
+  included.
+
+Before means in the tag's history, not earlier by date. Two channels cut at
+once interleave by date, so the tag made just before this one can sit on a
+branch this one does not contain.
+
 ### `changelog --overwrite --force`
 
 `--force` removes the one protection `--overwrite` has: it replaces release
