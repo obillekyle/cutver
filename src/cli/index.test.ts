@@ -2,6 +2,7 @@ import { expect, test, describe } from 'bun:test'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import manifest from '../../package.json' with { type: 'json' }
+import { COMMANDS } from './help'
 
 /**
  * A git identity for every fixture here.
@@ -184,6 +185,75 @@ describe('the version it reports', () => {
       // string reaching them at all.
       const { out } = await cutver('--version')
       expect(out.trim()).toMatch(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/)
+    },
+    SLOW,
+  )
+})
+
+/**
+ * **`cutver <command> --help` and `cutver help <command>` are one page.**
+ *
+ * They were not, for any command. On 2.6.2, with stdout redirected, eight
+ * printed the general page with six lines of style markers as written, three
+ * exited 1 asking for a subcommand, and four read a broken `cutver.yml` before
+ * they reached the flag. Counted from `COMMANDS`, so a command added later is
+ * held to the same page with no test of its own.
+ */
+describe('help after a command', () => {
+  test(
+    'is the page `cutver help <command>` prints, for every command',
+    async () => {
+      const commands = COMMANDS.filter(c => c.name !== 'help')
+      expect(commands.length).toBeGreaterThan(0)
+      for (const c of commands) {
+        const [flag, word] = await Promise.all([
+          cutver(c.name, '--help'),
+          cutver('help', c.name),
+        ])
+        expect(flag.code, c.name).toBe(0)
+        expect(flag.out, c.name).toBe(word.out)
+      }
+    },
+    SLOW * 4,
+  )
+
+  test(
+    'carries no style marker as written',
+    async () => {
+      // The reported symptom, asserted on its own so a failure names it.
+      const { out } = await cutver('stage', '-h')
+      expect(out).not.toMatch(/%<\w+>|%[0-9a-z*]/)
+      expect(out).toStartWith('cutver stage')
+    },
+    SLOW,
+  )
+
+  test(
+    'reads nothing from the repository',
+    async () => {
+      const dir = mkdtempSync(`${tmpdir()}/cutver-help-`).replaceAll('\\', '/')
+      try {
+        writeFileSync(`${dir}/cutver.yml`, 'target: [cargo\n')
+        const { out, code } = await cutver('stage', '--help', '--cwd', dir)
+        expect(code).toBe(0)
+        expect(out).toStartWith('cutver stage')
+        expect(out).not.toContain('cutver.yml:')
+      } finally {
+        rmSync(dir, { recursive: true, force: true })
+      }
+    },
+    SLOW,
+  )
+
+  test(
+    '`cutver help --help` is `cutver help`',
+    async () => {
+      const [a, b] = await Promise.all([
+        cutver('help', '--help'),
+        cutver('help'),
+      ])
+      expect(a.code).toBe(0)
+      expect(a.out).toBe(b.out)
     },
     SLOW,
   )

@@ -31,7 +31,7 @@ import {
 } from './commands'
 import { runCompletions } from './completions'
 import { runDoctor } from './doctor'
-import { commandNamed, help, helpFor } from './help'
+import { commandNamed, help, helpFor, helpOn } from './help'
 import { say, warn } from '../style'
 import { runStage } from './stage'
 
@@ -86,14 +86,35 @@ async function main(): Promise<void> {
   if (command === '-v' || command === '--version')
     return void console.log(VERSION)
 
+  // **`cutver <command> --help` is `cutver help <command>`, answered before the
+  // command runs.** It was left to each command, and none gave its own page.
+  // Measured on 2.6.2 with stdout redirected, all 13 commands answered
+  // differently from `cutver help <name>`: eight printed the general page
+  // through `console.log` rather than `say`, with six of its lines carrying
+  // their style markers as written; `docs`, `hook` and `completions` stopped
+  // at the subcommand they were missing and exited 1; and `stage`, `check`,
+  // `doctor` and `explain` read the config first, so a broken `cutver.yml`
+  // answered with its parse error. Here, as in `cutver help`, help reads
+  // nothing from the repository. `help` itself is left to its own case.
+  if (
+    command !== 'help' &&
+    commandNamed(command) &&
+    rest.some(a => a === '-h' || a === '--help')
+  )
+    return void say(helpOn(VERSION, command))
+
   switch (command) {
     case undefined:
       return noCommand()
 
     case 'help': {
-      const named = commandNamed(rest[0])
-      if (rest[0] && !named)
-        die(`no command named '${rest[0]}' — \`cutver help\` lists them`)
+      // Past a `-h` or `--help`, so `cutver help --help` is `cutver help`
+      // rather than a search for a command named `--help`. Only those two: a
+      // test for any leading dash would take a flag's value for the name.
+      const word = rest.find(a => a !== '-h' && a !== '--help')
+      const named = commandNamed(word)
+      if (word && !named)
+        die(`no command named '${word}'. \`cutver help\` lists them`)
       return void say(named ? helpFor(named) : help(VERSION))
     }
     case 'version':
@@ -132,7 +153,7 @@ async function main(): Promise<void> {
             `        try \`cutver stage ${argv.join(' ')}\`.`,
         )
       }
-      die(`no command named '${command}' — \`cutver help\` lists them`)
+      die(`no command named '${command}'. \`cutver help\` lists them`)
     }
   }
 }

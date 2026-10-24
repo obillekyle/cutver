@@ -16,7 +16,7 @@ import {
 } from '../adapters'
 import { KEY_ALIASES, toKebab, type Config } from '../config/schema'
 import { CHANNELS } from '../version-from-commits'
-import { flagsAllowedFor, help } from './help'
+import { flagsAllowedFor, helpOn } from './help'
 
 /**
  * What cutver believes its own version to be, from whichever of the two
@@ -44,7 +44,7 @@ import { flagsAllowedFor, help } from './help'
  */
 import manifest from '../../package.json' with { type: 'json' }
 import { pathToFileURL } from '../runtime'
-import { style } from '../style'
+import { say, style } from '../style'
 
 declare const CUTVER_VERSION: string | undefined
 
@@ -180,7 +180,9 @@ export function parse(
     switch (name) {
       case '-h':
       case '--help':
-        console.log(help(VERSION))
+        // `main` answers this before any command parses its arguments; this is
+        // the same answer for a caller that reaches `parse` some other way.
+        say(helpOn(VERSION, command))
         process.exit(0)
       case '-v':
       case '--version':

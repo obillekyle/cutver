@@ -531,6 +531,16 @@ export function helpFor(c: Command): string {
 }
 
 /**
+ * What `-h` or `--help` prints: the page for the command it follows, the one
+ * `cutver help <command>` prints, or the whole surface when it follows none.
+ * Every way in calls this, so the answers cannot drift apart again.
+ */
+export function helpOn(version: string, command?: string): string {
+  const named = commandNamed(command)
+  return named ? helpFor(named) : help(version)
+}
+
+/**
  * Hard-wrapped at 78 columns.
  *
  * The detail paragraphs are written as single strings so they are editable as
