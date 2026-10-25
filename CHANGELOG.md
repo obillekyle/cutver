@@ -8,9 +8,19 @@ is only ever as good as the commits — which is the point.
 explanation in the commit body, where it is also visible in `git log`, in a
 pull request, and on the release page.
 
+## [2.6.3] — 2026-10-25
+
+<sub>diff: [8fd62b5...3539dbe](https://github.com/obillekyle/cutver/compare/8fd62b5...3539dbe)</sub>
+
+### Fixes
+
+- **cli:** `<command> --help` prints that command's page ([3539dbe](https://github.com/obillekyle/cutver/commit/3539dbe))
+
+    `cutver stage --help` printed the general page, not stage's, and printed part of it raw: parse() answered the flag with console.log(help(VERSION)), so the template never went through say(). help() styles its own table cells through pad(), and the rest kept its markers as written: six lines of %<bold>, %d and %0, the same six with color forced on (FORCE_COLOR=1 on 2.6.2) as with stdout redirected.
+
 ## [2.6.2] — 2026-10-24
 
-<sub>diff: [7ca2976...97fbe7c](https://github.com/obillekyle/cutver/compare/7ca2976...97fbe7c)</sub>
+<sub>diff: [7ca2976...8fd62b5](https://github.com/obillekyle/cutver/compare/7ca2976...8fd62b5)</sub>
 
 ### Fixes
 
@@ -165,15 +175,5 @@ pull request, and on the release page.
 - **docs:** stop the shell telling Google every page is a copy of the front page ([596b727](https://github.com/obillekyle/cutver/commit/596b727))
 
     One file answers every route, so the canonical written into it named one URL and called the other thirty duplicates of that one. Search Console reported it back exactly: every ?/ route listed under 'Alternate page with proper canonical tag — these pages aren't indexed'. Eight pages, none indexed, and the tag added to help indexing was the only thing preventing it.
-
-## [2.4.8] — 2026-08-23
-
-<sub>diff: [08de946...17f2fc2](https://github.com/obillekyle/cutver/compare/08de946...17f2fc2)</sub>
-
-### Fixes
-
-- **build:** keep the version define's quotes out of the shell's reach ([dc7489d](https://github.com/obillekyle/cutver/commit/dc7489d))
-
-    Bun Shell 1.4 strips double quotes the way POSIX does; 1.3 passed them through. The bundle step wrote its define as CUTVER_VERSION="${version}" in the template, so the quotes were shell syntax — fine for eleven releases and a syntax error on the first build under 1.4, since --define's value is a JS expression and a bare 2.4.7 is not one. The compiled targets never broke: their define is built in JavaScript and interpolated whole, and an interpolated value arrives verbatim under either behaviour. Both now use one value built that way.
 
 Older releases are in the git tags and on the releases page.
